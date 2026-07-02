@@ -73,8 +73,23 @@ go build -o bin/gramsrv.exe ./cmd/telesrv
 | `TELESRV_POSTGRES_DSN` | local Compose DSN | PostgreSQL 连接串 |
 | `TELESRV_REDIS_ADDR` | `127.0.0.1:6399` | Redis 地址 |
 | `TELESRV_LANGPACK_SEED_DIR` | `data/langpack` | 内置语言包种子目录 |
+| `TELESRV_APP_NAME` | `Safelink` | 客户端语言包里展示的应用名称 |
 | `TELESRV_BLOB_DIR` | `data/blobs` | 本地媒体 blob 目录 |
 | `TELESRV_STICKER_SEED_DIR` | `data/sticker-seed` | 可选 sticker/reaction 种子目录 |
+
+### 应用名称配置
+
+客户端里的高级版、企业版、系统提示等名称来自语言包。不要直接批量改 `data/langpack/**/*.strings`，否则后续合并官方语言包会很难维护。
+
+生产环境改应用名称只需要改一处：
+
+```sh
+TELESRV_APP_NAME=Safelink
+```
+
+如果要换成其它名字，改服务端环境变量后重启 `telesrv` 即可。启动时 `gramsrv` 会读取 `TELESRV_LANGPACK_SEED_DIR`，把语言包 value 中的 `Telegram`、`Telesrv`、`SafeLink`、`Safelink` 映射成 `TELESRV_APP_NAME`，并在内容变化时自动提升语言包版本，让客户端重新拉取。语言包 key 不会被改动，避免破坏客户端协议兼容。
+
+代码默认值在 `internal/brand/brand.go` 的 `DefaultAppName`。如果没有环境变量，默认展示为 `Safelink`。
 
 如果 sticker seed 目录不存在，启动时会自动跳过。要从 `HSgram_-premium-promo` 部署官方 premium sticker/emoji 目录，执行：
 

@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"telesrv/internal/brand"
 )
 
 const defaultConfigFile = ".env"
@@ -90,6 +92,8 @@ type Config struct {
 	WebPagePreviewRatePerMin int
 	// LangPackSeedDir 是 TDesktop 语言包 .strings 种子目录。
 	LangPackSeedDir string
+	// AppName 是客户端语言包中展示的应用品牌名。重启时会将 Telegram/Telesrv/SafeLink 统一映射为该值。
+	AppName string
 	// BlobDir 是本地磁盘 blob backend 根目录（媒体文件字节内容）。
 	BlobDir string
 	// StickerSeedDir 是 reaction / sticker 资源种子目录（导入到 documents/sticker_sets + blob）。
@@ -282,6 +286,7 @@ func Load() (Config, error) {
 
 		DevAuthCode:                   envOr("TELESRV_DEV_AUTH_CODE", "12345"),
 		LangPackSeedDir:               envOr("TELESRV_LANGPACK_SEED_DIR", "data/langpack"),
+		AppName:                       envOr("TELESRV_APP_NAME", brand.DefaultAppName),
 		BlobDir:                       envOr("TELESRV_BLOB_DIR", "data/blobs"),
 		StickerSeedDir:                envOr("TELESRV_STICKER_SEED_DIR", "data/sticker-seed"),
 		StickerSeedMaxSets:            envIntOr("TELESRV_STICKER_SEED_MAX_SETS", 300),

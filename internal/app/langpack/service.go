@@ -2,6 +2,7 @@ package langpack
 
 import (
 	"context"
+	"strings"
 
 	"telesrv/internal/domain"
 	"telesrv/internal/store"
@@ -9,12 +10,27 @@ import (
 
 // Service 提供客户端语言包查询。
 type Service struct {
-	packs store.LangPackStore
+	packs         store.LangPackStore
+	brandReplacer *strings.Replacer
 }
 
+type Option func(*Service)
+
 // NewService 创建 langpack 服务。
-func NewService(packs store.LangPackStore) *Service {
-	return &Service{packs: packs}
+func NewService(packs store.LangPackStore, opts ...Option) *Service {
+	s := &Service{packs: packs}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(s)
+		}
+	}
+	return s
+}
+
+func WithBranding(branding Branding) Option {
+	return func(s *Service) {
+		s.brandReplacer = newBrandReplacer(branding)
+	}
 }
 
 // GetLangPack 返回完整语言包。

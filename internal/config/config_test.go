@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"telesrv/internal/brand"
 )
 
 func TestLoadDefaultsAdvertiseIPToLoopback(t *testing.T) {
@@ -52,6 +54,30 @@ func TestLoadBusinessAIProviderDefaultsToEcho(t *testing.T) {
 	}
 	if cfg.BusinessAIProvider != "echo" {
 		t.Fatalf("BusinessAIProvider = %q, want echo", cfg.BusinessAIProvider)
+	}
+}
+
+func TestLoadAppNameDefaultsToSafelink(t *testing.T) {
+	t.Setenv("TELESRV_APP_NAME", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.AppName != brand.DefaultAppName {
+		t.Fatalf("AppName = %q, want %q", cfg.AppName, brand.DefaultAppName)
+	}
+}
+
+func TestLoadAppNameUsesEnv(t *testing.T) {
+	t.Setenv("TELESRV_APP_NAME", "NewName")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.AppName != "NewName" {
+		t.Fatalf("AppName = %q, want NewName", cfg.AppName)
 	}
 }
 

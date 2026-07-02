@@ -82,8 +82,30 @@ Useful local environment variables:
 | `TELESRV_POSTGRES_DSN` | local Compose DSN | PostgreSQL connection string |
 | `TELESRV_REDIS_ADDR` | `127.0.0.1:6399` | Redis address |
 | `TELESRV_LANGPACK_SEED_DIR` | `data/langpack` | bundled language pack seed directory |
+| `TELESRV_APP_NAME` | `Safelink` | app name shown through client language packs |
 | `TELESRV_BLOB_DIR` | `data/blobs` | local media blob directory |
 | `TELESRV_STICKER_SEED_DIR` | `data/sticker-seed` | optional sticker/reaction seed directory |
+
+### App Name Branding
+
+Client-facing Premium, Business, service notice, and similar labels come from
+language packs. Do not bulk-edit `data/langpack/**/*.strings`; that makes future
+language pack updates difficult to merge.
+
+For production branding, change one environment variable and restart `telesrv`:
+
+```sh
+TELESRV_APP_NAME=Safelink
+```
+
+On startup, `gramsrv` reads `TELESRV_LANGPACK_SEED_DIR`, maps language pack
+values containing `Telegram`, `Telesrv`, `SafeLink`, or `Safelink` to
+`TELESRV_APP_NAME`, and bumps the stored language pack version when content
+changes so clients fetch the updated strings. Language pack keys are not
+rewritten, preserving client protocol compatibility.
+
+The code default lives in `internal/brand/brand.go` as `DefaultAppName`. Without
+an environment override, the displayed app name is `Safelink`.
 
 The optional sticker seed directory is skipped when it does not exist. To deploy the official premium sticker/emoji catalog from `HSgram_-premium-promo`, run:
 

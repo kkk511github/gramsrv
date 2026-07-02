@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"telesrv/internal/domain"
 	"telesrv/internal/store/memory"
 )
 
@@ -97,6 +98,97 @@ func TestSeedDirectoryWalksClientSubdirs(t *testing.T) {
 	}
 }
 
+func TestSeedDirectorySkipsSameVersionSameContent(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "tdesktop_en_v1.strings")
+	if err := os.WriteFile(path, []byte(`"lng_app_name" = "SafeLink";`), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	store := memory.NewLangPackStore()
+	service := NewService(store)
+	if seeded, err := service.SeedDirectory(context.Background(), root); err != nil || seeded != 1 {
+		t.Fatalf("first seed = %d, %v; want 1, nil", seeded, err)
+	}
+	if seeded, err := service.SeedDirectory(context.Background(), root); err != nil || seeded != 0 {
+		t.Fatalf("second seed = %d, %v; want 0, nil", seeded, err)
+	}
+	pack, err := service.GetLangPack(context.Background(), "tdesktop", "en")
+	if err != nil {
+		t.Fatalf("get pack: %v", err)
+	}
+	if pack.Version != 1 {
+		t.Fatalf("version = %d, want 1", pack.Version)
+	}
+}
+
+func TestSeedDirectoryBumpsVersionForSameVersionChangedContent(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "tdesktop_en_v1.strings")
+	if err := os.WriteFile(path, []byte(`"lng_app_name" = "Telegram";`), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	store := memory.NewLangPackStore()
+	service := NewService(store)
+	if seeded, err := service.SeedDirectory(context.Background(), root); err != nil || seeded != 1 {
+		t.Fatalf("first seed = %d, %v; want 1, nil", seeded, err)
+	}
+	if err := os.WriteFile(path, []byte(`"lng_app_name" = "SafeLink";`), 0o600); err != nil {
+		t.Fatalf("rewrite fixture: %v", err)
+	}
+	if seeded, err := service.SeedDirectory(context.Background(), root); err != nil || seeded != 1 {
+		t.Fatalf("changed seed = %d, %v; want 1, nil", seeded, err)
+	}
+
+	pack, err := service.GetLangPack(context.Background(), "tdesktop", "en")
+	if err != nil {
+		t.Fatalf("get pack: %v", err)
+	}
+	if pack.Version != 2 {
+		t.Fatalf("version = %d, want 2", pack.Version)
+	}
+	if len(pack.Strings) != 1 || pack.Strings[0].Value != "SafeLink" {
+		t.Fatalf("strings = %+v, want SafeLink", pack.Strings)
+	}
+}
+
+func TestSeedDirectoryAppliesBrandingAndBumpsWhenAppNameChanges(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "tdesktop_en_v1.strings")
+	if err := os.WriteFile(path, []byte(`
+"TelegramPremium" = "Telegram Premium";
+"lng_business" = "SafeLink Business";
+`), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	store := memory.NewLangPackStore()
+	service := NewService(store, WithBranding(Branding{AppName: "Safelink"}))
+	if seeded, err := service.SeedDirectory(context.Background(), root); err != nil || seeded != 2 {
+		t.Fatalf("first seed = %d, %v; want 2, nil", seeded, err)
+	}
+	pack, err := service.GetLangPack(context.Background(), "tdesktop", "en")
+	if err != nil {
+		t.Fatalf("get first pack: %v", err)
+	}
+	if pack.Version != 1 || langPackTestValue(pack, "TelegramPremium") != "Safelink Premium" || langPackTestValue(pack, "lng_business") != "Safelink Business" {
+		t.Fatalf("first pack = %+v", pack)
+	}
+
+	service = NewService(store, WithBranding(Branding{AppName: "NewName"}))
+	if seeded, err := service.SeedDirectory(context.Background(), root); err != nil || seeded != 2 {
+		t.Fatalf("second seed = %d, %v; want 2, nil", seeded, err)
+	}
+	pack, err = service.GetLangPack(context.Background(), "tdesktop", "en")
+	if err != nil {
+		t.Fatalf("get second pack: %v", err)
+	}
+	if pack.Version != 2 || langPackTestValue(pack, "TelegramPremium") != "NewName Premium" || langPackTestValue(pack, "lng_business") != "NewName Business" {
+		t.Fatalf("second pack = %+v", pack)
+	}
+}
+
 func TestBundledAndroidPersianLangPackParses(t *testing.T) {
 	path := filepath.Join("..", "..", "..", "data", "langpack", "android", "android_fa_v59634849.strings")
 	pack, err := ParseTDesktopFile(path)
@@ -119,4 +211,13 @@ func TestBundledAndroidPersianLangPackParses(t *testing.T) {
 		}
 	}
 	t.Fatalf("TranslateLanguageFA not found in bundled android fa pack")
+}
+
+func langPackTestValue(pack domain.LangPack, key string) string {
+	for _, item := range pack.Strings {
+		if item.Key == key {
+			return item.Value
+		}
+	}
+	return ""
 }

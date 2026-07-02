@@ -379,7 +379,9 @@ func run(logger *zap.Logger) error {
 		cfg.UploadPartGCInterval,
 		cfg.UploadPartGCBatch,
 	).Run(ctx)
-	langPackService := langpack.NewService(langPackStore)
+	langPackService := langpack.NewService(langPackStore, langpack.WithBranding(langpack.Branding{
+		AppName: cfg.AppName,
+	}))
 	privacyService := privacyapp.NewService(privacyStore, contactStore)
 	contactsService := contacts.NewService(contactStore, userStore).Configure(
 		contacts.WithPhotoProvider(cachedPhotos),
@@ -389,7 +391,7 @@ func run(logger *zap.Logger) error {
 	if seeded, err := langPackService.SeedDirectory(ctx, cfg.LangPackSeedDir); err != nil {
 		return fmt.Errorf("seed langpack: %w", err)
 	} else if seeded > 0 {
-		logger.Info("语言包种子导入完成", zap.String("dir", cfg.LangPackSeedDir), zap.Int("strings", seeded))
+		logger.Info("语言包种子导入完成", zap.String("dir", cfg.LangPackSeedDir), zap.String("app_name", cfg.AppName), zap.Int("strings", seeded))
 	}
 	// 国家区号目录:把 catalog 固化的官方全量(~235 国)幂等 upsert 进 PG,覆盖迁移里仅
 	// seed 的 2 国(US/CN)默认值。否则 countries 表非空,ListCountries 返回那 2 行就会
