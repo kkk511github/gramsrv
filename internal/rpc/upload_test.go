@@ -48,9 +48,9 @@ func TestUploadGetFileRejectsInvalidRanges(t *testing.T) {
 	}
 }
 
-func TestFileLocationKeyUsesDocumentID(t *testing.T) {
+func TestFileLocationKeyNormalizesHighClientDocumentID(t *testing.T) {
 	key, ok := fileLocationKey(&tg.InputDocumentFileLocation{
-		ID:        1382305375846410902,
+		ID:        5382305375846410902,
 		ThumbSize: "m",
 	})
 	if !ok {
