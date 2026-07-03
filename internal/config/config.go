@@ -45,7 +45,7 @@ type Config struct {
 	// StickerWebAddr 是公开 sticker/custom emoji deep link 落地页监听地址；为空关闭。
 	// 生产应只监听 loopback，并由 nginx 将 /addstickers/ 与 /addemoji/ 反代到该地址。
 	StickerWebAddr string
-	// StickerWebPublicURL 是生成 canonical telesrv.net 链接的公开根 URL。
+	// StickerWebPublicURL 是生成 canonical SafeLink 链接的公开根 URL。
 	StickerWebPublicURL string
 	// Admin UI 独立进程配置项保留在统一配置中，cmd/telesrv-admin 也按同名 env 读取。
 	AdminUIAddr     string
@@ -290,7 +290,7 @@ func Load() (Config, error) {
 		AdminAPIAddr:        envOr("TELESRV_ADMIN_API_ADDR", ""),
 		AdminAPIToken:       envOr("TELESRV_ADMIN_API_TOKEN", ""),
 		StickerWebAddr:      envOr("TELESRV_STICKER_WEB_ADDR", ""),
-		StickerWebPublicURL: envOr("TELESRV_STICKER_WEB_PUBLIC_URL", "https://telesrv.net"),
+		StickerWebPublicURL: envOr("TELESRV_STICKER_WEB_PUBLIC_URL", brand.DefaultPublicBaseURL),
 		AdminUIAddr:         envOr("TELESRV_ADMIN_UI_ADDR", "127.0.0.1:2400"),
 		AdminUIPassword:     envOr("TELESRV_ADMIN_UI_PASSWORD", ""),
 		AdminUIToken:        envOr("TELESRV_ADMIN_UI_TOKEN", ""),
@@ -363,7 +363,7 @@ func Load() (Config, error) {
 		CallExpiryInterval:    envDurationOr("TELESRV_CALL_EXPIRY_INTERVAL", time.Second),
 
 		PremiumGrantMonths:    envIntOr("TELESRV_PREMIUM_GRANT_MONTHS", 3),
-		PasskeyRPID:           envOr("TELESRV_PASSKEY_RP_ID", "telesrv.net"),
+		PasskeyRPID:           envOr("TELESRV_PASSKEY_RP_ID", brand.DefaultPublicHost),
 		PasskeyAllowedOrigins: envListOr("TELESRV_PASSKEY_ALLOWED_ORIGINS", nil),
 		StarsStartingGrant:    int64(envIntOr("TELESRV_STARS_STARTING_GRANT", 1000)),
 		PremiumSweepInterval:  envDurationOr("TELESRV_PREMIUM_SWEEP_INTERVAL", time.Minute),

@@ -382,7 +382,7 @@ func TestChannelCreateHasPermanentInviteLink(t *testing.T) {
 		t.Fatalf("exported invites after create = %+v, want at least the permanent link (DrKLO 直接取 invites[0])", inviteList)
 	}
 	invite, ok := inviteList.Invites[0].(*tg.ChatInviteExported)
-	if !ok || !invite.Permanent || invite.Revoked || invite.AdminID != owner.ID || !strings.HasPrefix(invite.Link, "https://telesrv.net/+") {
+	if !ok || !invite.Permanent || invite.Revoked || invite.AdminID != owner.ID || !strings.HasPrefix(invite.Link, "https://safelink.chat/+") {
 		t.Fatalf("invites[0] = %#v, want creator's non-revoked permanent link", inviteList.Invites[0])
 	}
 
@@ -604,7 +604,7 @@ func TestChannelAdminPinInviteRPC(t *testing.T) {
 		t.Fatalf("export invite: %v", err)
 	}
 	exported := invite.(*tg.ChatInviteExported)
-	hash := strings.TrimPrefix(exported.Link, "https://telesrv.net/+")
+	hash := strings.TrimPrefix(exported.Link, "https://safelink.chat/+")
 	checked, err := r.onMessagesCheckChatInvite(WithUserID(ctx, joiner.ID), hash)
 	if err != nil {
 		t.Fatalf("check invite: %v", err)

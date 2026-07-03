@@ -340,7 +340,7 @@ func contractConferenceChainBlocks(t *testing.T, factory GroupCallStoreFactory) 
 	slug := fmt.Sprintf("contract-chain-%d", channelID)
 	call, err := st.CreateConferenceCall(ctx, domain.GroupCall{
 		ID: channelID*100 + 51, AccessHash: channelID*100 + 58, CreatorUserID: 1,
-		InviteSlug: slug, InviteLink: "https://telesrv.net/call/" + slug + "?slug=" + slug,
+		InviteSlug: slug, InviteLink: "https://safelink.chat/call/" + slug + "?slug=" + slug,
 		RandomID: channelID*100 + 51, CreatedAt: now,
 	})
 	if err != nil {
@@ -388,7 +388,7 @@ func contractConferenceRecipientsTerminalAccess(t *testing.T, factory GroupCallS
 	slug := fmt.Sprintf("contract-recipient-%d", channelID)
 	call, err := st.CreateConferenceCall(ctx, domain.GroupCall{
 		ID: channelID*100 + 61, AccessHash: channelID*100 + 68, CreatorUserID: 1,
-		InviteSlug: slug, InviteLink: "https://telesrv.net/call/" + slug + "?slug=" + slug,
+		InviteSlug: slug, InviteLink: "https://safelink.chat/call/" + slug + "?slug=" + slug,
 		RandomID: channelID*100 + 61, CreatedAt: now,
 	})
 	if err != nil {
@@ -437,7 +437,7 @@ func contractConferenceEmptyDiscards(t *testing.T, factory GroupCallStoreFactory
 	call, err := st.CreateConferenceCall(ctx, domain.GroupCall{
 		ID: channelID*100 + 71, AccessHash: channelID*100 + 78, CreatorUserID: 1,
 		InviteSlug: fmt.Sprintf("contract-empty-%d", channelID),
-		InviteLink: fmt.Sprintf("https://telesrv.net/call/contract-empty-%d?slug=contract-empty-%d", channelID, channelID),
+		InviteLink: fmt.Sprintf("https://safelink.chat/call/contract-empty-%d?slug=contract-empty-%d", channelID, channelID),
 		RandomID:   channelID*100 + 71,
 		CreatedAt:  now,
 	})
@@ -467,7 +467,7 @@ func contractConferenceEmptyDiscards(t *testing.T, factory GroupCallStoreFactory
 	resetCall, err := st.CreateConferenceCall(ctx, domain.GroupCall{
 		ID: channelID*100 + 81, AccessHash: channelID*100 + 88, CreatorUserID: 1,
 		InviteSlug: fmt.Sprintf("contract-reset-empty-%d", channelID),
-		InviteLink: fmt.Sprintf("https://telesrv.net/call/contract-reset-empty-%d?slug=contract-reset-empty-%d", channelID, channelID),
+		InviteLink: fmt.Sprintf("https://safelink.chat/call/contract-reset-empty-%d?slug=contract-reset-empty-%d", channelID, channelID),
 		RandomID:   channelID*100 + 81,
 		CreatedAt:  now + 10,
 	})

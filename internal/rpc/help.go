@@ -67,7 +67,7 @@ func (r *Router) registerHelp(d *tg.ServerDispatcher) {
 	d.OnHelpGetTermsOfServiceUpdate(func(ctx context.Context) (tg.HelpTermsOfServiceUpdateClass, error) {
 		return tdesktop.TermsOfServiceUpdate(r.clock.Now()), nil
 	})
-	// 客户端遇到无法识别的 tg:// 深链时会查询 help.getDeepLinkInfo。telesrv 不维护
+	// 客户端遇到无法识别的深链时会查询 help.getDeepLinkInfo。SafeLink 不维护
 	// “需更新 App”的特殊深链提示库，对所有 path 返回 deepLinkInfoEmpty——这是规范的
 	// “无特殊信息”应答：DrKLO 仅在收到非空 deepLinkInfo 时才弹“请更新 App”弹窗
 	// （LaunchActivity.java:5175），收到 Empty 则静默放行按普通链接处理。此前未注册

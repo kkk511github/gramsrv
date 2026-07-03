@@ -8,6 +8,7 @@ import (
 
 	"github.com/gotd/td/tg"
 
+	"telesrv/internal/brand"
 	"telesrv/internal/domain"
 )
 
@@ -196,7 +197,7 @@ func tgPremiumBoostsStatus(channelID int64, in domain.PremiumBoostStatus) *tg.Pr
 		Level:              in.Level,
 		CurrentLevelBoosts: in.CurrentLevelBoosts,
 		Boosts:             in.Boosts,
-		BoostURL:           fmt.Sprintf("https://telesrv.net/boost?c=%d", channelID),
+		BoostURL:           brand.BoostURL(channelID),
 	}
 	if in.GiftBoosts > 0 {
 		out.SetGiftBoosts(in.GiftBoosts)

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"telesrv/internal/brand"
 	"telesrv/internal/domain"
 	"unicode/utf8"
 )
@@ -28,9 +29,9 @@ func (r *Router) onChannelsExportMessageLink(ctx context.Context, req *tg.Channe
 	}
 	link := ""
 	if view.Channel.Username != "" {
-		link = "https://telesrv.net/" + view.Channel.Username + "/" + strconv.Itoa(req.ID)
+		link = brand.ChannelMessageURL(view.Channel.Username, req.ID)
 	} else {
-		link = "https://telesrv.net/c/" + strconv.FormatInt(view.Channel.ID, 10) + "/" + strconv.Itoa(req.ID)
+		link = brand.PrivateChannelMessageURL(view.Channel.ID, req.ID)
 	}
 	if req.Thread {
 		if rootID := channelMessageThreadRootID(history.Messages[0]); rootID > 0 && rootID != req.ID {

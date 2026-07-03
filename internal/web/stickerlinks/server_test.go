@@ -24,7 +24,7 @@ func TestHandlerServesStickerSetLandingPage(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/addstickers/fresh_pack", nil)
 
-	NewHandler(resolver, "https://telesrv.net/").ServeHTTP(rr, req)
+	NewHandler(resolver, "https://safelink.chat/").ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
@@ -32,17 +32,17 @@ func TestHandlerServesStickerSetLandingPage(t *testing.T) {
 	body := rr.Body.String()
 	for _, want := range []string{
 		"Fresh Pack",
-		"https://telesrv.net/addstickers/fresh_pack",
-		"telesrv://addstickers?set=fresh_pack",
-		"tg://addstickers?set=fresh_pack",
+		"https://safelink.chat/addstickers/fresh_pack",
 		"Files are still fetched by the app through MTProto.",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q:\n%s", want, body)
 		}
 	}
-	if strings.Contains(body, `window.location.href = "tg://`) {
-		t.Fatalf("landing page must not auto-open tg:// and steal official Telegram:\n%s", body)
+	for _, forbidden := range []string{"tg://", "telesrv://"} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("landing page must not contain %q:\n%s", forbidden, body)
+		}
 	}
 	if strings.Contains(body, "/upload/getFile") {
 		t.Fatalf("landing page should not expose media download paths:\n%s", body)
@@ -72,11 +72,14 @@ func TestHandlerServesEmojiLandingPage(t *testing.T) {
 	for _, want := range []string{
 		"custom emoji set",
 		"https://example.test/base/addemoji/emoji_pack",
-		"telesrv://addemoji?set=emoji_pack",
-		"tg://addemoji?set=emoji_pack",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q:\n%s", want, body)
+		}
+	}
+	for _, forbidden := range []string{"tg://", "telesrv://"} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("landing page must not contain %q:\n%s", forbidden, body)
 		}
 	}
 }
@@ -94,18 +97,18 @@ func TestHandlerRedirectsMismatchedKindToCanonicalURL(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/addstickers/emoji_pack", nil)
 
-	NewHandler(resolver, "https://telesrv.net").ServeHTTP(rr, req)
+	NewHandler(resolver, "https://safelink.chat").ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusPermanentRedirect {
 		t.Fatalf("status = %d, want 308; body=%s", rr.Code, rr.Body.String())
 	}
-	if got, want := rr.Header().Get("Location"), "https://telesrv.net/addemoji/emoji_pack"; got != want {
+	if got, want := rr.Header().Get("Location"), "https://safelink.chat/addemoji/emoji_pack"; got != want {
 		t.Fatalf("Location = %q, want %q", got, want)
 	}
 }
 
 func TestHandlerNotFoundForMissingOrInvalidShortName(t *testing.T) {
-	handler := NewHandler(fakeResolver{}, "https://telesrv.net")
+	handler := NewHandler(fakeResolver{}, "https://safelink.chat")
 	for _, path := range []string{
 		"/addstickers/missing_pack",
 		"/addstickers/bad-name",
@@ -124,7 +127,7 @@ func TestHandlerLookupErrorIsInternalServerError(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/addstickers/fresh_pack", nil)
 
-	NewHandler(errorResolver{}, "https://telesrv.net").ServeHTTP(rr, req)
+	NewHandler(errorResolver{}, "https://safelink.chat").ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", rr.Code)

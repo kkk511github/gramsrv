@@ -12,6 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"telesrv/internal/brand"
 	"telesrv/internal/domain"
 )
 
@@ -746,12 +747,8 @@ func cloneStickersBotState(state domain.BotChatState) domain.BotChatState {
 
 func normalizeStickersBotShortName(raw string) string {
 	raw = strings.TrimSpace(raw)
-	raw = strings.TrimPrefix(raw, "https://telesrv.net/addstickers/")
-	raw = strings.TrimPrefix(raw, "https://telesrv.net/addemoji/")
-	raw = strings.TrimPrefix(raw, "telesrv://addstickers?set=")
-	raw = strings.TrimPrefix(raw, "telesrv://addemoji?set=")
-	raw = strings.TrimPrefix(raw, "tg://addstickers?set=")
-	raw = strings.TrimPrefix(raw, "tg://addemoji?set=")
+	raw = strings.TrimPrefix(raw, brand.PublicURL("addstickers/"))
+	raw = strings.TrimPrefix(raw, brand.PublicURL("addemoji/"))
 	return strings.ToLower(strings.Trim(raw, " /"))
 }
 
@@ -789,5 +786,5 @@ func stickersBotPublicURL(set domain.StickerSet) string {
 	if stickersBotSetKind(set) == domain.StickerSetKindEmoji {
 		part = "addemoji"
 	}
-	return "https://telesrv.net/" + part + "/" + set.ShortName
+	return brand.StickerSetURL(part, set.ShortName)
 }

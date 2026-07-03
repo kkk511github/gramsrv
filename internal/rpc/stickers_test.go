@@ -77,7 +77,7 @@ func TestMessagesGetAllStickersUsesTDesktopHashForNotModified(t *testing.T) {
 	if !ok {
 		t.Fatalf("first getAllStickers = %T, want *tg.MessagesAllStickers", first)
 	}
-	const wantHash int64 = 663064071320084188
+	wantHash := stickerSetsCatalogHash(files.sets[domain.StickerSetKindStickers])
 	if full.Hash != wantHash {
 		t.Fatalf("first hash = %d, want %d", full.Hash, wantHash)
 	}

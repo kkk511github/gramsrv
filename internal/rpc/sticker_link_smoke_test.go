@@ -73,20 +73,22 @@ func TestCustomStickerPackLinkInstallAndSendSmoke(t *testing.T) {
 		t.Fatalf("created = %T, want *tg.MessagesStickerSet", created)
 	}
 
-	web := stickerlinks.NewHandler(files, "https://telesrv.net")
+	web := stickerlinks.NewHandler(files, "https://safelink.chat")
 	rr := httptest.NewRecorder()
 	web.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/addstickers/alice_fresh_pack", nil))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("sticker link status = %d body=%q, want 200", rr.Code, rr.Body.String())
 	}
 	body := rr.Body.String()
-	for _, want := range []string{"https://telesrv.net/addstickers/alice_fresh_pack", "telesrv://addstickers?set=alice_fresh_pack", "tg://addstickers?set=alice_fresh_pack"} {
+	for _, want := range []string{"https://safelink.chat/addstickers/alice_fresh_pack"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("sticker link body missing %q:\n%s", want, body)
 		}
 	}
-	if strings.Contains(body, `window.location.href = "tg://`) {
-		t.Fatalf("sticker link must auto-open telesrv://, not tg://:\n%s", body)
+	for _, forbidden := range []string{"tg://", "telesrv://"} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("sticker link must not contain %q:\n%s", forbidden, body)
+		}
 	}
 
 	preview, err := r.onMessagesGetStickerSet(WithUserID(ctx, bob.ID), &tg.MessagesGetStickerSetRequest{
@@ -207,7 +209,7 @@ func TestStickersBotCreatePackLinkInstallIsolationSmoke(t *testing.T) {
 	sendStickersBotText(t, r, alice, "/publish", 9105)
 	waitForStickersReply(t, messageStore, alice.ID, "short name")
 	sendStickersBotText(t, r, alice, "alice_bot_pack", 9106)
-	waitForStickersReply(t, messageStore, alice.ID, "https://telesrv.net/addstickers/alice_bot_pack")
+	waitForStickersReply(t, messageStore, alice.ID, "https://safelink.chat/addstickers/alice_bot_pack")
 
 	created := files.sets[domain.StickerSetKindStickers]
 	if len(created) != 1 || created[0].ShortName != "alice_bot_pack" || created[0].CreatorUserID != alice.ID {
@@ -224,10 +226,10 @@ func TestStickersBotCreatePackLinkInstallIsolationSmoke(t *testing.T) {
 		t.Fatalf("bob getAllStickers before install = %v, want empty", got)
 	}
 
-	web := stickerlinks.NewHandler(files, "https://telesrv.net")
+	web := stickerlinks.NewHandler(files, "https://safelink.chat")
 	rr := httptest.NewRecorder()
 	web.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/addstickers/alice_bot_pack", nil))
-	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), "https://telesrv.net/addstickers/alice_bot_pack") {
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), "https://safelink.chat/addstickers/alice_bot_pack") {
 		t.Fatalf("sticker bot link response = %d %q", rr.Code, rr.Body.String())
 	}
 	preview, err := r.onMessagesGetStickerSet(WithUserID(ctx, bob.ID), &tg.MessagesGetStickerSetRequest{

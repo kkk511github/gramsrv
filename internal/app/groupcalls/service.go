@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"telesrv/internal/brand"
 	"telesrv/internal/domain"
 	"telesrv/internal/store"
 )
@@ -199,5 +200,5 @@ func randomSlug() (string, error) {
 }
 
 func conferenceInviteLink(slug string) string {
-	return "https://telesrv.net/call/" + slug + "?slug=" + slug
+	return brand.GroupCallInviteURL(slug)
 }

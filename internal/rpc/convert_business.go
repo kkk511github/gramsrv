@@ -5,6 +5,7 @@ import (
 
 	"github.com/gotd/td/tg"
 
+	"telesrv/internal/brand"
 	"telesrv/internal/domain"
 )
 
@@ -381,8 +382,12 @@ func domainBusinessChatLinkInput(in tg.InputBusinessChatLink) (domain.BusinessCh
 }
 
 func tgBusinessChatLink(in domain.BusinessChatLink) tg.BusinessChatLink {
+	link := in.Link
+	if in.Slug != "" {
+		link = brand.BusinessChatURL(in.Slug)
+	}
 	return tg.BusinessChatLink{
-		Link:     in.Link,
+		Link:     link,
 		Message:  in.Message,
 		Entities: tgMessageEntities(in.Entities),
 		Title:    in.Title,

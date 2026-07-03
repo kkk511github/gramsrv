@@ -3,9 +3,13 @@ package rpc
 import (
 	"context"
 	"errors"
+	"net/url"
+	"strings"
+
 	"github.com/gotd/td/tg"
 	"github.com/gotd/td/tgerr"
-	"strings"
+
+	"telesrv/internal/brand"
 	"telesrv/internal/domain"
 )
 
@@ -358,7 +362,7 @@ func tgExportedChannelInvite(invite domain.ChannelInvite) tg.ExportedChatInviteC
 		Revoked:       invite.Revoked,
 		Permanent:     invite.Permanent,
 		RequestNeeded: invite.RequestNeeded,
-		Link:          "https://telesrv.net/+" + invite.Hash,
+		Link:          brand.InviteURL(invite.Hash),
 		AdminID:       invite.AdminUserID,
 		Date:          invite.Date,
 	}
@@ -396,15 +400,16 @@ func channelInviteHashFromLink(link string) (string, error) {
 		return "", err
 	}
 	link = strings.TrimSpace(link)
-	link = strings.TrimPrefix(link, "tg://join?invite=")
 	if strings.Contains(link, "://") {
-		if idx := strings.LastIndex(link, "/+"); idx >= 0 {
-			link = link[idx+2:]
-		} else if idx := strings.LastIndex(link, "/joinchat/"); idx >= 0 {
-			link = link[idx+10:]
-		} else if idx := strings.LastIndex(link, "/"); idx >= 0 {
-			link = link[idx+1:]
+		u, err := url.Parse(link)
+		if err != nil || !brand.KnownPublicHost(u.Hostname()) {
+			return "", tgerr400("INVITE_HASH_INVALID")
 		}
+		path := strings.TrimSpace(u.EscapedPath())
+		if !strings.HasPrefix(path, "/+") {
+			return "", tgerr400("INVITE_HASH_INVALID")
+		}
+		link = strings.TrimPrefix(path, "/+")
 	}
 	link = strings.TrimPrefix(link, "+")
 	link = strings.TrimSpace(link)

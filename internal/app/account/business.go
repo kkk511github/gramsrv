@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"telesrv/internal/brand"
 	"telesrv/internal/domain"
 )
 
@@ -502,5 +503,5 @@ func randomBusinessChatLinkSlug() (string, error) {
 }
 
 func businessChatLinkURL(slug string) string {
-	return "https://telesrv.net/m/" + slug
+	return brand.BusinessChatURL(slug)
 }

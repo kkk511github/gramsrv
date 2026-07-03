@@ -7,6 +7,7 @@ import (
 
 	"github.com/gotd/td/tg"
 
+	"telesrv/internal/brand"
 	"telesrv/internal/domain"
 )
 
@@ -458,7 +459,7 @@ func (r *Router) connectedBusinessBotPeerSettings(ctx context.Context, ownerUser
 		settings.BusinessBotManageURL = connectedBusinessBotManageURL(botUser)
 	}
 	if settings.BusinessBotManageURL == "" {
-		settings.BusinessBotManageURL = "telesrv://business-bot"
+		settings.BusinessBotManageURL = brand.PublicURL("business-bot")
 	}
 	return settings, nil
 }
@@ -481,7 +482,7 @@ func connectedBusinessBotManageURL(bot domain.User) string {
 	if bot.Username == "" {
 		return ""
 	}
-	return "https://telesrv.net/" + bot.Username
+	return brand.UserURL(bot.Username)
 }
 
 func (r *Router) recordConnectedBusinessPeerSettings(ctx context.Context, userID int64, peer domain.Peer, settings domain.PeerSettings) error {

@@ -75,7 +75,7 @@ func augmentAutoEntities(message string, entities []tg.MessageEntityClass) []tg.
 	}
 
 	// URL 跨度始终计算并加入排除区(occupied),使 @mention/#hashtag 等不会落进 URL 路径内部
-	// (如 https://t.me/@scam 的 @scam,既不符官方语义也是钓鱼风险);但仅在客户端未带任何
+	// (如 https://safelink.chat/@scam 的 @scam,既不符官方语义也是钓鱼风险);但仅在客户端未带任何
 	// url/textUrl 实体时才作为实体下发,沿用 all-or-nothing(DrKLO 一带即全带;TDesktop 不带、依赖服务端)。
 	for _, u := range detectURLEntities(message) {
 		ln := u.GetLength()

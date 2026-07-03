@@ -129,7 +129,7 @@ func TestConferenceCreateLinkAndGetBySlug(t *testing.T) {
 	}
 	update := findUpdate[*tg.UpdateGroupCall](t, res)
 	call, ok := update.Call.(*tg.GroupCall)
-	if !ok || !call.Conference || call.InviteLink == "" || !strings.Contains(call.InviteLink, "slug=") || !strings.HasPrefix(call.InviteLink, "https://telesrv.net/call/") {
+	if !ok || !call.Conference || call.InviteLink == "" || !strings.Contains(call.InviteLink, "slug=") || !strings.HasPrefix(call.InviteLink, "https://safelink.chat/call/") {
 		t.Fatalf("created call = %#v", update.Call)
 	}
 	slug := conferenceSlugFromLink(t, call.InviteLink)
@@ -197,22 +197,22 @@ func TestConferenceExportGroupCallInviteReturnsPathSlug(t *testing.T) {
 	}
 }
 
-func TestConferenceLinksNormalizeLegacyTMeLink(t *testing.T) {
-	const slug = "legacy_slug-1"
-	legacy := domain.GroupCall{
+func TestConferenceLinksNormalizeStoredLink(t *testing.T) {
+	const slug = "stored_slug-1"
+	callDomain := domain.GroupCall{
 		ID:         1,
 		AccessHash: 2,
 		Kind:       domain.GroupCallKindConference,
 		State:      domain.GroupCallStateActive,
 		Version:    1,
 		InviteSlug: slug,
-		InviteLink: "https://t.me/call?slug=" + slug,
+		InviteLink: "https://safelink.chat/call?slug=" + slug,
 	}
-	want := "https://telesrv.net/call/" + slug + "?slug=" + slug
-	if got := conferenceExportInviteLink(legacy); got != want {
+	want := "https://safelink.chat/call/" + slug + "?slug=" + slug
+	if got := conferenceExportInviteLink(callDomain); got != want {
 		t.Fatalf("export link = %q, want %q", got, want)
 	}
-	call := tgGroupCall(legacy, 0, false).(*tg.GroupCall)
+	call := tgGroupCall(callDomain, 0, false).(*tg.GroupCall)
 	if call.InviteLink != want {
 		t.Fatalf("tg group call invite link = %q, want %q", call.InviteLink, want)
 	}

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"telesrv/internal/brand"
 	"telesrv/internal/domain"
 )
 
@@ -42,7 +43,7 @@ func (r *Router) resolveAIComposeStyleWebPage(ctx context.Context, rawURL string
 		Hash:               aiComposeToneWebPageHash(tone),
 		Date:               int(now.Unix()),
 		Type:               aiComposeToneWebPageType,
-		SiteName:           "Telegram",
+		SiteName:           brand.DefaultAppName,
 		Title:              tone.Title,
 		Description:        tone.Prompt,
 		ComposeToneEmojiID: tone.EmojiID,
@@ -97,12 +98,7 @@ func parseAIComposeStyleLink(raw string) (aiComposeStyleLink, bool) {
 }
 
 func aiComposeStyleHostAllowed(host string) bool {
-	switch host {
-	case "t.me", "telegram.me", "telesrv.net", "localhost", "127.0.0.1":
-		return true
-	default:
-		return false
-	}
+	return brand.KnownPublicHost(host)
 }
 
 func aiComposeToneWebPageHash(tone domain.AIComposeTone) int {

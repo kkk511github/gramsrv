@@ -7,6 +7,7 @@ import (
 	"github.com/gotd/td/tg"
 	"go.uber.org/zap"
 
+	"telesrv/internal/brand"
 	"telesrv/internal/domain"
 	"telesrv/internal/sfu"
 )
@@ -93,7 +94,7 @@ func (r *Router) onPhoneExportGroupCallInvite(ctx context.Context, req *tg.Phone
 	if scope.channel.Username == "" {
 		return nil, publicChannelMissingErr()
 	}
-	return &tg.PhoneExportedGroupCallInvite{Link: "https://telesrv.net/" + scope.channel.Username}, nil
+	return &tg.PhoneExportedGroupCallInvite{Link: brand.UserURL(scope.channel.Username)}, nil
 }
 
 func conferenceExportInviteLink(call domain.GroupCall) string {
@@ -107,7 +108,7 @@ func conferenceCanonicalInviteLink(slug string) string {
 	if slug == "" {
 		return ""
 	}
-	return "https://telesrv.net/call/" + slug + "?slug=" + slug
+	return brand.GroupCallInviteURL(slug)
 }
 
 func (r *Router) onPhoneInviteConferenceCallParticipant(ctx context.Context, req *tg.PhoneInviteConferenceCallParticipantRequest) (tg.UpdatesClass, error) {

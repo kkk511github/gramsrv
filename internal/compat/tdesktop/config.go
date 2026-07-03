@@ -4,6 +4,8 @@ import (
 	"time"
 
 	"github.com/gotd/td/tg"
+
+	"telesrv/internal/brand"
 )
 
 // BuildConfig 构造 help.getConfig 返回的 tg.Config，含自建 DC 的 DCOptions。
@@ -49,7 +51,7 @@ func BuildConfig(dc int, ip string, port int, now time.Time) *tg.Config {
 		CallRingTimeoutMs:    90000,
 		CallConnectTimeoutMs: 30000,
 		CallPacketTimeoutMs:  10000,
-		MeURLPrefix:          "https://telesrv.net/",
+		MeURLPrefix:          brand.PublicURLPrefix(),
 		CaptionLengthMax:     1024,
 		MessageLengthMax:     4096,
 		WebfileDCID:          dc,

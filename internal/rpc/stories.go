@@ -12,6 +12,7 @@ import (
 
 	"github.com/gotd/td/tg"
 
+	"telesrv/internal/brand"
 	"telesrv/internal/compat/tdesktop"
 	"telesrv/internal/domain"
 )
@@ -2986,7 +2987,7 @@ func uniqueStoryIDs(ids []int) []int {
 }
 
 func storyExportLink(peer domain.Peer, storyID int) string {
-	return fmt.Sprintf("https://telesrv.local/story/%s/%d/%d", peer.Type, peer.ID, storyID)
+	return brand.StoryURL(string(peer.Type), peer.ID, storyID)
 }
 
 func (r *Router) recordStoryChange(ctx context.Context, userID int64, story domain.Story) error {

@@ -8,16 +8,16 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	"go.uber.org/zap"
 
+	"telesrv/internal/brand"
 	"telesrv/internal/domain"
 )
 
-const defaultPublicBaseURL = "https://telesrv.net"
+const defaultPublicBaseURL = brand.DefaultPublicBaseURL
 
 type Config struct {
 	Addr          string
@@ -121,7 +121,6 @@ func (h *handler) serveSet(w http.ResponseWriter, r *http.Request, pathKind stri
 	if count == 0 {
 		count = len(docs)
 	}
-	app := appURL(canonicalKind, set.ShortName)
 	data := pageData{
 		Title:        fallbackTitle(set),
 		ShortName:    set.ShortName,
@@ -129,10 +128,7 @@ func (h *handler) serveSet(w http.ResponseWriter, r *http.Request, pathKind stri
 		KindLabel:    kindLabel(set),
 		ItemNoun:     itemNoun(set, count),
 		CanonicalURL: h.setURL(canonicalKind, set.ShortName),
-		AppURL:       template.URL(app),
-		LegacyTgURL:  template.URL(legacyTgURL(canonicalKind, set.ShortName)),
 	}
-	data.AppURLJS = template.JS(strconv.Quote(app))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=60")
 	if err := landingTemplate.Execute(w, data); err != nil {
@@ -214,14 +210,6 @@ func itemNoun(set domain.StickerSet, count int) string {
 	return "stickers"
 }
 
-func appURL(kind, shortName string) string {
-	return "telesrv://" + kind + "?set=" + url.QueryEscape(shortName)
-}
-
-func legacyTgURL(kind, shortName string) string {
-	return "tg://" + kind + "?set=" + url.QueryEscape(shortName)
-}
-
 type pageData struct {
 	Title        string
 	ShortName    string
@@ -229,9 +217,6 @@ type pageData struct {
 	KindLabel    string
 	ItemNoun     string
 	CanonicalURL string
-	AppURL       template.URL
-	LegacyTgURL  template.URL
-	AppURLJS     template.JS
 }
 
 var landingTemplate = template.Must(template.New("landing").Parse(`<!doctype html>
@@ -239,7 +224,7 @@ var landingTemplate = template.Must(template.New("landing").Parse(`<!doctype htm
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{.Title}} - telesrv</title>
+  <title>{{.Title}} - SafeLink</title>
   <link rel="canonical" href="{{.CanonicalURL}}">
   <meta property="og:title" content="{{.Title}}">
   <meta property="og:description" content="{{.Count}} {{.ItemNoun}} in this {{.KindLabel}}.">
@@ -268,16 +253,10 @@ var landingTemplate = template.Must(template.New("landing").Parse(`<!doctype htm
     <p class="meta">{{.KindLabel}}</p>
     <h1>{{.Title}}</h1>
     <p class="meta">@{{.ShortName}} · {{.Count}} {{.ItemNoun}}</p>
-    <p><a class="button" href="{{.AppURL}}">Open in telesrv</a></p>
+    <p><a class="button" href="{{.CanonicalURL}}">Open in SafeLink</a></p>
     <p>This page opens the app so you can preview and install the set. Files are still fetched by the app through MTProto.</p>
-    <p class="meta">Old test clients only: <a class="raw" href="{{.LegacyTgURL}}">open with tg://</a></p>
     <p class="meta"><a class="raw" href="{{.CanonicalURL}}">{{.CanonicalURL}}</a></p>
   </main>
-  <script>
-    window.setTimeout(function () {
-      window.location.href = {{.AppURLJS}};
-    }, 250);
-  </script>
 </body>
 </html>
 `))

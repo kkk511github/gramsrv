@@ -199,7 +199,7 @@ func TestAugmentAutoEntitiesMention(t *testing.T) {
 	t.Run("no-mention-inside-raw-url-with-client-url-entity", func(t *testing.T) {
 		// 防回归:客户端带了某个 textUrl 实体（hasClientURL=true）但未包裹另一条裸 URL；
 		// 裸 URL 路径里的 @scam / #frag 不得被误标成 mention/hashtag（钓鱼风险）。
-		msg := "Docs see https://t.me/@scam and #promo"
+		msg := "Docs see https://safelink.chat/@scam and #promo"
 		ents := []tg.MessageEntityClass{&tg.MessageEntityTextURL{Offset: 0, Length: 4, URL: "https://x"}}
 		got := augmentAutoEntities(msg, ents)
 		for _, e := range got {
