@@ -1,4 +1,4 @@
-// Command telesrv 是基于 gotd/td 的 Telegram-like server（第一兼容目标：Telegram Desktop）。
+// Command slerv 是基于 gotd/td 的 SafeLink-compatible server（第一兼容目标：Telegram Desktop）。
 package main
 
 import (
@@ -73,7 +73,7 @@ func main() {
 	defer func() { _ = logger.Sync() }()
 
 	if err := run(logger); err != nil {
-		logger.Error("telesrv 退出", zap.Error(err))
+		logger.Error("slerv 退出", zap.Error(err))
 		_ = logger.Sync() // os.Exit 跳过 defer；缓冲写需显式 flush 错误日志
 		os.Exit(1)
 	}
@@ -244,7 +244,7 @@ func run(logger *zap.Logger) error {
 	}
 
 	// tg.Layer 来自 gotd/td v0.158.0（Layer 227），与目标 TDesktop 基线对齐。
-	logger.Info("telesrv 启动",
+	logger.Info("slerv 启动",
 		zap.String("listen", cfg.ListenAddr),
 		zap.Int("dc", cfg.DC),
 		zap.String("advertise", net.JoinHostPort(cfg.AdvertiseIP, portStr)),
@@ -261,7 +261,7 @@ func run(logger *zap.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// pprof 调试端点：telesrv 是宿主进程（不在 docker 内，docker stats 看不到它），CPU/内存/
+	// pprof 调试端点：slerv 是宿主进程（不在 docker 内，docker stats 看不到它），CPU/内存/
 	// goroutine/锁竞争的定位全靠此端点。早于重负载初始化启动，连 seed/预热阶段也可剖析。
 	startDebugServer(ctx, cfg.DebugAddr, logger)
 
@@ -684,6 +684,7 @@ func run(logger *zap.Logger) error {
 	if _, err := stickerlinks.Start(ctx, stickerlinks.Config{
 		Addr:          cfg.StickerWebAddr,
 		PublicBaseURL: cfg.StickerWebPublicURL,
+		AppScheme:     cfg.StickerWebAppScheme,
 	}, filesService, logger.Named("stickerlinks")); err != nil {
 		return fmt.Errorf("start sticker links: %w", err)
 	}
@@ -700,7 +701,7 @@ func run(logger *zap.Logger) error {
 		WebSocket:               cfg.WebSocketEnable,
 		WebSocketAllowedOrigins: cfg.WebSocketAllowedOrigins,
 	})
-	logger.Info("telesrv 服务就绪",
+	logger.Info("slerv 服务就绪",
 		zap.String("listen", cfg.ListenAddr),
 		zap.String("advertise", net.JoinHostPort(cfg.AdvertiseIP, portStr)),
 		zap.Int("pid", os.Getpid()),

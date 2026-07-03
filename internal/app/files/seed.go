@@ -157,7 +157,7 @@ func (s *Service) seedReactions(ctx context.Context, root string, stats *SeedSta
 			if d == nil || d.ID == 0 {
 				return nil
 			}
-			doc, err := s.importDocument(ctx, *d, reactionsDir, index, stats)
+			doc, err := s.importDocument(ctx, *d, reactionsDir, index, true, stats)
 			if err != nil {
 				return err
 			}
@@ -320,12 +320,14 @@ func (s *Service) importStickerSetDir(ctx context.Context, setDir, systemKey str
 		return err
 	}
 
+	kind := stickerSetKind(sj, systemKey)
+	preserveTextColor := seedPreserveCustomEmojiTextColor(kind)
 	docIDs := make([]int64, 0, len(info.Result.Documents))
 	docs := make([]domain.Document, 0, len(info.Result.Documents))
 	docIDBySource := make(map[int64]int64, len(info.Result.Documents))
 	for _, dj := range info.Result.Documents {
 		sourceID := dj.ID
-		doc, err := s.importDocument(ctx, dj, stickersDir, index, stats)
+		doc, err := s.importDocument(ctx, dj, stickersDir, index, preserveTextColor, stats)
 		if err != nil {
 			return err
 		}
@@ -336,7 +338,6 @@ func (s *Service) importStickerSetDir(ctx context.Context, setDir, systemKey str
 		}
 	}
 
-	kind := stickerSetKind(sj, systemKey)
 	set := domain.StickerSet{
 		ID:              sj.ID,
 		AccessHash:      sj.AccessHash,
@@ -373,7 +374,7 @@ func (s *Service) importStickerSetDir(ctx context.Context, setDir, systemKey str
 
 // ---- 单个 document 导入 ----
 
-func (s *Service) importDocument(ctx context.Context, dj seedDocumentJSON, binDir string, index seedDirIndex, stats *SeedStats) (domain.Document, error) {
+func (s *Service) importDocument(ctx context.Context, dj seedDocumentJSON, binDir string, index seedDirIndex, preserveCustomEmojiTextColor bool, stats *SeedStats) (domain.Document, error) {
 	if dj.ID == 0 {
 		return domain.Document{}, nil
 	}
@@ -387,7 +388,7 @@ func (s *Service) importDocument(ctx context.Context, dj seedDocumentJSON, binDi
 		MimeType:      dj.MimeType,
 		Size:          dj.Size,
 		DCID:          s.dc,
-		Attributes:    seedDocumentAttributes(dj.Attributes),
+		Attributes:    seedDocumentAttributes(dj.Attributes, preserveCustomEmojiTextColor),
 	}
 
 	// 主体 blob：doc:<server-owned-id>
@@ -612,9 +613,13 @@ func seedStickerSetInstalled(kind domain.StickerSetKind) bool {
 	return false
 }
 
+func seedPreserveCustomEmojiTextColor(kind domain.StickerSetKind) bool {
+	return kind == domain.StickerSetKindSystem
+}
+
 // ---- JSON → domain 转换 ----
 
-func seedDocumentAttributes(attrs []seedAttrJSON) []domain.DocumentAttribute {
+func seedDocumentAttributes(attrs []seedAttrJSON, preserveCustomEmojiTextColor bool) []domain.DocumentAttribute {
 	out := make([]domain.DocumentAttribute, 0, len(attrs))
 	for _, a := range attrs {
 		switch a.Type {
@@ -630,7 +635,12 @@ func seedDocumentAttributes(attrs []seedAttrJSON) []domain.DocumentAttribute {
 			}
 			out = append(out, attr)
 		case "DocumentAttributeCustomEmoji":
-			attr := domain.DocumentAttribute{Kind: domain.DocAttrCustomEmoji, Alt: a.Alt, Free: a.Free, TextColor: a.TextColor}
+			attr := domain.DocumentAttribute{
+				Kind:      domain.DocAttrCustomEmoji,
+				Alt:       a.Alt,
+				Free:      a.Free,
+				TextColor: a.TextColor && preserveCustomEmojiTextColor,
+			}
 			if a.Stickerset != nil {
 				attr.StickerSetID = a.Stickerset.ID
 				attr.StickerSetAccessHash = a.Stickerset.AccessHash

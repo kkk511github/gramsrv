@@ -1,0 +1,1 @@
+-- Data-only cache invalidation for seed emoji metadata. Intentionally no-op.

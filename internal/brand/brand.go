@@ -8,6 +8,7 @@ import (
 
 const (
 	DefaultAppName       = "SafeLink"
+	DefaultAppScheme     = "safelink"
 	DefaultPublicHost    = "safelink.chat"
 	DefaultPublicBaseURL = "https://" + DefaultPublicHost
 )

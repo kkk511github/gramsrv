@@ -211,6 +211,30 @@ func TestLoadEnvironmentOverridesConfigFile(t *testing.T) {
 	}
 }
 
+func TestLoadReadsSlervEnvAlias(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "slerv.env")
+	writeConfigFile(t, path, `
+SLERV_MAPBOX_TOKEN=file-token
+SLERV_STICKER_WEB_ADDR=127.0.0.1:2401
+SLERV_STICKER_WEB_APP_SCHEME=tg
+`)
+	t.Setenv("SLERV_CONFIG", path)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.MapboxToken != "file-token" {
+		t.Fatalf("MapboxToken = %q, want file-token", cfg.MapboxToken)
+	}
+	if cfg.StickerWebAddr != "127.0.0.1:2401" {
+		t.Fatalf("StickerWebAddr = %q, want 127.0.0.1:2401", cfg.StickerWebAddr)
+	}
+	if cfg.StickerWebAppScheme != "tg" {
+		t.Fatalf("StickerWebAppScheme = %q, want tg", cfg.StickerWebAppScheme)
+	}
+}
+
 func TestLoadExplicitMissingConfigFileErrors(t *testing.T) {
 	t.Setenv("TELESRV_CONFIG", filepath.Join(t.TempDir(), "missing.env"))
 

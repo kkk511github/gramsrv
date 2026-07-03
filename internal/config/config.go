@@ -1,4 +1,4 @@
-// Package config 负责 telesrv 运行配置的加载与校验。
+// Package config 负责 slerv 运行配置的加载与校验。
 package config
 
 import (
@@ -14,7 +14,7 @@ import (
 
 const defaultConfigFile = ".env"
 
-// Config 是 telesrv 的运行配置。
+// Config 是 slerv 的运行配置。
 type Config struct {
 	// ListenAddr 是 MTProto TCP 监听地址。
 	// 需与 TDesktop patch 指向的自建 DC 地址/端口一致（记录于 docs/tdesktop-patch-notes.md）。
@@ -31,7 +31,7 @@ type Config struct {
 	DC int
 
 	// DebugAddr 是 net/http/pprof 调试端点监听地址（CPU/heap/goroutine/mutex/block 剖析）。
-	// telesrv 是宿主进程、不在 docker 内，docker stats 看不到它，性能定位主要靠此端点。
+	// slerv 是宿主进程、不在 docker 内，docker stats 看不到它，性能定位主要靠此端点。
 	// 默认仅绑 127.0.0.1，避免 profile 数据对外暴露；置空关闭。生产需远程抓取时走 SSH 隧道，
 	// 不要改成 0.0.0.0。
 	DebugAddr string
@@ -42,11 +42,13 @@ type Config struct {
 	AdminAPIAddr string
 	// AdminAPIToken 是 Admin API bearer token；开启 AdminAPIAddr 时必须显式配置。
 	AdminAPIToken string
-	// StickerWebAddr 是公开 sticker/custom emoji deep link 落地页监听地址；为空关闭。
-	// 生产应只监听 loopback，并由 nginx 将 /addstickers/ 与 /addemoji/ 反代到该地址。
+	// StickerWebAddr 是公开链接落地页监听地址；为空关闭。
+	// 生产应只监听 loopback，并由 nginx 将 safelink.chat 的网页请求反代到该地址。
 	StickerWebAddr string
 	// StickerWebPublicURL 是生成 canonical SafeLink 链接的公开根 URL。
 	StickerWebPublicURL string
+	// StickerWebAppScheme 是网页 Open 按钮调起客户端时使用的已注册 URL scheme。
+	StickerWebAppScheme string
 	// Admin UI 独立进程配置项保留在统一配置中，cmd/telesrv-admin 也按同名 env 读取。
 	AdminUIAddr     string
 	AdminUIPassword string
@@ -291,6 +293,7 @@ func Load() (Config, error) {
 		AdminAPIToken:       envOr("TELESRV_ADMIN_API_TOKEN", ""),
 		StickerWebAddr:      envOr("TELESRV_STICKER_WEB_ADDR", ""),
 		StickerWebPublicURL: envOr("TELESRV_STICKER_WEB_PUBLIC_URL", brand.DefaultPublicBaseURL),
+		StickerWebAppScheme: envOr("TELESRV_STICKER_WEB_APP_SCHEME", brand.DefaultAppScheme),
 		AdminUIAddr:         envOr("TELESRV_ADMIN_UI_ADDR", "127.0.0.1:2400"),
 		AdminUIPassword:     envOr("TELESRV_ADMIN_UI_PASSWORD", ""),
 		AdminUIToken:        envOr("TELESRV_ADMIN_UI_TOKEN", ""),
@@ -460,7 +463,10 @@ func defaultAIProviderAPIKey(env envSource, name string) string {
 type envSource map[string]string
 
 func loadConfigEnv() (envSource, error) {
-	path, explicit := os.LookupEnv("TELESRV_CONFIG")
+	path, explicit := os.LookupEnv("SLERV_CONFIG")
+	if !explicit {
+		path, explicit = os.LookupEnv("TELESRV_CONFIG")
+	}
 	if !explicit {
 		path = defaultConfigFile
 	}
@@ -499,8 +505,8 @@ func readEnvFile(path string) (envSource, error) {
 			return nil, fmt.Errorf("line %d: expected KEY=VALUE", lineNo)
 		}
 		key = strings.TrimSpace(key)
-		if !strings.HasPrefix(key, "TELESRV_") || !validEnvKey(key) {
-			return nil, fmt.Errorf("line %d: unsupported key %q; use TELESRV_* keys", lineNo, key)
+		if !validSlervEnvKey(key) {
+			return nil, fmt.Errorf("line %d: unsupported key %q; use SLERV_* keys", lineNo, key)
 		}
 		value = strings.TrimSpace(value)
 		if unquoted, ok := unquoteEnvValue(value); ok {
@@ -561,6 +567,14 @@ func (e envSource) envBoolOr(key string, def bool) bool {
 }
 
 func (e envSource) envOr(key, def string) string {
+	if alias := slervEnvAlias(key); alias != "" {
+		if v := os.Getenv(alias); v != "" {
+			return v
+		}
+		if v := e[alias]; v != "" {
+			return v
+		}
+	}
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
@@ -568,6 +582,17 @@ func (e envSource) envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+func validSlervEnvKey(key string) bool {
+	return validEnvKey(key) && (strings.HasPrefix(key, "SLERV_") || strings.HasPrefix(key, "TELESRV_"))
+}
+
+func slervEnvAlias(key string) string {
+	if strings.HasPrefix(key, "TELESRV_") {
+		return "SLERV_" + strings.TrimPrefix(key, "TELESRV_")
+	}
+	return ""
 }
 
 func (e envSource) envListOr(key string, def []string) []string {

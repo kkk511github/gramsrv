@@ -1,0 +1,2 @@
+-- Data-only compatibility repair. Intentionally left irreversible: restoring
+-- text_color would reintroduce theme-tinted seed emoji on clients.

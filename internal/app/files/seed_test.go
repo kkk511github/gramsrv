@@ -494,6 +494,62 @@ func TestSeedCustomEmojiTGSWithoutThumbGetsSyntheticPreview(t *testing.T) {
 	}
 }
 
+func TestSeedOrdinaryEmojiSetStripsTextColor(t *testing.T) {
+	ctx := context.Background()
+	seedDir := t.TempDir()
+	const sourceID int64 = 5456171597792557143
+	writeStatusPackWithoutThumbSeed(t, seedDir, sourceID, 31)
+
+	media := newFakeMediaStore()
+	blobs, err := NewLocalFS(t.TempDir())
+	if err != nil {
+		t.Fatalf("local fs: %v", err)
+	}
+	svc := NewService(media, blobs, 2)
+	if _, err := svc.SeedMedia(ctx, seedDir, 0); err != nil {
+		t.Fatalf("seed media: %v", err)
+	}
+	doc, ok, err := media.GetDocument(ctx, seedDocumentStorageID(sourceID))
+	if err != nil || !ok {
+		t.Fatalf("seeded document ok=%v err=%v", ok, err)
+	}
+	attr, ok := customEmojiAttribute(doc.Attributes)
+	if !ok {
+		t.Fatalf("document attributes = %+v, want custom emoji", doc.Attributes)
+	}
+	if attr.TextColor {
+		t.Fatalf("ordinary emoji seed kept text_color=true: %+v", attr)
+	}
+}
+
+func TestSeedSystemEmojiSetPreservesTextColor(t *testing.T) {
+	ctx := context.Background()
+	seedDir := t.TempDir()
+	const sourceID int64 = 6000000000000000001
+	writeSystemStatusPackWithoutThumbSeed(t, seedDir, sourceID, 37)
+
+	media := newFakeMediaStore()
+	blobs, err := NewLocalFS(t.TempDir())
+	if err != nil {
+		t.Fatalf("local fs: %v", err)
+	}
+	svc := NewService(media, blobs, 2)
+	if _, err := svc.SeedMedia(ctx, seedDir, 0); err != nil {
+		t.Fatalf("seed media: %v", err)
+	}
+	doc, ok, err := media.GetDocument(ctx, seedDocumentStorageID(sourceID))
+	if err != nil || !ok {
+		t.Fatalf("seeded document ok=%v err=%v", ok, err)
+	}
+	attr, ok := customEmojiAttribute(doc.Attributes)
+	if !ok {
+		t.Fatalf("document attributes = %+v, want custom emoji", doc.Attributes)
+	}
+	if !attr.TextColor {
+		t.Fatalf("system emoji seed lost text_color=true: %+v", attr)
+	}
+}
+
 func TestSeedMediaRepairsCustomEmojiTGSWithoutThumb(t *testing.T) {
 	ctx := context.Background()
 	seedDir := t.TempDir()
@@ -701,6 +757,17 @@ func TestSeedMediaFromRealExport(t *testing.T) {
 func writeStatusPackWithoutThumbSeed(t *testing.T, seedDir string, sourceID int64, setHash int) {
 	t.Helper()
 	setDir := filepath.Join(seedDir, "telegram_emoji_export", "StatusPack_773947703670341676")
+	writeStatusPackWithoutThumbSeedInDir(t, setDir, sourceID, setHash)
+}
+
+func writeSystemStatusPackWithoutThumbSeed(t *testing.T, seedDir string, sourceID int64, setHash int) {
+	t.Helper()
+	setDir := filepath.Join(seedDir, "telegram_default_stickers_export", "DefaultSet_EmojiDefaultStatuses")
+	writeStatusPackWithoutThumbSeedInDir(t, setDir, sourceID, setHash)
+}
+
+func writeStatusPackWithoutThumbSeedInDir(t *testing.T, setDir string, sourceID int64, setHash int) {
+	t.Helper()
 	stickersDir := filepath.Join(setDir, "stickers")
 	if err := os.MkdirAll(stickersDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -712,6 +779,15 @@ func writeStatusPackWithoutThumbSeed(t *testing.T, seedDir string, sourceID int6
 	if err := os.WriteFile(filepath.Join(stickersDir, fmt.Sprintf("status_%d.tgs", sourceID)), []byte("tgs!"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func customEmojiAttribute(attrs []domain.DocumentAttribute) (domain.DocumentAttribute, bool) {
+	for _, attr := range attrs {
+		if attr.Kind == domain.DocAttrCustomEmoji {
+			return attr, true
+		}
+	}
+	return domain.DocumentAttribute{}, false
 }
 
 func writeEffectsSeed(t *testing.T, seedDir string, sourceID int64) {

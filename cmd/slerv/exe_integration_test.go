@@ -29,9 +29,12 @@ import (
 )
 
 func TestExecutablePrivateMessageRoundTrip(t *testing.T) {
-	exe := os.Getenv("TELESRV_TEST_EXE")
+	exe := os.Getenv("SLERV_TEST_EXE")
 	if exe == "" {
-		t.Skip("set TELESRV_TEST_EXE to run executable-level MTProto roundtrip")
+		exe = os.Getenv("TELESRV_TEST_EXE")
+	}
+	if exe == "" {
+		t.Skip("set SLERV_TEST_EXE to run executable-level MTProto roundtrip")
 	}
 	repoRoot := filepath.Clean(filepath.Join("..", ".."))
 	if !filepath.IsAbs(exe) {
@@ -58,8 +61,8 @@ func TestExecutablePrivateMessageRoundTrip(t *testing.T) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	cmd.Env = append(os.Environ(),
-		"TELESRV_LISTEN="+addr,
-		"TELESRV_ADVERTISE_IP=127.0.0.1",
+		"SLERV_LISTEN=" + addr,
+		"SLERV_ADVERTISE_IP=127.0.0.1",
 	)
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start executable: %v", err)
