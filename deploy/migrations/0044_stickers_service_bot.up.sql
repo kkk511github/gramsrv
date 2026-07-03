@@ -7,7 +7,7 @@ INSERT INTO public.users (
     profile_color_background_emoji_id
 ) VALUES (
     1063110917, 5213187021149032991, '', 'Stickers', '', 'Stickers', '',
-    now(), now(), true, false, 'Create custom sticker and emoji packs for telesrv.',
+    now(), now(), true, false, 'Create custom sticker and emoji packs for SafeLink.',
     0, 0, true, 2, NULL, 0, 0, false, 0, 0, false, 0, 0
 )
 ON CONFLICT (id) DO UPDATE SET
@@ -29,7 +29,7 @@ INSERT INTO public.bots (
     menu_button_type, menu_button_text, menu_button_url, bot_inline_geo
 ) VALUES (
     1063110917, 1063110917, '',
-    'Create custom sticker and emoji packs for telesrv.',
+    'Create custom sticker and emoji packs for SafeLink.',
     '[
         {"command": "start", "description": "start the sticker pack assistant"},
         {"command": "help", "description": "show help"},

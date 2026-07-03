@@ -41,7 +41,7 @@ var specialSeedDirs = map[string]string{
 
 func main() {
 	source := flag.String("source", "", "sticker catalog repository checkout")
-	dest := flag.String("dest", "data/sticker-seed", "telesrv sticker seed destination")
+	dest := flag.String("dest", "data/sticker-seed", "SafeLink sticker seed destination")
 	clean := flag.Bool("clean", true, "remove managed seed subdirectories before deploying")
 	flag.Parse()
 	if *source == "" && flag.NArg() > 0 {

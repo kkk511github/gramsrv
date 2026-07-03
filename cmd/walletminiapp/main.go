@@ -267,7 +267,7 @@ func (s *appServer) handlePaymentIntent(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method is not allowed")
 		return
 	}
-	writeError(w, http.StatusNotImplemented, "PAYMENTS_BLOCKED", "durable invoice/payment state is not implemented in telesrv yet")
+	writeError(w, http.StatusNotImplemented, "PAYMENTS_BLOCKED", "durable invoice/payment state is not implemented in SafeLink yet")
 }
 
 func (s *appServer) publicResultURL() string {
@@ -560,7 +560,7 @@ func walletInlineResult(id, title, message, link string) map[string]any {
 		"type":        "article",
 		"id":          id,
 		"title":       title,
-		"description": "Telesrv wallet demo receipt",
+		"description": "SafeLink wallet demo receipt",
 		"input_message_content": map[string]any{
 			"message_text":             message,
 			"disable_web_page_preview": true,
@@ -639,7 +639,7 @@ const walletHTML = `<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Telesrv Wallet</title>
+  <title>SafeLink Wallet</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
@@ -774,7 +774,7 @@ const walletHTML = `<!doctype html>
 <main>
   <header>
     <div>
-      <h1>Telesrv Wallet</h1>
+      <h1>SafeLink Wallet</h1>
       <div class="user" id="userLine">Loading session...</div>
     </div>
     <div class="pill" id="sessionPill">Mini App</div>

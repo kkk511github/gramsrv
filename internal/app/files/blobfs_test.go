@@ -16,7 +16,7 @@ func TestLocalFSPutGetRoundTrip(t *testing.T) {
 		t.Fatalf("new local fs: %v", err)
 	}
 	ctx := context.Background()
-	data := []byte("hello telesrv media blob 你好")
+	data := []byte("hello SafeLink media blob 你好")
 
 	key, err := fs.Put(ctx, data)
 	if err != nil {

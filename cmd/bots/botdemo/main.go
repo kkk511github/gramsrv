@@ -112,7 +112,7 @@ type config struct {
 }
 
 func main() {
-	addr := flag.String("addr", "127.0.0.1:2398", "telesrv MTProto 地址")
+	addr := flag.String("addr", "127.0.0.1:2398", "SafeLink MTProto 地址")
 	dcID := flag.Int("dc", 2, "DC id")
 	token := flag.String("token", os.Getenv("TELESRV_BOT_TOKEN"), "bot token <bot_id>:<secret>（默认取 env TELESRV_BOT_TOKEN）")
 	rsaPath := flag.String("rsa", "data/server_rsa.pem", "server RSA 公钥路径")
@@ -120,15 +120,15 @@ func main() {
 	apiHash := flag.String("api-hash", "hash", "api_hash")
 
 	chatID := flag.Int64("chat", 0, "目标超级群 channel id（非 0 即发到群）")
-	chatHash := flag.Int64("chat-hash", 0, "目标群 access_hash（telesrv 下可留 0）")
+	chatHash := flag.Int64("chat-hash", 0, "目标群 access_hash（SafeLink 下可留 0）")
 	toID := flag.Int64("to", 0, "目标用户 id（-chat 为 0 时改为私聊该用户）")
-	toHash := flag.Int64("to-hash", 0, "目标用户 access_hash（telesrv 下可留 0）")
+	toHash := flag.Int64("to-hash", 0, "目标用户 access_hash（SafeLink 下可留 0）")
 
 	interval := flag.Duration("interval", 15*time.Second, "定时发送间隔")
 	count := flag.Int("count", 0, "发送条数上限（0 = 一直发到 Ctrl+C）")
 	mode := flag.String("mode", "rotate", "发送内容：text | photo | caption | rotate")
-	text := flag.String("text", "telesrv bot demo · 定时主动消息", "文本内容（会自动追加 #序号+时间）")
-	caption := flag.String("caption", "telesrv bot demo · 图文消息", "图文说明（会自动追加 #序号+时间）")
+	text := flag.String("text", "SafeLink bot demo · 定时主动消息", "文本内容（会自动追加 #序号+时间）")
+	caption := flag.String("caption", "SafeLink bot demo · 图文消息", "图文说明（会自动追加 #序号+时间）")
 	imagePath := flag.String("image", "", "图片文件路径（留空则程序自动生成一张 PNG）")
 	flag.Parse()
 

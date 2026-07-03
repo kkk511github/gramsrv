@@ -147,7 +147,7 @@ func TestMessageSendBaseline(t *testing.T) {
 	// 随机 RandomID 基址，保证 (sender,random_id) 幂等唯一且跨重跑不撞。
 	randBase := int64(randomUint64(t) & 0x7fff_ffff_ffff)
 	nowUnix := int(time.Now().Unix())
-	body := "telesrv load baseline message body"
+	body := "SafeLink load baseline message body"
 
 	perWorkerLat := make([][]time.Duration, concurrency)
 	var sent, dup, sendErr atomic.Int64

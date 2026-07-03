@@ -222,7 +222,7 @@ func (r *Router) registerAccount(d *tg.ServerDispatcher) {
 
 func (r *Router) onAccountGetPassword(ctx context.Context) (*tg.AccountPassword, error) {
 	if r.deps.Account == nil {
-		return tgPassword(domain.PasswordSettings{SecureRandom: []byte("telesrv-tdesktop-dev-secure-rand")}), nil
+		return tgPassword(domain.PasswordSettings{SecureRandom: []byte("safelink-tdesktop-dev-secure-rand")}), nil
 	}
 	userID, _, _, err := r.currentOrPendingPasswordUserID(ctx)
 	if err != nil {

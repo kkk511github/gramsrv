@@ -84,7 +84,7 @@ func New(cfg Config) (Service, error) {
 		cfg.AdvertiseIP = "127.0.0.1"
 	}
 	if cfg.Realm == "" {
-		cfg.Realm = "telesrv"
+		cfg.Realm = "safelink"
 	}
 	if cfg.SharedSecret == "" {
 		secret, err := randomSecret()

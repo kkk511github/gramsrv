@@ -17,6 +17,7 @@ import (
 	"github.com/gotd/td/bin"
 	mtcrypto "github.com/gotd/td/crypto"
 
+	"telesrv/internal/brand"
 	"telesrv/internal/domain"
 	"telesrv/internal/store"
 )
@@ -616,9 +617,9 @@ func (s *Service) passwordNeeded(ctx context.Context, userID int64) bool {
 	return err == nil && found && settings.HasPassword
 }
 
-const loginMessageTpl = `Login code: %s. Do not give this code to anyone, even if they say they are from Telegram!
+const loginMessageTpl = `Login code: %s. Do not give this code to anyone, even if they say they are from %s!
 
-This code can be used to log in to your Telegram account. We never ask it for anything else.
+This code can be used to log in to your %s account. We never ask it for anything else.
 
 If you didn't request this code by trying to log in on another device, simply ignore this message.`
 
@@ -626,7 +627,7 @@ func (s *Service) recordLoginMessage(ctx context.Context, userID int64, code str
 	if s.messages == nil || s.dialogs == nil {
 		return domain.Message{}, nil
 	}
-	body := fmt.Sprintf(loginMessageTpl, code)
+	body := fmt.Sprintf(loginMessageTpl, code, brand.DefaultAppName, brand.DefaultAppName)
 	codeOffset := len("Login code: ")
 	msg, err := s.messages.Create(ctx, domain.Message{
 		OwnerUserID: userID,

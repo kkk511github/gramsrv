@@ -5883,7 +5883,7 @@ func TestStoriesLongtailCompatHandlers(t *testing.T) {
 		t.Fatalf("export story link: %v", err)
 	}
 	if link.Link != "https://safelink.chat/story/user/9311/1" {
-		t.Fatalf("export story link = %q, want deterministic telesrv link", link.Link)
+		t.Fatalf("export story link = %q, want deterministic SafeLink link", link.Link)
 	}
 	if _, err := r.onStoriesExportStoryLink(reqCtx, &tg.StoriesExportStoryLinkRequest{
 		Peer: &tg.InputPeerSelf{},

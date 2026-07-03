@@ -11,7 +11,7 @@ import (
 	"telesrv/internal/store"
 )
 
-var defaultSecureRandom = []byte("telesrv-tdesktop-dev-secure-rand")
+var defaultSecureRandom = []byte("safelink-tdesktop-dev-secure-rand")
 
 const (
 	passwordResetWait  = 7 * 24 * time.Hour

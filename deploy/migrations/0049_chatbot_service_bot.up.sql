@@ -7,7 +7,7 @@ INSERT INTO public.users (
     profile_color_background_emoji_id
 ) VALUES (
     1250000007, 6332902371644871201, '', 'ChatBot', '', 'ChatBot', '',
-    now(), now(), true, false, 'Chat with the configured telesrv AI provider.',
+    now(), now(), true, false, 'Chat with the configured SafeLink AI provider.',
     0, 0, true, 1, NULL, 0, 0, false, 0, 0, false, 0, 0
 )
 ON CONFLICT (id) DO UPDATE SET
@@ -29,7 +29,7 @@ INSERT INTO public.bots (
     menu_button_type, menu_button_text, menu_button_url, bot_inline_geo
 ) VALUES (
     1250000007, 1250000007, '',
-    'Chat with the configured telesrv AI provider.',
+    'Chat with the configured SafeLink AI provider.',
     '[
         {"command": "start", "description": "start chatting"},
         {"command": "help", "description": "show help"},

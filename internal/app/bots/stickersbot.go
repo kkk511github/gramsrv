@@ -39,11 +39,11 @@ const (
 	stickersBotDraftItems           = "items"
 	stickersBotDraftPendingDocID    = "pending_doc_id"
 	stickersBotDraftPendingDocHash  = "pending_doc_access_hash"
-	stickersBotCreateSoftware       = "telesrv-stickers-bot"
+	stickersBotCreateSoftware       = "safelink-stickers-bot"
 	stickersBotCreatedListPageLimit = 20
 )
 
-const stickersBotHelpText = `I can help you create sticker and custom emoji packs for telesrv.
+const stickersBotHelpText = `I can help you create sticker and custom emoji packs for SafeLink.
 
 Send /newpack to create a sticker pack.
 Send /newemoji to create a custom emoji pack.
@@ -196,9 +196,9 @@ func (s *Service) startStickersEditFlow(ctx context.Context, userID int64, cmd s
 		return internalReply()
 	}
 	if cmd == stickersBotCmdDel {
-		return botReply{Text: "Send the short name or telesrv link of the pack you want to edit. Use /packs to see your packs."}
+		return botReply{Text: "Send the short name or SafeLink link of the pack you want to edit. Use /packs to see your packs."}
 	}
-	return botReply{Text: "Send the short name or telesrv link of the pack you want to add to. Use /packs to see your packs."}
+	return botReply{Text: "Send the short name or SafeLink link of the pack you want to add to. Use /packs to see your packs."}
 }
 
 func (s *Service) startStickersFlow(ctx context.Context, userID int64, cmd string, kind domain.StickerSetKind) botReply {
@@ -227,7 +227,7 @@ func (s *Service) handleStickersSet(ctx context.Context, state domain.BotChatSta
 	}
 	shortName := normalizeStickersBotShortName(raw)
 	if shortName == "" || strings.HasPrefix(shortName, "/") {
-		return botReply{Text: "Send the pack short name or telesrv link. Use /packs to list your packs, or /cancel."}
+		return botReply{Text: "Send the pack short name or SafeLink link. Use /packs to list your packs, or /cancel."}
 	}
 	set, _, found, err := s.stickers.ResolveStickerSet(ctx, domain.StickerSetRef{Kind: domain.StickerSetRefByShortName, ShortName: shortName})
 	if err != nil {
@@ -555,7 +555,7 @@ func (s *Service) listStickersBotPacks(ctx context.Context, userID int64) botRep
 func stickersBotStepPrompt(state domain.BotChatState) botReply {
 	switch state.Step {
 	case stickersBotStepSet:
-		return botReply{Text: "Send the pack short name or telesrv link, or /cancel."}
+		return botReply{Text: "Send the pack short name or SafeLink link, or /cancel."}
 	case stickersBotStepTitle:
 		return botReply{Text: "Send a title for this pack, or /cancel."}
 	case stickersBotStepDocument:

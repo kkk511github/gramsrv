@@ -33,7 +33,7 @@ func tgLangPackStrings(items []domain.LangPackString) []tg.LangPackStringClass {
 
 func tgPassword(settings domain.PasswordSettings) *tg.AccountPassword {
 	if len(settings.SecureRandom) == 0 {
-		settings.SecureRandom = []byte("telesrv-tdesktop-dev-secure-rand")
+		settings.SecureRandom = []byte("safelink-tdesktop-dev-secure-rand")
 	}
 	out := &tg.AccountPassword{
 		HasRecovery:             settings.HasRecovery,

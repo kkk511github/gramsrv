@@ -27,8 +27,8 @@ func OfficialSystemUser() User {
 		ID:         OfficialSystemUserID,
 		AccessHash: 6599886787491911851,
 		Phone:      "42777",
-		FirstName:  "Telegram",
-		Username:   "telegram",
+		FirstName:  "SafeLink",
+		Username:   "safelink",
 		Verified:   true,
 		Support:    true,
 	}

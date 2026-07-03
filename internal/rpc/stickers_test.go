@@ -152,7 +152,7 @@ func TestAccountGetDefaultEmojiStatusesServesSynthesizedSet(t *testing.T) {
 			domain.StickerSetKindSystem: {
 				{
 					ID:          77,
-					ShortName:   "TelesrvDefaultStatuses",
+					ShortName:   "SafeLinkDefaultStatuses",
 					Kind:        domain.StickerSetKindSystem,
 					SystemKey:   domain.StickerSetSystemKeyEmojiDefaultStatuses,
 					Emojis:      true,

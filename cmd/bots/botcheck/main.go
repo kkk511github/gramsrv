@@ -84,7 +84,7 @@ func (r obfuscatedResolver) CDN(ctx context.Context, dc int, _ dcs.List) (transp
 }
 
 func main() {
-	addr := flag.String("addr", "127.0.0.1:2398", "telesrv MTProto 地址")
+	addr := flag.String("addr", "127.0.0.1:2398", "SafeLink MTProto 地址")
 	dcID := flag.Int("dc", 2, "DC id")
 	token := flag.String("token", os.Getenv("TELESRV_BOT_TOKEN"), "bot token <bot_id>:<secret>，默认取 env TELESRV_BOT_TOKEN")
 	rsaPath := flag.String("rsa", "data/server_rsa.pem", "server RSA key 路径（仅读 public key）")
