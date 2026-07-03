@@ -2,6 +2,7 @@ package files
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -550,6 +551,69 @@ func TestSeedSystemEmojiSetPreservesTextColor(t *testing.T) {
 	}
 }
 
+func TestSeedStickerSetOrderManifestControlsSortOrder(t *testing.T) {
+	ctx := context.Background()
+	seedDir := t.TempDir()
+	exportDir := filepath.Join(seedDir, "telegram_stickers_export")
+	writeMinimalStickerSetSeed(t, exportDir, "AlphaPack", 101, 1001, 7)
+	writeMinimalStickerSetSeed(t, exportDir, "BetaPack", 102, 1002, 9)
+	writeOrderManifest(t, exportDir, "BetaPack_102", "AlphaPack_101")
+
+	media := newFakeMediaStore()
+	blobs, err := NewLocalFS(t.TempDir())
+	if err != nil {
+		t.Fatalf("local fs: %v", err)
+	}
+	svc := NewService(media, blobs, 2)
+	if _, err := svc.SeedMedia(ctx, seedDir, 0); err != nil {
+		t.Fatalf("seed media: %v", err)
+	}
+	alpha, ok, err := media.GetStickerSetByShortName(ctx, "AlphaPack")
+	if err != nil || !ok {
+		t.Fatalf("AlphaPack ok=%v err=%v", ok, err)
+	}
+	beta, ok, err := media.GetStickerSetByShortName(ctx, "BetaPack")
+	if err != nil || !ok {
+		t.Fatalf("BetaPack ok=%v err=%v", ok, err)
+	}
+	if beta.SortOrder >= alpha.SortOrder {
+		t.Fatalf("manifest order ignored: beta=%d alpha=%d", beta.SortOrder, alpha.SortOrder)
+	}
+
+	writeOrderManifest(t, exportDir, "AlphaPack_101", "BetaPack_102")
+	stats, err := svc.SeedMedia(ctx, seedDir, 0)
+	if err != nil {
+		t.Fatalf("reseed media: %v", err)
+	}
+	if stats.Documents != 0 || stats.Blobs != 0 {
+		t.Fatalf("unchanged set reseed reimported content: %+v", stats)
+	}
+	alpha, _, _ = media.GetStickerSetByShortName(ctx, "AlphaPack")
+	beta, _, _ = media.GetStickerSetByShortName(ctx, "BetaPack")
+	if alpha.SortOrder >= beta.SortOrder {
+		t.Fatalf("unchanged existing sets were not reordered: alpha=%d beta=%d", alpha.SortOrder, beta.SortOrder)
+	}
+}
+
+func TestSeedStickerSetEmbeddedOrderFallback(t *testing.T) {
+	exportDir := filepath.Join(t.TempDir(), "telegram_emoji_export")
+	for _, name := range []string{
+		"ABCEmoji_1002308636602531847",
+		"DuckEmoji_773947703670341673",
+	} {
+		if err := os.MkdirAll(filepath.Join(exportDir, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	names, err := seedStickerSetDirNames(exportDir)
+	if err != nil {
+		t.Fatalf("seedStickerSetDirNames: %v", err)
+	}
+	if len(names) != 2 || names[0] != "DuckEmoji_773947703670341673" {
+		t.Fatalf("embedded order fallback = %v, want DuckEmoji first", names)
+	}
+}
+
 func TestSeedMediaRepairsCustomEmojiTGSWithoutThumb(t *testing.T) {
 	ctx := context.Background()
 	seedDir := t.TempDir()
@@ -777,6 +841,38 @@ func writeStatusPackWithoutThumbSeedInDir(t *testing.T, setDir string, sourceID 
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(stickersDir, fmt.Sprintf("status_%d.tgs", sourceID)), []byte("tgs!"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeMinimalStickerSetSeed(t *testing.T, exportDir, shortName string, setID, docID int64, setHash int) {
+	t.Helper()
+	setDir := filepath.Join(exportDir, fmt.Sprintf("%s_%d", shortName, setID))
+	stickersDir := filepath.Join(setDir, "stickers")
+	if err := os.MkdirAll(stickersDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw := fmt.Sprintf(`{"result":{"set":{"id":%d,"access_hash":1,"title":"%s","short_name":"%s","count":1,"hash":%d,"packs":[{"emoticon":"🙂","documents":[%d]}]},"packs":[{"emoticon":"🙂","documents":[%d]}],"documents":[{"id":%d,"access_hash":2,"file_reference":"","date":"2026-06-29T00:00:00Z","mime_type":"application/x-tgsticker","size":4,"dc_id":4,"attributes":[{"_":"DocumentAttributeImageSize","w":512,"h":512},{"_":"DocumentAttributeSticker","alt":"🙂","stickerset":{"id":%d,"access_hash":1}},{"_":"DocumentAttributeFilename","file_name":"AnimatedSticker.tgs"}],"thumbs":[]}]}}`, setID, shortName, shortName, setHash, docID, docID, docID, setID)
+	if err := os.WriteFile(filepath.Join(setDir, "set_info.json"), []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stickersDir, fmt.Sprintf("sticker_%d.tgs", docID)), []byte("tgs!"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeOrderManifest(t *testing.T, exportDir string, names ...string) {
+	t.Helper()
+	if err := os.MkdirAll(exportDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(struct {
+		Sets []string `json:"sets"`
+	}{Sets: names})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(exportDir, "order.json"), raw, 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

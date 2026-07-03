@@ -3,6 +3,7 @@ package files
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -224,14 +225,7 @@ func (s *Service) seedStickerSets(ctx context.Context, root string, maxRegular i
 	// default 系统集：目录名 → system_key。
 	defaultDir := filepath.Join(root, "telegram_default_stickers_export")
 	order := 0
-	if entries, err := os.ReadDir(defaultDir); err == nil {
-		names := make([]string, 0, len(entries))
-		for _, e := range entries {
-			if e.IsDir() {
-				names = append(names, e.Name())
-			}
-		}
-		sort.Strings(names)
+	if names, err := seedStickerSetDirNames(defaultDir); err == nil {
 		for _, name := range names {
 			systemKey := systemKeyForDefaultSet(name)
 			setDir := filepath.Join(defaultDir, name)
@@ -245,14 +239,7 @@ func (s *Service) seedStickerSets(ctx context.Context, root string, maxRegular i
 	// custom-emoji 集（telegram_emoji_export/<set>/）：不受 maxRegular 限制,按 set_info 的
 	// emojis 标志归入 StickerSetKindEmoji(getEmojiStickers/getFeaturedEmojiStickers 下发)。
 	emojiDir := filepath.Join(root, "telegram_emoji_export")
-	if entries, err := os.ReadDir(emojiDir); err == nil {
-		names := make([]string, 0, len(entries))
-		for _, e := range entries {
-			if e.IsDir() {
-				names = append(names, e.Name())
-			}
-		}
-		sort.Strings(names)
+	if names, err := seedStickerSetDirNames(emojiDir); err == nil {
 		for _, name := range names {
 			setDir := filepath.Join(emojiDir, name)
 			if err := s.importStickerSetDir(ctx, setDir, "", order, force, stats); err != nil {
@@ -264,14 +251,7 @@ func (s *Service) seedStickerSets(ctx context.Context, root string, maxRegular i
 
 	// 常规贴纸集。
 	regularDir := filepath.Join(root, "telegram_stickers_export")
-	if entries, err := os.ReadDir(regularDir); err == nil {
-		names := make([]string, 0, len(entries))
-		for _, e := range entries {
-			if e.IsDir() {
-				names = append(names, e.Name())
-			}
-		}
-		sort.Strings(names)
+	if names, err := seedStickerSetDirNames(regularDir); err == nil {
 		imported := 0
 		for _, name := range names {
 			if maxRegular > 0 && imported >= maxRegular {
@@ -286,6 +266,75 @@ func (s *Service) seedStickerSets(ctx context.Context, root string, maxRegular i
 		}
 	}
 	return nil
+}
+
+func seedStickerSetDirNames(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	existing := make(map[string]struct{}, len(entries))
+	fallback := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() {
+			name := e.Name()
+			existing[name] = struct{}{}
+			fallback = append(fallback, name)
+		}
+	}
+	sort.Strings(fallback)
+
+	ordered, err := seedStickerSetOrder(dir)
+	if err != nil || len(ordered) == 0 {
+		return fallback, nil
+	}
+	out := make([]string, 0, len(fallback))
+	seen := make(map[string]struct{}, len(fallback))
+	for _, name := range ordered {
+		if _, ok := existing[name]; !ok {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		out = append(out, name)
+		seen[name] = struct{}{}
+	}
+	for _, name := range fallback {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		out = append(out, name)
+	}
+	return out, nil
+}
+
+func seedStickerSetOrder(dir string) ([]string, error) {
+	raw, err := os.ReadFile(filepath.Join(dir, "order.json"))
+	if err != nil {
+		raw = embeddedSeedStickerSetOrder(filepath.Base(dir))
+		if len(raw) == 0 {
+			return nil, err
+		}
+	}
+	var parsed struct {
+		Sets []string `json:"sets"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return nil, err
+	}
+	return parsed.Sets, nil
+}
+
+func embeddedSeedStickerSetOrder(dirName string) []byte {
+	switch dirName {
+	case "telegram_stickers_export":
+		return seedFeaturedStickersOrderJSON
+	case "telegram_emoji_export":
+		return seedFeaturedEmojiStickersOrderJSON
+	default:
+		return nil
+	}
 }
 
 func (s *Service) importStickerSetDir(ctx context.Context, setDir, systemKey string, order int, force bool, stats *SeedStats) error {
@@ -311,6 +360,13 @@ func (s *Service) importStickerSetDir(ctx context.Context, setDir, systemKey str
 		if existing, found, err := s.media.GetStickerSetByID(ctx, sj.ID); err != nil {
 			return err
 		} else if found && existing.Hash == sj.Hash {
+			if existing.SortOrder != order {
+				existing.SortOrder = order
+				if err := s.media.PutStickerSet(ctx, existing); err != nil {
+					return err
+				}
+				stats.StickerSets++
+			}
 			return nil
 		}
 	}
@@ -488,6 +544,12 @@ var seedThumbMarker = regexp.MustCompile(`_thumb\d+_`)
 
 const seedInlineCachedDocumentThumbMaxBytes = 32 * 1024
 const seedSyntheticDocumentThumbType = "m"
+
+//go:embed seed_order/featured_stickers.json
+var seedFeaturedStickersOrderJSON []byte
+
+//go:embed seed_order/featured_emoji_stickers.json
+var seedFeaturedEmojiStickersOrderJSON []byte
 
 // Exported Telegram resources keep their original id in filenames/JSON, but
 // telesrv owns the document catalog it serves. Imported high source ids are
