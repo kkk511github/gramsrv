@@ -79,6 +79,7 @@ func (r *Router) registerMessages(d *tg.ServerDispatcher) {
 	d.OnMessagesReportMusicListen(r.onMessagesReportMusicListen)
 	d.OnMessagesReportSponsoredMessage(r.onMessagesReportSponsoredMessage)
 	d.OnMessagesReadMessageContents(r.onMessagesReadMessageContents)
+	d.OnMessagesReceivedMessages(r.onMessagesReceivedMessages)
 	d.OnMessagesGetMessagesViews(r.onMessagesGetMessagesViews)
 	d.OnMessagesGetUnreadMentions(r.onMessagesGetUnreadMentions)
 	d.OnMessagesReadMentions(r.onMessagesReadMentions)

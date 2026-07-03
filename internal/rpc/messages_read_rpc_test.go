@@ -141,6 +141,17 @@ func TestMessagesReadMessageContentsPushesUpdateToOtherSessions(t *testing.T) {
 	}
 }
 
+func TestMessagesReceivedMessagesReturnsEmptyAck(t *testing.T) {
+	r := New(Config{}, Deps{}, zaptest.NewLogger(t), clock.System)
+	got, err := r.onMessagesReceivedMessages(WithUserID(context.Background(), 1000000001), 10)
+	if err != nil {
+		t.Fatalf("messages.receivedMessages: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("receivedMessages = %+v, want empty vector", got)
+	}
+}
+
 func TestMessagesReadHistoryMarksDialogRead(t *testing.T) {
 	var authKeyID [8]byte
 	authKeyID[0] = 7
