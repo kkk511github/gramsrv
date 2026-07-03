@@ -514,10 +514,11 @@ func featuredCoveredSet(s domain.StickerSet, covers map[int64]domain.Document) t
 	if len(out) == 0 {
 		return nil
 	}
+	set := tgStickerSetWithDocumentAliasesAndThumb(s, aliases, stickerSetThumbDocumentSize(s, docs))
 	if len(out) == 1 {
-		return &tg.StickerSetCovered{Set: tgStickerSetWithDocumentAliases(s, aliases), Cover: out[0]}
+		return &tg.StickerSetCovered{Set: set, Cover: out[0]}
 	}
-	return &tg.StickerSetMultiCovered{Set: tgStickerSetWithDocumentAliases(s, aliases), Covers: out}
+	return &tg.StickerSetMultiCovered{Set: set, Covers: out}
 }
 
 func documentsByID(docs []domain.Document) map[int64]domain.Document {
@@ -563,7 +564,7 @@ func stickerSetsCatalogHash(sets []domain.StickerSet) int64 {
 }
 
 func featuredStickerSetsHash(sets []domain.StickerSet) int64 {
-	values := make([]int64, 0, len(sets)*2)
+	values := make([]int64, 0, len(sets))
 	for _, set := range sets {
 		if set.ID == 0 {
 			return 0
@@ -571,7 +572,7 @@ func featuredStickerSetsHash(sets []domain.StickerSet) int64 {
 		if set.Archived {
 			continue
 		}
-		values = append(values, set.ID, int64(stickerSetClientHash(set)))
+		values = append(values, set.ID)
 	}
 	return int64(tdesktopCountHash(values))
 }

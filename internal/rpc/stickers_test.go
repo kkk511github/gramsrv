@@ -17,7 +17,7 @@ func TestStickerSetsCatalogHashMatchesTDesktopFormula(t *testing.T) {
 		{ID: 11, Hash: 456},
 	}
 	got := stickerSetsCatalogHash(sets)
-	const want int64 = 663064071320084188
+	const want int64 = 663064144334528224
 	if got != want {
 		t.Fatalf("stickerSetsCatalogHash() = %d, want %d", got, want)
 	}
@@ -32,7 +32,7 @@ func TestFeaturedStickerSetsHashMatchesTDesktopFormula(t *testing.T) {
 		{ID: 11, Hash: 456},
 	}
 	got := featuredStickerSetsHash(sets)
-	const want int64 = 7553815844051046976
+	const want int64 = 365072220181
 	if got != want {
 		t.Fatalf("featuredStickerSetsHash() = %d, want %d", got, want)
 	}
@@ -979,6 +979,62 @@ func TestTGStickerSetAliasesAnimatedThumbFallbackWithoutDocuments(t *testing.T) 
 	want := clientDocumentIDFromServerID(documentID)
 	if got, ok := set.GetThumbDocumentID(); !ok || got != want {
 		t.Fatalf("allStickers fallback thumb_document_id = %d ok=%v, want %d", got, ok, want)
+	}
+	if thumbs, ok := set.GetThumbs(); ok {
+		for _, thumb := range thumbs {
+			if size, ok := thumb.(*tg.PhotoSize); ok && size.Type == "a" {
+				t.Fatalf("allStickers set thumb included loadable size without real document size: %#v", thumbs)
+			}
+		}
+	}
+}
+
+func TestFeaturedCoveredSetAddsAnimatedLoadableSetThumb(t *testing.T) {
+	const documentID int64 = 1382305375846410902
+	set := domain.StickerSet{
+		ID:          10,
+		AccessHash:  20,
+		Title:       "Pack",
+		ShortName:   "pack",
+		Count:       1,
+		Animated:    true,
+		DocumentIDs: []int64{documentID},
+		Thumbs: []domain.PhotoSize{
+			{Kind: domain.PhotoSizeKindPath, Type: "j", Bytes: []byte{1, 2, 3}},
+		},
+	}
+	doc := domain.Document{
+		ID:         documentID,
+		AccessHash: 1,
+		DCID:       2,
+		MimeType:   "application/x-tgsticker",
+		Size:       12345,
+		Attributes: []domain.DocumentAttribute{
+			{Kind: domain.DocAttrSticker, Alt: "🙂"},
+		},
+	}
+
+	covered := featuredCoveredSet(set, map[int64]domain.Document{documentID: doc})
+	one, ok := covered.(*tg.StickerSetCovered)
+	if !ok {
+		t.Fatalf("featured covered = %T, want *tg.StickerSetCovered", covered)
+	}
+	thumbs, ok := one.Set.GetThumbs()
+	if !ok {
+		t.Fatalf("featured set thumbs missing")
+	}
+	var found bool
+	for _, thumb := range thumbs {
+		size, ok := thumb.(*tg.PhotoSize)
+		if ok && size.Type == "a" {
+			found = true
+			if size.W != 512 || size.H != 512 || size.Size != 12345 {
+				t.Fatalf("featured set thumb = %+v, want type=a 512x512 size=12345", size)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("featured set thumbs = %#v, want loadable type=a thumb", thumbs)
 	}
 }
 

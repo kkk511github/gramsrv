@@ -9,7 +9,8 @@ import (
 )
 
 const mimeApplicationXTGSticker = "application/x-tgsticker"
-const stickerSetClientShapeHashSalt int64 = 20260704
+const stickerSetClientShapeHashSalt int64 = 20260706
+const stickerSetClientThumbVersionSalt uint32 = 20260706
 
 // 本文件集中 domain media 值对象 → tg.* 的转换；tg.* 只在 rpc 层出现。
 // 供 reaction / sticker 资源 RPC 与消息 media 共用。
@@ -649,7 +650,7 @@ func tgStickerSetWithDocumentAliasesAndThumb(set domain.StickerSet, documentAlia
 	if thumbs := tgStickerSetThumbs(set, stickerSetThumbsWithAnimatedFallback(set, thumbSize)); len(thumbs) > 0 {
 		out.SetThumbs(thumbs)
 		out.SetThumbDCID(set.ThumbDCID)
-		out.SetThumbVersion(set.ThumbVersion)
+		out.SetThumbVersion(stickerSetClientThumbVersion(set))
 	}
 	if thumbDocumentID := stickerSetDisplayThumbDocumentID(set); thumbDocumentID != 0 {
 		out.SetThumbDocumentID(stickerSetClientThumbDocumentID(set, thumbDocumentID, documentAliases))
@@ -659,19 +660,15 @@ func tgStickerSetWithDocumentAliasesAndThumb(set domain.StickerSet, documentAlia
 
 func stickerSetThumbsWithAnimatedFallback(set domain.StickerSet, thumbSize int64) []domain.PhotoSize {
 	thumbs := append([]domain.PhotoSize(nil), set.Thumbs...)
-	if !set.Animated || stickerSetHasLoadableThumb(thumbs) || stickerSetDisplayThumbDocumentID(set) == 0 {
+	if !set.Animated || thumbSize <= 0 || stickerSetHasLoadableThumb(thumbs) || stickerSetDisplayThumbDocumentID(set) == 0 {
 		return thumbs
-	}
-	size := 1
-	if thumbSize > 0 && thumbSize <= int64(^uint(0)>>1) {
-		size = int(thumbSize)
 	}
 	thumbs = append(thumbs, domain.PhotoSize{
 		Kind: domain.PhotoSizeKindDefault,
 		Type: "a",
 		W:    512,
 		H:    512,
-		Size: size,
+		Size: int(thumbSize),
 	})
 	return thumbs
 }
@@ -712,6 +709,18 @@ func stickerSetClientThumbDocumentID(set domain.StickerSet, id int64, documentAl
 
 func stickerSetClientHash(set domain.StickerSet) int {
 	return int(tdesktopHashUpdate(uint64(uint32(set.Hash)), stickerSetClientShapeHashSalt) & 0x7fffffff)
+}
+
+func stickerSetClientThumbVersion(set domain.StickerSet) int {
+	version := uint32(set.ThumbVersion)
+	if version == 0 {
+		version = uint32(set.Hash)
+	}
+	version ^= stickerSetClientThumbVersionSalt
+	if version == 0 {
+		version = 1
+	}
+	return int(int32(version))
 }
 
 func tgStickerSetThumbs(set domain.StickerSet, sizes []domain.PhotoSize) []tg.PhotoSizeClass {
