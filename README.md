@@ -100,6 +100,9 @@ Useful local environment variables:
 | `TELESRV_APP_NAME` | `Safelink` | app name shown through client language packs |
 | `TELESRV_BLOB_DIR` | `data/blobs` | local media blob directory |
 | `TELESRV_STICKER_SEED_DIR` | `data/sticker-seed` | optional sticker/reaction seed directory |
+| `TELESRV_STICKER_WEB_ADDR` | empty | public-link landing page listen address, commonly `127.0.0.1:2401` |
+| `TELESRV_STICKER_WEB_PUBLIC_URL` | `https://safelink.chat` | public base URL used for landing-page canonical links |
+| `TELESRV_STICKER_WEB_APP_SCHEME` | `safelink` | URL scheme used by landing pages to open the client, for example `tg` for the current iOS build |
 | `TELESRV_AI_ENABLED` | `true` | enable AI compose entry points |
 | `TELESRV_AI_PROVIDERS` | `local` | ordered AI provider chain, such as `local` or `kimi,local` |
 | `TELESRV_AI_TIMEOUT` | `15s` | per AI provider call timeout |
@@ -162,6 +165,58 @@ unchanged seed sets are intentionally skipped.
 
 Optional OpenAI-compatible, Kimi/Moonshot, Gemini, and Anthropic provider
 variables are documented in `.env.example`.
+
+### Public Link Landing Pages
+
+`slerv` includes a public-link landing service implemented in
+`internal/web/stickerlinks/server.go`. Despite the package name, it handles more
+than sticker and emoji links. It also supports Telegram-style public entry
+points such as:
+
+- `https://safelink.chat/+<invite_hash>` invite links
+- `https://safelink.chat/addstickers/<short_name>` sticker packs
+- `https://safelink.chat/addemoji/<short_name>` custom emoji packs
+- `https://safelink.chat/<username>` plus message, call, and addstyle links
+
+In production, run this endpoint on localhost and expose it through Nginx:
+
+```sh
+TELESRV_STICKER_WEB_ADDR=127.0.0.1:2401
+TELESRV_STICKER_WEB_PUBLIC_URL=https://safelink.chat
+TELESRV_STICKER_WEB_APP_SCHEME=tg
+```
+
+`TELESRV_STICKER_WEB_APP_SCHEME` must match the URL scheme registered by the
+client. The current SafeLink iOS build registers `tg://`, so production should
+use `tg`; with the default `safelink`, the landing page renders but its open
+button will not launch that iOS build.
+
+Place Nginx rules before the Web SPA fallback
+`location / { try_files ... /index.html; }`. Otherwise `/+<invite_hash>` is
+handled as a frontend route and shows the Web app instead of the invite landing
+page. Minimal invite-link routing:
+
+```nginx
+location ~ ^/\+[A-Za-z0-9_-]+/?$ {
+    proxy_pass http://127.0.0.1:2401;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+}
+
+location ~ ^/joinchat/([A-Za-z0-9_-]+)/?$ {
+    return 308 https://$host/+$1;
+}
+```
+
+After deployment, verify the route and deep link:
+
+```sh
+nginx -t && systemctl reload nginx
+systemctl restart slerv
+curl -sS https://safelink.chat/+example_hash | grep 'tg://join?invite='
+```
 
 ## Client Compatibility
 

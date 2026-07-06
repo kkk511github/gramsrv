@@ -92,6 +92,9 @@ go build -o bin/gramsrv.exe ./cmd/telesrv
 | `TELESRV_APP_NAME` | `Safelink` | 客户端语言包里展示的应用名称 |
 | `TELESRV_BLOB_DIR` | `data/blobs` | 本地媒体 blob 目录 |
 | `TELESRV_STICKER_SEED_DIR` | `data/sticker-seed` | 可选 sticker/reaction 种子目录 |
+| `TELESRV_STICKER_WEB_ADDR` | empty | 公开链接落地页监听地址，常用 `127.0.0.1:2401` |
+| `TELESRV_STICKER_WEB_PUBLIC_URL` | `https://safelink.chat` | 公开链接落地页生成 canonical URL 的根地址 |
+| `TELESRV_STICKER_WEB_APP_SCHEME` | `safelink` | 落地页打开客户端时使用的 URL scheme，例如当前 iOS 包使用 `tg` |
 | `TELESRV_AI_ENABLED` | `true` | 启用 AI compose 入口 |
 | `TELESRV_AI_PROVIDERS` | `local` | AI provider 调用链，例如 `local` 或 `kimi,local` |
 | `TELESRV_AI_TIMEOUT` | `15s` | 单次 AI provider 调用超时 |
@@ -141,6 +144,55 @@ TELESRV_STICKER_SEED_DIR=/www/safelink/slerv/data/sticker-seed
 有意跳过。
 
 可选的 OpenAI-compatible、Kimi/Moonshot、Gemini、Anthropic provider 变量见 `.env.example`。
+
+### 公开链接落地页
+
+`slerv` 内置了一个公开链接 landing 服务，由
+`internal/web/stickerlinks/server.go` 实现。它不只服务贴纸和表情链接，也处理和
+Telegram 相同形态的公开入口，例如：
+
+- `https://safelink.chat/+<invite_hash>` 邀请链接
+- `https://safelink.chat/addstickers/<short_name>` 贴纸包
+- `https://safelink.chat/addemoji/<short_name>` 自定义表情包
+- `https://safelink.chat/<username>` 和消息、通话、addstyle 等公开链接
+
+生产环境通常让 `slerv` 只在本机监听 landing 服务，再由 Nginx 挂到公网域名：
+
+```sh
+TELESRV_STICKER_WEB_ADDR=127.0.0.1:2401
+TELESRV_STICKER_WEB_PUBLIC_URL=https://safelink.chat
+TELESRV_STICKER_WEB_APP_SCHEME=tg
+```
+
+`TELESRV_STICKER_WEB_APP_SCHEME` 必须和客户端实际注册的 scheme 一致。当前
+SafeLink iOS 包注册的是 `tg://`，因此线上配置应使用 `tg`；如果使用默认的
+`safelink`，落地页能显示，但按钮不会拉起当前 iOS 包。
+
+Nginx 规则要放在 Web SPA 的 `location / { try_files ... /index.html; }` 之前，
+否则 `/+<invite_hash>` 会被当成前端路由，显示 Web 界面，而不会进入邀请落地页。
+最小邀请链接路由示例：
+
+```nginx
+location ~ ^/\+[A-Za-z0-9_-]+/?$ {
+    proxy_pass http://127.0.0.1:2401;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+}
+
+location ~ ^/joinchat/([A-Za-z0-9_-]+)/?$ {
+    return 308 https://$host/+$1;
+}
+```
+
+部署后检查：
+
+```sh
+nginx -t && systemctl reload nginx
+systemctl restart slerv
+curl -sS https://safelink.chat/+example_hash | grep 'tg://join?invite='
+```
 
 ## 客户端兼容
 
