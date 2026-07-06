@@ -11,7 +11,7 @@ import (
 )
 
 func (s *ChannelStore) SendChannelMessage(ctx context.Context, req domain.SendChannelMessageRequest) (domain.SendChannelMessageResult, error) {
-	if req.UserID == 0 || req.ChannelID == 0 || (strings.TrimSpace(req.Message) == "" && req.Action == nil && req.Media.IsZero()) {
+	if req.UserID == 0 || req.ChannelID == 0 || (strings.TrimSpace(req.Message) == "" && req.Action == nil && req.Media.IsZero() && req.RichMessage.IsZero()) {
 		return domain.SendChannelMessageResult{}, domain.ErrChannelInvalid
 	}
 	if req.Date == 0 {
@@ -126,6 +126,7 @@ func (s *ChannelStore) sendChannelMessageOnce(ctx context.Context, req domain.Se
 				Body:         req.Message,
 				Entities:     append([]domain.MessageEntity(nil), req.Entities...),
 				Media:        req.Media,
+				RichMessage:  req.RichMessage,
 				ViaBotID:     req.ViaBotID,
 				GroupedID:    req.GroupedID,
 				ReplyMarkup:  req.ReplyMarkup,
@@ -183,6 +184,7 @@ func (s *ChannelStore) sendChannelMessageOnce(ctx context.Context, req domain.Se
 		Body:              req.Message,
 		Entities:          append([]domain.MessageEntity(nil), req.Entities...),
 		Media:             req.Media,
+		RichMessage:       req.RichMessage,
 		ViaBotID:          req.ViaBotID,
 		GroupedID:         req.GroupedID,
 		ReplyMarkup:       req.ReplyMarkup,
@@ -425,6 +427,10 @@ func insertChannelMessageTx(ctx context.Context, tx pgx.Tx, msg domain.ChannelMe
 	if err != nil {
 		return err
 	}
+	richMessage, err := encodeRichMessage(msg.RichMessage)
+	if err != nil {
+		return err
+	}
 	var sendAsType sql.NullString
 	var sendAsID sql.NullInt64
 	if msg.SendAs != nil && msg.SendAs.ID != 0 {
@@ -453,12 +459,12 @@ INSERT INTO channel_messages (
     channel_id, id, random_id, sender_user_id, from_peer_type, from_peer_id,
     send_as_peer_type, send_as_peer_id, message_date, edit_date, post, silent, noforwards,
     body, entities, reply_to, reply_to_msg_id, reply_to_peer_type, reply_to_peer_id, reply_to_top_id,
-    fwd_from, discussion_channel_id, discussion_message_id, action, pts, deleted, media, reply_markup, ttl_period, expires_at, post_author, via_bot_id, from_boosts_applied, grouped_id, saved_peer_type, saved_peer_id
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36)`,
+    fwd_from, discussion_channel_id, discussion_message_id, action, pts, deleted, media, reply_markup, rich_message, ttl_period, expires_at, post_author, via_bot_id, from_boosts_applied, grouped_id, saved_peer_type, saved_peer_id
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37)`,
 		msg.ChannelID, msg.ID, msg.RandomID, msg.SenderUserID, string(msg.From.Type), msg.From.ID,
 		sendAsType, sendAsID, msg.Date, msg.EditDate, msg.Post, msg.Silent, msg.NoForwards,
 		msg.Body, entities, reply, replyMsgID, replyPeerType, replyPeerID, replyTopID,
-		forward, discussionChannelID, discussionMessageID, action, msg.Pts, msg.Deleted, media, replyMarkup, msg.TTLPeriod, msg.ExpiresAt, msg.PostAuthor, msg.ViaBotID, msg.FromBoostsApplied, msg.GroupedID, string(msg.SavedPeer.Type), msg.SavedPeer.ID); err != nil {
+		forward, discussionChannelID, discussionMessageID, action, msg.Pts, msg.Deleted, media, replyMarkup, richMessage, msg.TTLPeriod, msg.ExpiresAt, msg.PostAuthor, msg.ViaBotID, msg.FromBoostsApplied, msg.GroupedID, string(msg.SavedPeer.Type), msg.SavedPeer.ID); err != nil {
 		return fmt.Errorf("insert channel message: %w", err)
 	}
 	// 共享媒体索引(迁移 0118):创建即按媒体类别建索引行,供 messages.search 媒体标签页。

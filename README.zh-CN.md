@@ -1,10 +1,24 @@
-# gramsrv
+# gramsrv - 开源 Telegram Server / MTProto Server Go 实现
 
-`gramsrv` 是一个用 Go 编写的开源 Telegram-like MTProto server，面向真实客户端兼容、自建聊天实验、协议研究，以及一条长期可演进的社区 server 路线。
+`gramsrv` 是一个用 Go 编写的开源 Telegram server 实现和 MTProto server。
+它是一个 Telegram-like backend，面向真实客户端兼容、自建聊天实验、协议研究，
+以及一条长期可演进的社区 server 路线。
+
+如果你正在搜索 **Telegram server 实现**、**MTProto server 实现**、
+**Telegram 后端**、**Telegram clone server**、**自建 Telegram-like 聊天服务器**，
+这个仓库就是可以运行、研究和共同优化的 server 侧实现。
 
 [English README](README.md) · [官网](https://telesrv.net) · [讨论群](https://t.me/telesrv_chat) · [频道](https://t.me/telesrv)
 
 `gramsrv` 是独立的非官方项目，与 Telegram 官方及其团队没有关联，也未获得其背书或赞助。
+
+## 搜索关键词
+
+`telegram server` · `telegram server implementation` · `mtproto server` ·
+`mtproto server in go` · `telegram backend` · `telegram-like server` ·
+`self-hosted telegram` · `telegram desktop compatible server` ·
+`android telegram compatible server` · `open source chat server` ·
+`telegram server 实现` · `mtproto server 实现` · `自建 Telegram server`
 
 ## Demo Video
 
@@ -28,13 +42,14 @@ https://github.com/user-attachments/assets/25e651dc-a022-4d60-8b9b-ca3e8bfe216c
 | ✅ | 用户与联系人 | 用户资料、username、头像、联系人导入/搜索、block/privacy 状态、presence、last seen。 |
 | ✅ | 会话与同步 | dialog list、置顶、手动未读、folders/filters、草稿、read boundary、durable updates、在线 fan-out、离线 difference 恢复。 |
 | ✅ | 私聊消息 | send、history、read receipts、edit、delete、forward、reply、富文本实体、媒体/相册消息、reactions、scheduled/TTL 相关路径。 |
+| ✅ | 富文本消息 | Telegram Desktop rich text message、富文本内容转换、send/edit/scheduled 流程、dialog/history 投影，以及 memory/PostgreSQL 持久化。 |
 | ✅ | AI 输入框与 ChatBot | 输入框改写/润色、默认和自定义 tone、addstyle 预览、本地与外部 provider 链、流式 `@ChatBot` 草稿回复、Business AI 回复钩子。 |
 | ✅ | 超级群与频道 | create、join、leave、邀请链接、成员、管理员、forum topics、history、send/edit/delete/read、reactions、公开搜索和预览。 |
 | ✅ | 媒体与文件 | upload、download、本地 blob 存储、照片、文档、缩略图、外链媒体抓取、网页预览、地图缩略图缓存、用户/频道头像。 |
 | ✅ | Stickers 与 Reactions | sticker/reaction catalog、seed 支持、recent reactions、top reactions、default reactions、reaction moderation 相关路径。 |
 | ✅ | Gifts 与 Stars | star gifts、本地 stars ledger 基础，用于兼容和后续功能扩展。 |
 | ✅ | Bots 与 Mini Apps | bot 服务基础、callbacks、inline helpers、webview/mini-app 路径、最小 Bot API gateway、demo 工具。 |
-| ✅ | 通话与实时能力 | 私聊通话信令基础、group call 状态、SFU/TURN building blocks、liveness 与 expiry worker。 |
+| ✅ | 通话与直播 | 私聊通话信令基础、group call 状态、RTMP live stream、定时视频通话、频道 `join_as` 身份、SFU/TURN building blocks、liveness 与 expiry worker。 |
 | ✅ | 管理与运维 | Admin API/UI backend、PostgreSQL migrations、Redis 易失态、retention workers、pprof/debug hooks、load-test helpers。 |
 | ✅ | Desktop、Android 与 Web 兼容 | Telegram Desktop 是第一目标，Android 与 Web 兼容路径也由同一套 server 持续覆盖。 |
 

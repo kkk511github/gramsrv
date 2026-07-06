@@ -78,6 +78,13 @@ func (r *Router) onStoriesGetAllStories(ctx context.Context, req *tg.StoriesGetA
 	now := int(r.clock.Now().Unix())
 	var cursor domain.StoryListCursor
 	if next {
+		if digest, ok := storyAllStoriesDigestFromCompleteState(requestState, hidden); ok {
+			list := domain.StoryList{Hidden: hidden, Count: digest.Count, State: requestState}
+			if r.deps.Stories == nil || userID == 0 {
+				return tgStoriesAllStories(userID, list), nil
+			}
+			return r.tgStoriesAllStories(ctx, userID, list), nil
+		}
 		cursor, err = storyAllStoriesCursorFromState(requestState, hidden)
 		if err != nil {
 			return nil, offsetInvalidErr()
@@ -136,7 +143,16 @@ func validateStoriesGetAllStoriesRequest(req *tg.StoriesGetAllStoriesRequest) er
 	next := storyAllStoriesNext(req)
 	hidden := storyAllStoriesHidden(req)
 	if next {
-		if !hasState || state == "" || !storyAllStoriesCursorStateToken(state) {
+		if !hasState || state == "" {
+			return offsetInvalidErr()
+		}
+		if storyAllStoriesCompleteState(state) {
+			if !storyAllStoriesCompleteStateForHidden(state, hidden) {
+				return offsetInvalidErr()
+			}
+			return nil
+		}
+		if !storyAllStoriesCursorStateToken(state) {
 			return offsetInvalidErr()
 		}
 		if _, err := storyAllStoriesCursorFromState(state, hidden); err != nil {
@@ -171,6 +187,22 @@ func storyAllStoriesHidden(req *tg.StoriesGetAllStoriesRequest) bool {
 
 func storyAllStoriesCompleteState(state string) bool {
 	return strings.HasPrefix(state, "ts1:")
+}
+
+func storyAllStoriesDigestFromCompleteState(state string, hidden bool) (domain.StoryListDigest, bool) {
+	if !storyAllStoriesCompleteStateForHidden(state, hidden) {
+		return domain.StoryListDigest{}, false
+	}
+	parts := strings.Split(state, ":")
+	count, err := strconv.Atoi(parts[2])
+	if err != nil || count < 0 {
+		return domain.StoryListDigest{}, false
+	}
+	hash, err := strconv.ParseUint(parts[3], 16, 64)
+	if err != nil {
+		return domain.StoryListDigest{}, false
+	}
+	return domain.StoryListDigest{Count: count, Hash: hash}, true
 }
 
 func storyAllStoriesCompleteStateForHidden(state string, hidden bool) bool {
@@ -1450,7 +1482,8 @@ func storyCaptionEntitySupported(entity tg.MessageEntityClass) bool {
 		*tg.MessageEntityBankCard,
 		*tg.MessageEntitySpoiler,
 		*tg.MessageEntityCustomEmoji,
-		*tg.MessageEntityBlockquote:
+		*tg.MessageEntityBlockquote,
+		*tg.MessageEntityFormattedDate:
 		return true
 	default:
 		return false

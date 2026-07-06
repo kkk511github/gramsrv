@@ -156,6 +156,9 @@ func tgChannelMessage(viewerUserID int64, m domain.ChannelMessage) tg.MessageCla
 	if markup := tgReplyMarkup(m.ReplyMarkup); markup != nil {
 		msg.SetReplyMarkup(markup)
 	}
+	if rich := mustTGRichMessage(m.RichMessage); rich != nil {
+		msg.SetRichMessage(*rich)
+	}
 	if replies := tgChannelMessageReplies(m.Replies); replies != nil {
 		msg.SetReplies(*replies)
 	}
@@ -202,6 +205,17 @@ func tgChannelMessageAction(action domain.ChannelMessageAction) tg.MessageAction
 			userID = action.UserIDs[0]
 		}
 		return &tg.MessageActionChatDeleteUser{UserID: userID}
+	case domain.ChannelActionChatEditPhoto:
+		if action.Photo == nil {
+			return nil
+		}
+		photo := tgPhoto(*action.Photo)
+		if _, empty := photo.(*tg.PhotoEmpty); empty {
+			return nil
+		}
+		return &tg.MessageActionChatEditPhoto{Photo: photo}
+	case domain.ChannelActionChatDeletePhoto:
+		return &tg.MessageActionChatDeletePhoto{}
 	case domain.ChannelActionEditTitle:
 		return &tg.MessageActionChatEditTitle{Title: action.Title}
 	case domain.ChannelActionTopicCreate:
@@ -244,6 +258,11 @@ func tgChannelMessageAction(action domain.ChannelMessageAction) tg.MessageAction
 			out.SetDuration(action.CallDuration)
 		}
 		return out
+	case domain.ChannelActionGroupCallScheduled:
+		return &tg.MessageActionGroupCallScheduled{
+			Call:         &tg.InputGroupCall{ID: action.CallID, AccessHash: action.CallAccessHash},
+			ScheduleDate: action.CallScheduleDate,
+		}
 	case domain.ChannelActionInviteToGroupCall:
 		return &tg.MessageActionInviteToGroupCall{
 			Call:  &tg.InputGroupCall{ID: action.CallID, AccessHash: action.CallAccessHash},
@@ -554,10 +573,10 @@ func tgChannelFull(view domain.ChannelView) *tg.ChannelFull {
 	if ch.ReactionPolicy.Limit > 0 {
 		full.SetReactionsLimit(ch.ReactionPolicy.Limit)
 	}
-	// 付费 reaction（Stars）是广播频道默认能力——官方语义下 channelFull.paid_reactions_available
-	// 对广播频道恒真，客户端据此显示星按钮；megagroup 不支持。与 store 侧
-	// AddChannelMessagePaidReaction 仅广播频道的门槛一致。显式 PaidEnabled 也保留。
-	if (ch.Broadcast && !ch.Megagroup) || ch.ReactionPolicy.PaidEnabled {
+	// paid_reactions_available reflects the saved chat policy, not mere broadcast
+	// capability. Android counts this flag as an extra available reaction in the
+	// settings row, so advertising it without paid_enabled corrupts the UI count.
+	if ch.ReactionPolicy.PaidEnabled {
 		full.SetPaidReactionsAvailable(true)
 	}
 	if ch.Broadcast && !ch.Megagroup {

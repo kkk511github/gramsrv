@@ -344,7 +344,8 @@ func (s *Service) importStickerSetDir(ctx context.Context, setDir, systemKey str
 		return nil // 该目录无 set_info.json → 跳过
 	}
 	var info struct {
-		Result seedStickerSetResultJSON `json:"result"`
+		InputSetType string                   `json:"input_set_type"`
+		Result       seedStickerSetResultJSON `json:"result"`
 	}
 	if err := json.Unmarshal(raw, &info); err != nil {
 		return fmt.Errorf("parse %s: %w", infoPath, err)
@@ -353,13 +354,18 @@ func (s *Service) importStickerSetDir(ctx context.Context, setDir, systemKey str
 	if sj.ID == 0 {
 		return nil
 	}
+	if systemKey == "" {
+		systemKey = systemKeyForInputSetType(info.InputSetType)
+	}
+	kind := stickerSetKind(sj, systemKey)
 	// 增量 seed：集已存在且内容 hash 未变则跳过（不重读文档/重传 blob）。force 时强制重导
 	// （缩略图内联缓存修复路径）。这让 seedStickerSets 可在非空 store 上每次启动安全重扫,
-	// 仅导入新增/变更集。
+	// 仅导入新增/变更集；但系统集分类由导出元数据决定，旧库中 hash 相同但 system_key/kind
+	// 错误的记录必须重写，避免 constructor 方式取不到同一个资源集。
 	if !force {
 		if existing, found, err := s.media.GetStickerSetByID(ctx, sj.ID); err != nil {
 			return err
-		} else if found && existing.Hash == sj.Hash {
+		} else if found && existing.Hash == sj.Hash && existing.SystemKey == systemKey && existing.Kind == kind {
 			if existing.SortOrder != order {
 				existing.SortOrder = order
 				if err := s.media.PutStickerSet(ctx, existing); err != nil {
@@ -376,7 +382,6 @@ func (s *Service) importStickerSetDir(ctx context.Context, setDir, systemKey str
 		return err
 	}
 
-	kind := stickerSetKind(sj, systemKey)
 	preserveTextColor := seedPreserveCustomEmojiTextColor(kind)
 	docIDs := make([]int64, 0, len(info.Result.Documents))
 	docs := make([]domain.Document, 0, len(info.Result.Documents))
@@ -641,6 +646,8 @@ func systemKeyForDefaultSet(dirName string) string {
 		return domain.StickerSetSystemKeyEmojiDefaultTopicIcons
 	case "DefaultSet_PremiumGifts":
 		return domain.StickerSetSystemKeyPremiumGifts
+	case "DefaultSet_TonGifts":
+		return domain.StickerSetSystemKeyTonGifts
 	case "DefaultSet_Dice_Normal":
 		return "dice:\U0001f3b2"
 	case "DefaultSet_Dice_Dart":
@@ -653,6 +660,30 @@ func systemKeyForDefaultSet(dirName string) string {
 		return "dice:\U0001f3b3"
 	case "DefaultSet_Dice_Casino":
 		return "dice:\U0001f3b0"
+	default:
+		return ""
+	}
+}
+
+func systemKeyForInputSetType(inputSetType string) string {
+	normalized := strings.TrimSpace(inputSetType)
+	normalized = strings.TrimPrefix(normalized, "*")
+	normalized = strings.TrimPrefix(normalized, "tg.")
+	switch normalized {
+	case "InputStickerSetAnimatedEmoji":
+		return "animated_emoji"
+	case "InputStickerSetAnimatedEmojiAnimations":
+		return "animated_emoji_animations"
+	case "InputStickerSetEmojiGenericAnimations":
+		return "emoji_generic_animations"
+	case "InputStickerSetEmojiDefaultStatuses", "InputStickerSetEmojiChannelDefaultStatuses":
+		return domain.StickerSetSystemKeyEmojiDefaultStatuses
+	case "InputStickerSetEmojiDefaultTopicIcons":
+		return domain.StickerSetSystemKeyEmojiDefaultTopicIcons
+	case "InputStickerSetPremiumGifts":
+		return domain.StickerSetSystemKeyPremiumGifts
+	case "InputStickerSetTonGifts":
+		return domain.StickerSetSystemKeyTonGifts
 	default:
 		return ""
 	}

@@ -39,6 +39,7 @@ type AuthService interface {
 	SignInBot(ctx context.Context, a domain.Authorization, token string) (domain.User, error)
 	LogOut(ctx context.Context, authKeyID [8]byte) error
 	Authorization(ctx context.Context, authKeyID [8]byte) (domain.Authorization, bool, error)
+	UpdateAuthorizationLayer(ctx context.Context, authKeyID [8]byte, layer int) error
 	ListAuthorizations(ctx context.Context, userID int64) ([]domain.Authorization, error)
 	ResetAuthorization(ctx context.Context, userID, hash int64) (domain.Authorization, bool, error)
 	ResetAuthorizations(ctx context.Context, userID int64, keepAuthKeyID [8]byte) ([]domain.Authorization, error)
@@ -81,6 +82,14 @@ type ScopedImmediateSessionPusher interface {
 // 用于按 RPC 置位 receivesUpdates 时的幂等短路；不实现时每次都走完整置位（幂等，仅多余开销）。
 type SessionUpdatesStateProvider interface {
 	ReceivesUpdatesForAuthKey(rawAuthKeyID [8]byte, sessionID int64) bool
+}
+
+// ClientLayerBinder 把协商 TL layer 即时下推到连接（可选能力）。
+// invokeWithLayer 在 Dispatch 入口被观测到时立即调用，使同一请求 handler 执行期间
+// 触发的 pending flush / 并发 push 就已按正确 layer 降级；不实现时连接层只能靠
+// Dispatch 返回后的兜底刷新，重连老客户端首条 RPC 期间的推送会漏降级。
+type ClientLayerBinder interface {
+	SetClientLayerForAuthKey(rawAuthKeyID [8]byte, sessionID int64, layer int)
 }
 
 // SessionTerminator 暴露按业务 auth_key 强制断开活跃连接的能力（可选）。
@@ -129,7 +138,11 @@ type OnlineUserProvider interface {
 	TrackChannelInterest(rawAuthKeyID [8]byte, sessionID, userID int64, channelIDs []int64)
 	ClearChannelInterest(rawAuthKeyID [8]byte, sessionID, userID int64)
 	OnlineChannelUserIDs(channelID int64, limit int) []int64
-	SetSessionChannelMemberships(rawAuthKeyID [8]byte, sessionID, userID int64, channelIDs []int64)
+	// ChannelMembershipGeneration / SetSessionChannelMemberships 配对使用：调用方在读取
+	// 持久成员列表前采样修订号，落地时带回；期间发生增量 Add/Remove 时 Set 走合并路径
+	// 并保持未就绪，由下一条 RPC 重试全量同步（防全量替换覆盖窗口内的增量 join/leave）。
+	ChannelMembershipGeneration(rawAuthKeyID [8]byte, sessionID int64) int64
+	SetSessionChannelMemberships(rawAuthKeyID [8]byte, sessionID, userID int64, channelIDs []int64, expectedGen int64)
 	AddUserChannelMembership(userID, channelID int64)
 	RemoveUserChannelMembership(userID, channelID int64)
 	OnlineChannelMemberUserIDs(channelID int64, limit int) []int64
@@ -314,6 +327,7 @@ type UpdatesService interface {
 	GetDifference(ctx context.Context, authKeyID [8]byte, userID int64, from domain.UpdateState) (domain.UpdateDifference, error)
 	ClearAuthKey(ctx context.Context, authKeyID [8]byte) error
 	RecordNewMessage(ctx context.Context, authKeyID [8]byte, userID int64, msg domain.Message) (domain.UpdateEvent, domain.UpdateState, error)
+	PublishNewMessage(ctx context.Context, userID int64, msg domain.Message) (domain.UpdateEvent, domain.UpdateState, error)
 	RecordStory(ctx context.Context, authKeyID [8]byte, userID int64, story domain.Story, excludeSessionID int64) (domain.UpdateEvent, domain.UpdateState, error)
 	RecordStoryFanout(ctx context.Context, userID int64, story domain.Story) (domain.UpdateEvent, domain.UpdateState, error)
 	RecordReadStories(ctx context.Context, authKeyID [8]byte, userID int64, read domain.StoryReadResult, excludeSessionID int64) (domain.UpdateEvent, domain.UpdateState, error)
@@ -483,7 +497,7 @@ type ChannelsService interface {
 	ResolvePublicUsername(ctx context.Context, userID int64, username string) (domain.Channel, bool, error)
 	SearchPublicChannels(ctx context.Context, userID int64, query string, limit int) (domain.PublicChannelSearchResult, error)
 	SetSignatures(ctx context.Context, userID, channelID int64, enabled bool) (domain.Channel, error)
-	SetPhoto(ctx context.Context, userID, channelID int64, photo *domain.Photo) (domain.Channel, error)
+	SetPhoto(ctx context.Context, userID, channelID int64, photo *domain.Photo, date int) (domain.SetChannelPhotoResult, error)
 	SetPreHistoryHidden(ctx context.Context, userID, channelID int64, enabled bool) (domain.Channel, error)
 	SetParticipantsHidden(ctx context.Context, userID, channelID int64, enabled bool) (domain.Channel, error)
 	SetForum(ctx context.Context, userID, channelID int64, enabled, tabs bool) (domain.Channel, error)
@@ -674,35 +688,37 @@ type AIComposeService interface {
 
 // Deps 按业务域注入服务接口。各域的 handler 注册见对应文件（auth.go / users.go / updates.go）。
 type Deps struct {
-	Auth        AuthService
-	Account     AccountService
-	Privacy     PrivacyService
-	Help        HelpService
-	AICompose   AIComposeService
-	Users       UsersService
-	Updates     UpdatesService
-	Contacts    ContactsService
-	Dialogs     DialogsService
-	Messages    MessagesService
-	Stories     StoriesService
-	Channels    ChannelsService
-	Files       FilesService
-	Bots        BotsService
-	Polls       PollsService
-	Phone       PhoneService
-	GroupCalls  GroupCallsService
-	SFU         sfu.Service
-	TURN        turnsrv.Service
-	LangPack    LangPackService
-	Sessions    SessionBinder
-	Inline      store.InlineRegistryStore
-	Limiter     RateLimiter
-	Metrics     Metrics
-	SecretChats SecretChatService
-	Stars       StarsService
-	Gifts       GiftsService
-	Passkey     PasskeyService
-	Themes      ThemeService
+	Auth             AuthService
+	Account          AccountService
+	Privacy          PrivacyService
+	Help             HelpService
+	AICompose        AIComposeService
+	Users            UsersService
+	Updates          UpdatesService
+	BootstrapUpdates store.BootstrapUpdateJobStore
+	Contacts         ContactsService
+	Dialogs          DialogsService
+	Messages         MessagesService
+	Stories          StoriesService
+	Channels         ChannelsService
+	Files            FilesService
+	Bots             BotsService
+	Polls            PollsService
+	Phone            PhoneService
+	GroupCalls       GroupCallsService
+	LiveStreams      LiveStreamsService
+	SFU              sfu.Service
+	TURN             turnsrv.Service
+	LangPack         LangPackService
+	Sessions         SessionBinder
+	Inline           store.InlineRegistryStore
+	Limiter          RateLimiter
+	Metrics          Metrics
+	SecretChats      SecretChatService
+	Stars            StarsService
+	Gifts            GiftsService
+	Passkey          PasskeyService
+	Themes           ThemeService
 }
 
 // ThemeService 抽象自定义云主题(app/themes):创建/更新/查询主题 + 维护每用户已安装列表。
@@ -797,7 +813,13 @@ type PhoneService interface {
 // GroupCallsService 抽象超级群语音聊天信令（app/groupcalls）。
 // 错误集合见 domain.ErrGroupCall*（rpc 层映射为 GROUPCALL_* RPC_ERROR）。
 type GroupCallsService interface {
-	Create(ctx context.Context, channelID, creatorUserID int64, title string, now int) (domain.GroupCall, error)
+	Create(ctx context.Context, channelID, creatorUserID int64, title string, rtmpStream, joinMuted bool, scheduleDate, now int) (domain.GroupCall, error)
+	// RtmpStreamKey 取/轮换 channel 的持久 RTMP 推流密钥（rotate=true 覆盖旧 key）。
+	RtmpStreamKey(ctx context.Context, channelID int64, rotate bool, now int) (string, error)
+	// StartScheduled / SetScheduleSubscription / ScheduleSubscriberIDs 是定时通话流程。
+	StartScheduled(ctx context.Context, callID int64) (domain.GroupCall, bool, error)
+	SetScheduleSubscription(ctx context.Context, callID, userID int64, subscribed bool) error
+	ScheduleSubscriberIDs(ctx context.Context, callID int64) ([]int64, error)
 	CreateConference(ctx context.Context, creatorUserID, randomID, migratedFromPhoneCallID int64, now int) (domain.GroupCall, error)
 	Get(ctx context.Context, callID int64) (domain.GroupCall, bool, error)
 	GetBySlug(ctx context.Context, slug string) (domain.GroupCall, bool, error)
@@ -823,6 +845,17 @@ type GroupCallsService interface {
 	ConferenceRecipients(ctx context.Context, callID int64) ([]int64, error)
 	AppendChainBlock(ctx context.Context, block domain.GroupCallChainBlock) (domain.GroupCallChainBlock, error)
 	ChainBlocks(ctx context.Context, callID int64, subChainID, offset, limit int) (domain.GroupCallChainBlockPage, error)
+}
+
+// LiveStreamsService 抽象直播媒体面（app/livestream：RTMP ingest + 切段 ring）。
+// nil = 直播媒体面未启用（信令仍可用，观众停留在"等待推流"占位）。
+type LiveStreamsService interface {
+	// StreamChannels 返回 channel 当前直播时间轴；无活跃推流返回空。
+	StreamChannels(channelID int64) []domain.LiveStreamChannel
+	// StreamPart 按 time_ms/scale 取一段打包好的 tgcalls broadcast part。
+	StreamPart(channelID int64, timeMs int64, scale int) ([]byte, error)
+	// DropChannel 断开该 channel 的推流会话并清空缓冲（discard/revoke）。
+	DropChannel(channelID int64)
 }
 
 // PollsService 抽象 poll 权威态的发送时创建与投票人列表（messages.getPollVotes）。

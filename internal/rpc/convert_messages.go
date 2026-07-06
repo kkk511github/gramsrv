@@ -116,9 +116,7 @@ func tgMessage(m domain.Message) tg.MessageClass {
 	if markup := tgReplyMarkup(m.ReplyMarkup); markup != nil {
 		msg.SetReplyMarkup(markup)
 	}
-	// rich_message（Layer 227 富文本消息）：best-effort 投影；blocks 解码失败则略过
-	// （tgMessage 无 error 返回，corrupt blob 不应拖垮整条消息投影）。
-	if rich, err := tgRichMessage(m.RichMessage); err == nil && rich != nil {
+	if rich := mustTGRichMessage(m.RichMessage); rich != nil {
 		msg.SetRichMessage(*rich)
 	}
 	if m.TTLPeriod > 0 {
@@ -479,6 +477,18 @@ func tgMessageEntities(entities []domain.MessageEntity) []tg.MessageEntityClass 
 			out = append(out, &tg.MessageEntityPhone{Offset: entity.Offset, Length: entity.Length})
 		case domain.MessageEntityBankCard:
 			out = append(out, &tg.MessageEntityBankCard{Offset: entity.Offset, Length: entity.Length})
+		case domain.MessageEntityFormattedDate:
+			out = append(out, &tg.MessageEntityFormattedDate{
+				Offset:    entity.Offset,
+				Length:    entity.Length,
+				Date:      entity.Date,
+				Relative:  entity.Relative,
+				ShortTime: entity.ShortTime,
+				LongTime:  entity.LongTime,
+				ShortDate: entity.ShortDate,
+				LongDate:  entity.LongDate,
+				DayOfWeek: entity.DayOfWeek,
+			})
 		case domain.MessageEntityDiffInsert:
 			out = append(out, &tg.MessageEntityDiffInsert{Offset: entity.Offset, Length: entity.Length})
 		case domain.MessageEntityDiffReplace:
@@ -560,6 +570,19 @@ func domainMessageEntitiesForViewer(viewerUserID int64, entities []tg.MessageEnt
 			out = append(out, domain.MessageEntity{Type: domain.MessageEntityPhone, Offset: e.Offset, Length: e.Length})
 		case *tg.MessageEntityBankCard:
 			out = append(out, domain.MessageEntity{Type: domain.MessageEntityBankCard, Offset: e.Offset, Length: e.Length})
+		case *tg.MessageEntityFormattedDate:
+			out = append(out, domain.MessageEntity{
+				Type:      domain.MessageEntityFormattedDate,
+				Offset:    e.Offset,
+				Length:    e.Length,
+				Date:      e.Date,
+				Relative:  e.Relative || e.GetRelative(),
+				ShortTime: e.ShortTime || e.GetShortTime(),
+				LongTime:  e.LongTime || e.GetLongTime(),
+				ShortDate: e.ShortDate || e.GetShortDate(),
+				LongDate:  e.LongDate || e.GetLongDate(),
+				DayOfWeek: e.DayOfWeek || e.GetDayOfWeek(),
+			})
 		}
 	}
 	return out

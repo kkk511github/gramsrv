@@ -510,11 +510,13 @@ type ChannelDialog struct {
 type ChannelMessageActionType string
 
 const (
-	ChannelActionNone        ChannelMessageActionType = ""
-	ChannelActionCreate      ChannelMessageActionType = "channel_create"
-	ChannelActionChatAddUser ChannelMessageActionType = "chat_add_user"
-	ChannelActionChatDelete  ChannelMessageActionType = "chat_delete_user"
-	ChannelActionChatJoined  ChannelMessageActionType = "chat_joined"
+	ChannelActionNone            ChannelMessageActionType = ""
+	ChannelActionCreate          ChannelMessageActionType = "channel_create"
+	ChannelActionChatAddUser     ChannelMessageActionType = "chat_add_user"
+	ChannelActionChatDelete      ChannelMessageActionType = "chat_delete_user"
+	ChannelActionChatEditPhoto   ChannelMessageActionType = "chat_edit_photo"
+	ChannelActionChatDeletePhoto ChannelMessageActionType = "chat_delete_photo"
+	ChannelActionChatJoined      ChannelMessageActionType = "chat_joined"
 	// ChannelActionChatJoinedByLink 是经邀请链接加入的服务消息，
 	// 渲染为 "X joined the group via invite link"。
 	ChannelActionChatJoinedByLink ChannelMessageActionType = "chat_joined_by_link"
@@ -529,6 +531,9 @@ const (
 	// ChannelActionGroupCall 映射 messageActionGroupCall：started（CallDuration=0）
 	// 与 ended（CallDuration>0）共用同一构造器，官方语义即如此。
 	ChannelActionGroupCall ChannelMessageActionType = "group_call"
+	// ChannelActionGroupCallScheduled 映射 messageActionGroupCallScheduled：
+	// 定时通话创建的服务消息（"scheduled a video chat for ..."），ScheduleDate 必填。
+	ChannelActionGroupCallScheduled ChannelMessageActionType = "group_call_scheduled"
 	// ChannelActionInviteToGroupCall 映射 messageActionInviteToGroupCall（被邀请
 	// 者通过频道消息收到可点击的入会卡片，UserIDs 为受邀人）。
 	ChannelActionInviteToGroupCall ChannelMessageActionType = "invite_to_group_call"
@@ -560,6 +565,8 @@ type ChannelMessageAction struct {
 	CallID         int64
 	CallAccessHash int64
 	CallDuration   int
+	// CallScheduleDate 仅 group_call_scheduled 使用（开播时间）。
+	CallScheduleDate int
 	// Boosts 仅 boost_apply 服务消息使用。
 	Boosts int
 	// BroadcastMessagesAllowed/Stars 仅 paid_messages_price 服务消息使用。
@@ -573,6 +580,8 @@ type ChannelMessageAction struct {
 	StarGift *MessageStarGiftAction
 	// Wallpaper 仅 set_chat_wallpaper 服务消息使用。
 	Wallpaper *Wallpaper
+	// Photo 仅 chat_edit_photo 服务消息使用。
+	Photo *Photo
 }
 
 // ChannelMessage is a single stored message in a channel/supergroup.
@@ -603,6 +612,8 @@ type ChannelMessage struct {
 	Reactions   *ChannelMessageReactions
 	Action      *ChannelMessageAction
 	Media       *MessageMedia
+	// RichMessage 是 Layer 227 富文本消息（richMessage）快照，可选；普通消息恒 nil。
+	RichMessage *MessageRichMessage
 	// FromBoostsApplied 是发送时的 sender boost 数快照（message.from_boosts_applied）。
 	FromBoostsApplied int
 	TTLPeriod         int
@@ -1340,6 +1351,16 @@ type UpdateChannelUsernameRequest struct {
 	Username  string
 }
 
+// SetChannelPhotoResult describes a channel avatar mutation and its durable
+// service message.
+type SetChannelPhotoResult struct {
+	Channel    Channel
+	Message    ChannelMessage
+	Event      ChannelUpdateEvent
+	Recipients []int64
+	Changed    bool
+}
+
 // DeleteChannelResult describes a deleted channel.
 type DeleteChannelResult struct {
 	Channel    Channel
@@ -1374,6 +1395,7 @@ type SendChannelMessageRequest struct {
 	// GroupedID 相册分组 id（sendMultiMedia 同组共享非零值，非相册恒 0）。
 	GroupedID   int64
 	ReplyMarkup *MessageReplyMarkup
+	RichMessage *MessageRichMessage
 	SendAs      *Peer
 	Action      *ChannelMessageAction
 	Date        int
@@ -1616,6 +1638,9 @@ type EditChannelMessageRequest struct {
 	// SetReplyMarkup 置位时替换 reply_markup（ReplyMarkup 为 nil/空 = 清空键盘）。
 	SetReplyMarkup bool
 	ReplyMarkup    *MessageReplyMarkup
+	// SetRichMessage 置位时替换 rich_message（RichMessage nil/空 = 清空富文本）。
+	SetRichMessage bool
+	RichMessage    *MessageRichMessage
 	// ViaBotEditBotID 非零时要求目标消息 via_bot_id 匹配对应 bot。
 	ViaBotEditBotID int64
 	// AllowTodoParticipantMutation 允许非作者普通成员在 checklist 的

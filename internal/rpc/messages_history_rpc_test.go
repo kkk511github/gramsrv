@@ -154,6 +154,61 @@ func TestMessagesSearchChannelPeerReturnsSingleCopyMessages(t *testing.T) {
 	}
 }
 
+func TestMessagesSearchChatPhotosDoesNotReturnOrdinaryChannelHistory(t *testing.T) {
+	ctx := context.Background()
+	userStore := memory.NewUserStore()
+	owner, _ := userStore.Create(ctx, domain.User{AccessHash: 93500, Phone: "15550093500", FirstName: "Owner"})
+	channelStore := memory.NewChannelStore()
+	channelService := appchannels.NewService(channelStore)
+	r := New(Config{}, Deps{
+		Channels: channelService,
+	}, zaptest.NewLogger(t), clock.System)
+	created, err := channelService.CreateChannel(ctx, owner.ID, domain.CreateChannelRequest{
+		Title: "Chat Photos Count Guard", Megagroup: true, Date: 1700034000,
+	})
+	if err != nil {
+		t.Fatalf("create channel: %v", err)
+	}
+	channel := created.Channel
+	for i := 0; i < 7; i++ {
+		if _, err := channelService.SendMessage(ctx, owner.ID, domain.SendChannelMessageRequest{
+			ChannelID: channel.ID,
+			RandomID:  int64(1700034000 + i),
+			Message:   "ordinary channel message",
+			Date:      1700034001 + i,
+		}); err != nil {
+			t.Fatalf("send ordinary message %d: %v", i, err)
+		}
+	}
+
+	req := &tg.MessagesSearchRequest{
+		Peer:   &tg.InputPeerChannel{ChannelID: channel.ID, AccessHash: channel.AccessHash},
+		Filter: &tg.InputMessagesFilterChatPhotos{},
+		Limit:  80,
+	}
+	var in bin.Buffer
+	if err := req.Encode(&in); err != nil {
+		t.Fatalf("encode chat photos search: %v", err)
+	}
+	enc, err := r.Dispatch(WithUserID(ctx, owner.ID), [8]byte{}, 0, &in)
+	if err != nil {
+		t.Fatalf("dispatch chat photos search: %v", err)
+	}
+	if box, ok := enc.(*tg.MessagesMessagesBox); ok {
+		enc = box.Messages
+	}
+	got, ok := enc.(*tg.MessagesChannelMessages)
+	if !ok {
+		t.Fatalf("chat photos search result = %T, want messages.channelMessages", enc)
+	}
+	if got.Count != 0 || len(got.Messages) != 0 {
+		t.Fatalf("chat photos search = count %d messages %d, want explicit empty stub", got.Count, len(got.Messages))
+	}
+	if len(got.Chats) != 1 {
+		t.Fatalf("chat photos search chats = %d, want current channel projection", len(got.Chats))
+	}
+}
+
 func TestMessagesGetSearchCountersUsesMediaCategoryCounts(t *testing.T) {
 	ctx := context.Background()
 	userStore := memory.NewUserStore()
@@ -461,7 +516,7 @@ func TestMessagesSetTypingPushesUserTypingUpdate(t *testing.T) {
 	if got.userID != 1000000002 || got.sessionID != 55 || got.messageType != proto.MessageFromServer {
 		t.Fatalf("push = user %d exclude session %d type %v, want target/exclude/from_server", got.userID, got.sessionID, got.messageType)
 	}
-	if gotAuthKeyID := sessions.scopedAuthKeyID; gotAuthKeyID != authKeyID {
+	if gotAuthKeyID := sessions.scopedAuthKey(); gotAuthKeyID != authKeyID {
 		t.Fatalf("exclude auth_key_id = %x, want %x", gotAuthKeyID, authKeyID)
 	}
 	updateShort, ok := got.message.(*tg.UpdateShort)
@@ -568,7 +623,7 @@ func TestMessagesSetTypingPushesChannelTypingTopMsgID(t *testing.T) {
 	if got.userID != memberID || got.sessionID != 77 || got.messageType != proto.MessageFromServer {
 		t.Fatalf("channel typing push = user %d exclude session %d type %v, want member/exclude/from_server", got.userID, got.sessionID, got.messageType)
 	}
-	if gotAuthKeyID := sessions.scopedAuthKeyID; gotAuthKeyID != authKeyID {
+	if gotAuthKeyID := sessions.scopedAuthKey(); gotAuthKeyID != authKeyID {
 		t.Fatalf("exclude auth_key_id = %x, want %x", gotAuthKeyID, authKeyID)
 	}
 	updates, ok := got.message.(*tg.Updates)

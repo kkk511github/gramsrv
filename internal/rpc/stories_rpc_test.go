@@ -298,8 +298,16 @@ func TestStoriesGetAllStoriesPaginatesByPeerState(t *testing.T) {
 	finalAsCursor := &tg.StoriesGetAllStoriesRequest{}
 	finalAsCursor.SetState(next.State)
 	finalAsCursor.SetNext(true)
-	if _, err := r.onStoriesGetAllStories(ctx, finalAsCursor); err == nil || !tgerr.Is(err, "OFFSET_INVALID") {
-		t.Fatalf("final state as cursor err = %v, want OFFSET_INVALID", err)
+	finalAsCursorClass, err := r.onStoriesGetAllStories(reqCtx, finalAsCursor)
+	if err != nil {
+		t.Fatalf("final state as cursor: %v", err)
+	}
+	finalAsCursorPage, ok := finalAsCursorClass.(*tg.StoriesAllStories)
+	if !ok {
+		t.Fatalf("final state as cursor response = %T, want stories.allStories terminal page", finalAsCursorClass)
+	}
+	if finalAsCursorPage.HasMore || len(finalAsCursorPage.PeerStories) != 0 || finalAsCursorPage.Count != domain.MaxStoryListLimit+1 || finalAsCursorPage.State != next.State {
+		t.Fatalf("final state as cursor page = %+v, want empty terminal page preserving request count/state", finalAsCursorPage)
 	}
 }
 
@@ -7041,8 +7049,11 @@ func TestStoriesCaptionEntitiesRejectMalformedInputsBeforePeerAndMutation(t *tes
 		PrivacyRules: []tg.InputPrivacyRuleClass{&tg.InputPrivacyValueAllowAll{}},
 		RandomID:     7320,
 		Period:       86400,
-		Caption:      "🙂 ok",
-		Entities:     []tg.MessageEntityClass{&tg.MessageEntityBold{Offset: 0, Length: 2}},
+		Caption:      "🙂 ok soon",
+		Entities: []tg.MessageEntityClass{
+			&tg.MessageEntityBold{Offset: 0, Length: 2},
+			&tg.MessageEntityFormattedDate{Offset: 6, Length: 4, Date: 1773436800, ShortDate: true, ShortTime: true},
+		},
 	}
 	updates, err := r.onStoriesSendStory(reqCtx, validReq)
 	if err != nil {
@@ -7050,11 +7061,14 @@ func TestStoriesCaptionEntitiesRejectMalformedInputsBeforePeerAndMutation(t *tes
 	}
 	item := updates.(*tg.Updates).Updates[1].(*tg.UpdateStory).Story.(*tg.StoryItem)
 	entities, ok := item.GetEntities()
-	if !ok || len(entities) != 1 {
-		t.Fatalf("story entities = ok %v %+v, want one entity", ok, entities)
+	if !ok || len(entities) != 2 {
+		t.Fatalf("story entities = ok %v %+v, want two entities", ok, entities)
 	}
 	if bold, ok := entities[0].(*tg.MessageEntityBold); !ok || bold.Offset != 0 || bold.Length != 2 {
 		t.Fatalf("story entity = %T %+v, want bold offset 0 length 2", entities[0], entities[0])
+	}
+	if formatted, ok := entities[1].(*tg.MessageEntityFormattedDate); !ok || formatted.Offset != 6 || formatted.Length != 4 || formatted.Date != 1773436800 || !formatted.ShortDate || !formatted.ShortTime {
+		t.Fatalf("story entity = %T %+v, want formatted date preserved", entities[1], entities[1])
 	}
 	storyID := updates.(*tg.Updates).Updates[0].(*tg.UpdateStoryID).ID
 
@@ -7132,7 +7146,7 @@ func TestStoriesCaptionEntitiesRejectMalformedInputsBeforePeerAndMutation(t *tes
 		t.Fatalf("stories after rejected caption entities = %+v, want original story only", stories.Stories.Stories)
 	}
 	stored := stories.Stories.Stories[0].(*tg.StoryItem)
-	if stored.Caption != "🙂 ok" || stored.Edited {
+	if stored.Caption != validReq.Caption || stored.Edited {
 		t.Fatalf("story after rejected caption entities = %+v, want original caption and not edited", stored)
 	}
 }

@@ -349,6 +349,21 @@ type Photo struct {
 	Sizes         []PhotoSize `json:"sizes,omitempty"`
 }
 
+func ClonePhotoPtr(photo *Photo) *Photo {
+	if photo == nil {
+		return nil
+	}
+	clone := *photo
+	clone.FileReference = append([]byte(nil), photo.FileReference...)
+	clone.Sizes = append([]PhotoSize(nil), photo.Sizes...)
+	for i := range clone.Sizes {
+		clone.Sizes[i].Bytes = append([]byte(nil), photo.Sizes[i].Bytes...)
+		clone.Sizes[i].Sizes = append([]int(nil), photo.Sizes[i].Sizes...)
+		clone.Sizes[i].BackgroundColors = append([]int(nil), photo.Sizes[i].BackgroundColors...)
+	}
+	return &clone
+}
+
 // MessageMediaKind 枚举消息可挂载的媒体载荷。
 type MessageMediaKind string
 
@@ -665,6 +680,8 @@ const (
 	StickerSetSystemKeyEmojiDefaultTopicIcons = "emoji_default_topic_icons"
 	// StickerSetSystemKeyPremiumGifts 对应 premium gifts 系统集。
 	StickerSetSystemKeyPremiumGifts = "premium_gifts"
+	// StickerSetSystemKeyTonGifts 对应 TON gifts 系统集。
+	StickerSetSystemKeyTonGifts = "ton_gifts"
 )
 
 // StickerSetKind 区分贴纸集用途（影响 getAllStickers / getEmojiStickers 归类）。

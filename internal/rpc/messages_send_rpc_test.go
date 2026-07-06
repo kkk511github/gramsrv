@@ -29,6 +29,7 @@ func TestMessagesSendMessageReturnsUpdateAndRecordsOwnerContext(t *testing.T) {
 		RandomID: 123456,
 		Entities: []tg.MessageEntityClass{
 			&tg.MessageEntityBold{Offset: 0, Length: 5},
+			&tg.MessageEntityFormattedDate{Offset: 6, Length: 8, Date: 1773436800, ShortDate: true, ShortTime: true},
 		},
 	}
 	var in bin.Buffer
@@ -51,8 +52,12 @@ func TestMessagesSendMessageReturnsUpdateAndRecordsOwnerContext(t *testing.T) {
 	if messages.sendUserID != sender.ID || messages.sendReq.SenderUserID != sender.ID || messages.sendReq.RecipientUserID != recipient.ID || messages.sendReq.OriginSessionID != 77 {
 		t.Fatalf("send context = user %d req %+v, want sender/recipient/session", messages.sendUserID, messages.sendReq)
 	}
-	if len(messages.sendReq.Entities) != 1 || messages.sendReq.Entities[0].Type != domain.MessageEntityBold {
-		t.Fatalf("entities = %+v, want bold entity converted to domain", messages.sendReq.Entities)
+	if len(messages.sendReq.Entities) != 2 || messages.sendReq.Entities[0].Type != domain.MessageEntityBold {
+		t.Fatalf("entities = %+v, want bold and formatted date converted to domain", messages.sendReq.Entities)
+	}
+	dateEntity := messages.sendReq.Entities[1]
+	if dateEntity.Type != domain.MessageEntityFormattedDate || dateEntity.Date != 1773436800 || !dateEntity.ShortDate || !dateEntity.ShortTime {
+		t.Fatalf("formatted date entity = %+v, want date and flags preserved", dateEntity)
 	}
 	if len(got.Updates) != 2 {
 		t.Fatalf("updates = %+v, want message id + new message", got.Updates)
@@ -67,6 +72,13 @@ func TestMessagesSendMessageReturnsUpdateAndRecordsOwnerContext(t *testing.T) {
 	msg, ok := newMsg.Message.(*tg.Message)
 	if !ok || !msg.Out || msg.PeerID.(*tg.PeerUser).UserID != recipient.ID || msg.Message != req.Message {
 		t.Fatalf("message = %#v, want outgoing private text to recipient", newMsg.Message)
+	}
+	if len(msg.Entities) != 2 {
+		t.Fatalf("message entities = %+v, want 2", msg.Entities)
+	}
+	formatted, ok := msg.Entities[1].(*tg.MessageEntityFormattedDate)
+	if !ok || formatted.Date != 1773436800 || !formatted.ShortDate || !formatted.ShortTime {
+		t.Fatalf("formatted response entity = %#v, want date and flags preserved", msg.Entities[1])
 	}
 	if metrics.messageSend != 1 || metrics.messageSendErr != nil {
 		t.Fatalf("metrics send=%d err=%v, want one successful send", metrics.messageSend, metrics.messageSendErr)
@@ -241,6 +253,37 @@ func TestMessageReplyFromInputStorySucceedsAndProjectsStoryHeader(t *testing.T) 
 	wrongPeer := domain.Peer{Type: domain.PeerTypeUser, ID: sender.ID}
 	if _, err := r.messageReplyFromInput(ctx, sender.ID, wrongPeer, input); err == nil || !strings.Contains(err.Error(), "STORY_ID_INVALID") {
 		t.Fatalf("mismatched story owner err = %v, want STORY_ID_INVALID", err)
+	}
+}
+
+func TestMessageReplyFromInputEmptyMessageIsAbsent(t *testing.T) {
+	const userID = int64(1000000001)
+	ctx := WithUserID(context.Background(), userID)
+	r := New(Config{}, Deps{}, zaptest.NewLogger(t), clock.System)
+	peer := domain.Peer{Type: domain.PeerTypeUser, ID: 1000000002}
+
+	reply, err := r.messageReplyFromInput(ctx, userID, peer, &tg.InputReplyToMessage{})
+	if err != nil {
+		t.Fatalf("empty reply err = %v, want nil", err)
+	}
+	if reply != nil {
+		t.Fatalf("empty reply = %+v, want nil", reply)
+	}
+
+	topicReply := &tg.InputReplyToMessage{}
+	topicReply.SetTopMsgID(123)
+	reply, err = r.messageReplyFromInput(ctx, userID, peer, topicReply)
+	if err != nil {
+		t.Fatalf("topic-only reply err = %v, want nil", err)
+	}
+	if reply == nil || reply.MessageID != 0 || reply.TopMessageID != 123 {
+		t.Fatalf("topic-only reply = %+v, want top_msg_id=123", reply)
+	}
+
+	quoteOnly := &tg.InputReplyToMessage{}
+	quoteOnly.SetQuoteText("orphan quote")
+	if _, err := r.messageReplyFromInput(ctx, userID, peer, quoteOnly); err == nil || !strings.Contains(err.Error(), "REPLY_MESSAGE_ID_INVALID") {
+		t.Fatalf("quote-only reply err = %v, want REPLY_MESSAGE_ID_INVALID", err)
 	}
 }
 

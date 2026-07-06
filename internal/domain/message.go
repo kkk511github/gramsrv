@@ -4,28 +4,29 @@ package domain
 type MessageEntityType string
 
 const (
-	MessageEntityBold        MessageEntityType = "bold"
-	MessageEntityItalic      MessageEntityType = "italic"
-	MessageEntityUnderline   MessageEntityType = "underline"
-	MessageEntityStrike      MessageEntityType = "strike"
-	MessageEntityCode        MessageEntityType = "code"
-	MessageEntityPre         MessageEntityType = "pre"
-	MessageEntityTextURL     MessageEntityType = "text_url"
-	MessageEntityMentionName MessageEntityType = "mention_name"
-	MessageEntitySpoiler     MessageEntityType = "spoiler"
-	MessageEntityBlockquote  MessageEntityType = "blockquote"
-	MessageEntityCustomEmoji MessageEntityType = "custom_emoji"
-	MessageEntityMention     MessageEntityType = "mention"
-	MessageEntityHashtag     MessageEntityType = "hashtag"
-	MessageEntityCashtag     MessageEntityType = "cashtag"
-	MessageEntityBotCommand  MessageEntityType = "bot_command"
-	MessageEntityURL         MessageEntityType = "url"
-	MessageEntityEmail       MessageEntityType = "email"
-	MessageEntityPhone       MessageEntityType = "phone"
-	MessageEntityBankCard    MessageEntityType = "bank_card"
-	MessageEntityDiffInsert  MessageEntityType = "diff_insert"
-	MessageEntityDiffReplace MessageEntityType = "diff_replace"
-	MessageEntityDiffDelete  MessageEntityType = "diff_delete"
+	MessageEntityBold          MessageEntityType = "bold"
+	MessageEntityItalic        MessageEntityType = "italic"
+	MessageEntityUnderline     MessageEntityType = "underline"
+	MessageEntityStrike        MessageEntityType = "strike"
+	MessageEntityCode          MessageEntityType = "code"
+	MessageEntityPre           MessageEntityType = "pre"
+	MessageEntityTextURL       MessageEntityType = "text_url"
+	MessageEntityMentionName   MessageEntityType = "mention_name"
+	MessageEntitySpoiler       MessageEntityType = "spoiler"
+	MessageEntityBlockquote    MessageEntityType = "blockquote"
+	MessageEntityCustomEmoji   MessageEntityType = "custom_emoji"
+	MessageEntityMention       MessageEntityType = "mention"
+	MessageEntityHashtag       MessageEntityType = "hashtag"
+	MessageEntityCashtag       MessageEntityType = "cashtag"
+	MessageEntityBotCommand    MessageEntityType = "bot_command"
+	MessageEntityURL           MessageEntityType = "url"
+	MessageEntityEmail         MessageEntityType = "email"
+	MessageEntityPhone         MessageEntityType = "phone"
+	MessageEntityBankCard      MessageEntityType = "bank_card"
+	MessageEntityFormattedDate MessageEntityType = "formatted_date"
+	MessageEntityDiffInsert    MessageEntityType = "diff_insert"
+	MessageEntityDiffReplace   MessageEntityType = "diff_replace"
+	MessageEntityDiffDelete    MessageEntityType = "diff_delete"
 )
 
 const (
@@ -104,6 +105,15 @@ type MessageEntity struct {
 	DocumentID int64
 	// Collapsed 仅 blockquote 使用。
 	Collapsed bool
+	// Date / Relative / ShortTime / LongTime / ShortDate / LongDate / DayOfWeek
+	// 仅 formatted_date 使用。
+	Date      int
+	Relative  bool
+	ShortTime bool
+	LongTime  bool
+	ShortDate bool
+	LongDate  bool
+	DayOfWeek bool
 	// OldText 仅 AI compose diff_replace 使用；普通消息输入不会接受该实体。
 	OldText string
 }
@@ -418,6 +428,10 @@ type EditMessageRequest struct {
 	// 未置位则保留原 markup。仅 bot 编辑自己消息时由 RPC 层置位（P3）。
 	SetReplyMarkup bool
 	ReplyMarkup    *MessageReplyMarkup
+	// SetRichMessage 置位时替换 rich_message（RichMessage nil/空 = 清空富文本）。
+	// TDesktop EditRichMessage 只带 f_rich_message，不带 f_message；store 不能把它误判为空编辑。
+	SetRichMessage bool
+	RichMessage    *MessageRichMessage
 	// ViaBotEditBotID 非零时允许对应 bot 编辑经由它发送的 inline 私聊消息。
 	ViaBotEditBotID int64
 	// AllowTodoParticipantMutation 允许 checklist 参与者在 others_can_* 授权下通过
@@ -598,6 +612,7 @@ type ScheduledMessage struct {
 	Message              string
 	Entities             []MessageEntity
 	Media                *MessageMedia
+	RichMessage          *MessageRichMessage
 	Silent               bool
 	NoForwards           bool
 	ReplyTo              *MessageReply
@@ -626,6 +641,7 @@ type ScheduleMessageRequest struct {
 	Message              string
 	Entities             []MessageEntity
 	Media                *MessageMedia
+	RichMessage          *MessageRichMessage
 	Silent               bool
 	NoForwards           bool
 	ReplyTo              *MessageReply
@@ -639,14 +655,16 @@ type ScheduleMessageRequest struct {
 // EditScheduledMessageRequest updates one pending scheduled message before it
 // enters normal history.
 type EditScheduledMessageRequest struct {
-	OwnerUserID  int64
-	Peer         Peer
-	ID           int
-	SetMessage   bool
-	Message      string
-	Entities     []MessageEntity
-	ScheduleDate int
-	Date         int
+	OwnerUserID    int64
+	Peer           Peer
+	ID             int
+	SetMessage     bool
+	Message        string
+	Entities       []MessageEntity
+	SetRichMessage bool
+	RichMessage    *MessageRichMessage
+	ScheduleDate   int
+	Date           int
 }
 
 // ScheduledMessageFilter selects scheduled messages for one owner/peer.
