@@ -18,7 +18,6 @@ SET search_path = public;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
-SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SET check_function_bodies = false;
@@ -5526,9 +5525,21 @@ ALTER TABLE ONLY public.user_update_watermarks
 
 
 -- ===================== 规范 seed 数据 =====================
--- 关触发器+FK 精确装载 seed（等价 pg_restore），避免 seed 其它表触发 read-model 触发器二次生成行而撞键。
--- session_replication_role 需超级权限，与本迁移已有的 CREATE EXTENSION pg_trgm 同一前提。
-SET session_replication_role = replica;
+-- 关闭业务触发器装载 seed，避免 seed 其它表触发 read-model 触发器二次生成行而撞键。
+-- 只禁用 USER 触发器，保留 FK/constraint 触发器；这样普通 schema owner 也能执行，
+-- 不需要任何 superuser-only 会话参数。
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN
+        SELECT schemaname, tablename
+        FROM pg_tables
+        WHERE schemaname = 'public'
+    LOOP
+        EXECUTE format('ALTER TABLE %I.%I DISABLE TRIGGER USER', r.schemaname, r.tablename);
+    END LOOP;
+END $$;
 
 --
 -- PostgreSQL database dump
@@ -5541,7 +5552,6 @@ SET session_replication_role = replica;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
-SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SET check_function_bodies = false;
@@ -6112,4 +6122,15 @@ SELECT pg_catalog.setval('public.users_id_seq', 1780243199, true);
 
 
 
-SET session_replication_role = DEFAULT;
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN
+        SELECT schemaname, tablename
+        FROM pg_tables
+        WHERE schemaname = 'public'
+    LOOP
+        EXECUTE format('ALTER TABLE %I.%I ENABLE TRIGGER USER', r.schemaname, r.tablename);
+    END LOOP;
+END $$;

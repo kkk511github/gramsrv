@@ -129,13 +129,36 @@ rewritten, preserving client protocol compatibility.
 The code default lives in `internal/brand/brand.go` as `DefaultAppName`. Without
 an environment override, the displayed app name is `Safelink`.
 
-The optional sticker seed directory is skipped when it does not exist. To deploy the official premium sticker/emoji catalog from `HSgram_-premium-promo`, run:
+### Sticker, Emoji, and Reaction Seeds
+
+The source asset repository is `kkk511github/HSgram_-premium-promo.git`
+(`HSgram_-premium-promo` locally). It contains the downloaded Telegram
+reference catalog under `telegram_official_catalog/`. `slerv` does not read
+that repository directly at runtime; deploys consume the generated seed tree in
+`data/sticker-seed`.
+
+The optional sticker seed directory is skipped when it does not exist. To
+generate or refresh the official sticker, emoji, and reaction catalog, run:
 
 ```sh
 go run ./cmd/stickerseeddeploy -source /path/to/HSgram_-premium-promo -dest data/sticker-seed
 ```
 
-Restart `telesrv` after deploying; `SeedMedia` imports new or changed sets on startup.
+The generated `data/sticker-seed` directory must be copied as a complete
+directory tree. Do not hand-copy only the top-level files: reaction animations,
+sticker documents, thumbnails, and set metadata live several levels deep. On a
+server deploy, keep the tree next to the service data and point the runtime at
+it:
+
+```sh
+TELESRV_STICKER_SEED_DIR=/www/safelink/slerv/data/sticker-seed
+```
+
+Restart `slerv` after deploying. `SeedMedia` imports new or changed sets on
+startup and records seed state in the database, so a normal restart is
+incremental. To force a completely clean import, reset the database or clear the
+seed-state rows together with the imported sticker/media rows; otherwise
+unchanged seed sets are intentionally skipped.
 
 Optional OpenAI-compatible, Kimi/Moonshot, Gemini, and Anthropic provider
 variables are documented in `.env.example`.

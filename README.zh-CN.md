@@ -114,13 +114,31 @@ TELESRV_APP_NAME=Safelink
 
 代码默认值在 `internal/brand/brand.go` 的 `DefaultAppName`。如果没有环境变量，默认展示为 `Safelink`。
 
-如果 sticker seed 目录不存在，启动时会自动跳过。要从 `HSgram_-premium-promo` 部署官方 premium sticker/emoji 目录，执行：
+### 贴纸、表情和回应 Seed
+
+素材源仓库是 `kkk511github/HSgram_-premium-promo.git`，本地路径通常是
+`HSgram_-premium-promo`。官方参考目录放在
+`telegram_official_catalog/`。`slerv` 运行时不直接读取这个素材仓库，而是读取
+生成后的 `data/sticker-seed`。
+
+如果 sticker seed 目录不存在，启动时会自动跳过。要生成或刷新官方贴纸、表情和回应目录，执行：
 
 ```sh
 go run ./cmd/stickerseeddeploy -source /path/to/HSgram_-premium-promo -dest data/sticker-seed
 ```
 
-部署后重启 `telesrv`；`SeedMedia` 会在启动时增量导入新增或变更的集合。
+生成后的 `data/sticker-seed` 必须按完整目录树部署，不要只手工拷贝顶层文件：
+reaction 动画、贴纸文档、缩略图和 set 元数据分布在多层目录里。服务器部署时把
+它放在服务数据目录旁边，并配置：
+
+```sh
+TELESRV_STICKER_SEED_DIR=/www/safelink/slerv/data/sticker-seed
+```
+
+部署后重启 `slerv`。`SeedMedia` 会在启动时导入新增或变更的集合，并在数据库里
+记录 seed 状态，所以普通重启是增量导入。如果要强制从零重新导入，需要重置数据
+库，或同时清理 seed-state 与已导入的 sticker/media 数据；否则未变化的 seed 会被
+有意跳过。
 
 可选的 OpenAI-compatible、Kimi/Moonshot、Gemini、Anthropic provider 变量见 `.env.example`。
 
