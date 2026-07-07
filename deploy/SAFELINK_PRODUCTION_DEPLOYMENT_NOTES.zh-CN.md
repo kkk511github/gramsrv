@@ -44,7 +44,9 @@ TELESRV_ADVERTISE_IP=<server-public-ip>
 TELESRV_POSTGRES_DSN=<postgres-dsn>
 TELESRV_REDIS_ADDR=127.0.0.1:6399
 TELESRV_STICKER_SEED_DIR=/www/safelink/slerv/data/sticker-seed
-TELESRV_STICKER_PUBLIC_URL=https://safelink.chat
+TELESRV_PUBLIC_BASE_URL=https://safelink.chat
+TELESRV_PUBLIC_LINK_WEB_ADDR=127.0.0.1:2401
+TELESRV_PUBLIC_LINK_APP_SCHEME=safelink
 TELESRV_WEBSOCKET_ORIGINS=https://safelink.chat,http://safelink.chat,https://web.safelink.chat,http://web.safelink.chat
 ```
 

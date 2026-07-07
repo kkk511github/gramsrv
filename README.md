@@ -112,7 +112,7 @@ Useful local environment variables:
 | `TELESRV_BLOB_DIR` | `data/blobs` | local media blob directory |
 | `TELESRV_STICKER_SEED_DIR` | `data/sticker-seed` | optional sticker/reaction seed directory |
 | `TELESRV_PUBLIC_LINK_WEB_ADDR` | empty | optional public-link landing page listen address, commonly `127.0.0.1:2401` |
-| `TELESRV_PUBLIC_LINK_APP_SCHEME` | `safelink` | URL scheme used by landing pages to open the client, for example `tg` for the current iOS build |
+| `TELESRV_PUBLIC_LINK_APP_SCHEME` | `safelink` | URL scheme used by landing pages to open the SafeLink client |
 | `TELESRV_STICKER_WEB_ADDR` | empty | legacy alias for `TELESRV_PUBLIC_LINK_WEB_ADDR` |
 | `TELESRV_STICKER_WEB_PUBLIC_URL` | `https://safelink.chat` | legacy alias for `TELESRV_PUBLIC_BASE_URL` |
 | `TELESRV_STICKER_WEB_APP_SCHEME` | `safelink` | legacy alias for `TELESRV_PUBLIC_LINK_APP_SCHEME` |
@@ -227,15 +227,15 @@ In production, run this endpoint on localhost and expose it through Nginx:
 ```sh
 TELESRV_PUBLIC_BASE_URL=https://safelink.chat
 TELESRV_PUBLIC_LINK_WEB_ADDR=127.0.0.1:2401
-TELESRV_PUBLIC_LINK_APP_SCHEME=tg
+TELESRV_PUBLIC_LINK_APP_SCHEME=safelink
 ```
 
 `TELESRV_PUBLIC_LINK_APP_SCHEME` must match the URL scheme registered by the
-client. The current SafeLink iOS build registers `tg://`, so production should
-use `tg`; with the default `safelink`, the landing page renders but its open
-button will not launch that iOS build. Existing deployments can keep the legacy
-aliases `TELESRV_STICKER_WEB_ADDR`, `TELESRV_STICKER_WEB_PUBLIC_URL`, and
-`TELESRV_STICKER_WEB_APP_SCHEME`; the loader maps them to the new names.
+client. SafeLink production must use the SafeLink-specific scheme so landing
+pages generate `safelink://...` deep links instead of `tg://...`. Existing
+deployments can keep the legacy aliases `TELESRV_STICKER_WEB_ADDR`,
+`TELESRV_STICKER_WEB_PUBLIC_URL`, and `TELESRV_STICKER_WEB_APP_SCHEME`; the
+loader maps them to the new names, but their values still need to be `safelink`.
 
 Place Nginx rules before the Web SPA fallback
 `location / { try_files ... /index.html; }`. Otherwise `/+<invite_hash>` is
@@ -261,7 +261,7 @@ After deployment, verify the route and deep link:
 ```sh
 nginx -t && systemctl reload nginx
 systemctl restart slerv
-curl -sS https://safelink.chat/+example_hash | grep 'tg://join?invite='
+curl -sS https://safelink.chat/+example_hash | grep 'safelink://join?invite='
 ```
 
 ## Public Deployment Ports

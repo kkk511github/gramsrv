@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"errors"
+	"net/url"
 	"strings"
 
 	"github.com/gotd/td/tg"
@@ -402,7 +403,9 @@ func channelInviteHashFromLink(link string) (string, error) {
 		return "", err
 	}
 	link = strings.TrimSpace(link)
-	link = strings.TrimPrefix(link, "tg://join?invite=")
+	if hash, ok := channelInviteHashFromAppLink(link); ok {
+		link = hash
+	}
 	if strings.Contains(link, "://") {
 		if idx := strings.LastIndex(link, "/+"); idx >= 0 {
 			link = link[idx+2:]
@@ -421,6 +424,26 @@ func channelInviteHashFromLink(link string) (string, error) {
 		return "", limitInvalidErr()
 	}
 	return link, nil
+}
+
+func channelInviteHashFromAppLink(link string) (string, bool) {
+	parsed, err := url.Parse(link)
+	if err != nil || !knownInviteAppScheme(parsed.Scheme) {
+		return "", false
+	}
+	if strings.EqualFold(parsed.Host, "join") || strings.EqualFold(parsed.Opaque, "join") {
+		return parsed.Query().Get("invite"), true
+	}
+	return "", false
+}
+
+func knownInviteAppScheme(scheme string) bool {
+	switch strings.ToLower(strings.TrimSpace(scheme)) {
+	case "tg", "safelink", "sali", "telesrv":
+		return true
+	default:
+		return false
+	}
 }
 
 func channelInviteErr(err error) error {

@@ -104,7 +104,7 @@ go build -o bin/gramsrv ./cmd/telesrv
 | `TELESRV_BLOB_DIR` | `data/blobs` | 本地媒体 blob 目录 |
 | `TELESRV_STICKER_SEED_DIR` | `data/sticker-seed` | 可选 sticker/reaction 种子目录 |
 | `TELESRV_PUBLIC_LINK_WEB_ADDR` | 空 | 可选公开链接落地页监听地址，常用 `127.0.0.1:2401` |
-| `TELESRV_PUBLIC_LINK_APP_SCHEME` | `safelink` | 落地页打开客户端时使用的 URL scheme，例如当前 iOS 包使用 `tg` |
+| `TELESRV_PUBLIC_LINK_APP_SCHEME` | `safelink` | 落地页打开 SafeLink 客户端时使用的 URL scheme |
 | `TELESRV_STICKER_WEB_ADDR` | 空 | `TELESRV_PUBLIC_LINK_WEB_ADDR` 的旧兼容别名 |
 | `TELESRV_STICKER_WEB_PUBLIC_URL` | `https://safelink.chat` | `TELESRV_PUBLIC_BASE_URL` 的旧兼容别名 |
 | `TELESRV_STICKER_WEB_APP_SCHEME` | `safelink` | `TELESRV_PUBLIC_LINK_APP_SCHEME` 的旧兼容别名 |
@@ -202,14 +202,15 @@ Telegram 相同形态的公开入口，例如：
 ```sh
 TELESRV_PUBLIC_BASE_URL=https://safelink.chat
 TELESRV_PUBLIC_LINK_WEB_ADDR=127.0.0.1:2401
-TELESRV_PUBLIC_LINK_APP_SCHEME=tg
+TELESRV_PUBLIC_LINK_APP_SCHEME=safelink
 ```
 
-`TELESRV_PUBLIC_LINK_APP_SCHEME` 必须和客户端实际注册的 scheme 一致。当前
-SafeLink iOS 包注册的是 `tg://`，因此线上配置应使用 `tg`；如果使用默认的
-`safelink`，落地页能显示，但按钮不会拉起当前 iOS 包。已有部署也可以继续使用
-旧兼容变量 `TELESRV_STICKER_WEB_ADDR`、`TELESRV_STICKER_WEB_PUBLIC_URL` 和
-`TELESRV_STICKER_WEB_APP_SCHEME`；配置加载器会映射到新变量。
+`TELESRV_PUBLIC_LINK_APP_SCHEME` 必须和客户端实际注册的 scheme 一致。SafeLink
+生产环境必须使用 SafeLink 自己的 scheme，让落地页生成 `safelink://...` 深链，
+不要再生成 `tg://...`。已有部署也可以继续使用旧兼容变量
+`TELESRV_STICKER_WEB_ADDR`、`TELESRV_STICKER_WEB_PUBLIC_URL` 和
+`TELESRV_STICKER_WEB_APP_SCHEME`；配置加载器会映射到新变量，但它们的值也必须是
+`safelink`。
 
 Nginx 规则要放在 Web SPA 的 `location / { try_files ... /index.html; }` 之前，
 否则 `/+<invite_hash>` 会被当成前端路由，显示 Web 界面，而不会进入邀请落地页。
@@ -234,7 +235,7 @@ location ~ ^/joinchat/([A-Za-z0-9_-]+)/?$ {
 ```sh
 nginx -t && systemctl reload nginx
 systemctl restart slerv
-curl -sS https://safelink.chat/+example_hash | grep 'tg://join?invite='
+curl -sS https://safelink.chat/+example_hash | grep 'safelink://join?invite='
 ```
 
 ## 最小公网部署端口清单
