@@ -181,8 +181,6 @@ type Authorization struct {
 	ApiID           int32
 	AppVersion      string
 	Ip              string
-	Country         string
-	Region          string
 	CreatedAt       pgtype.Timestamptz
 	ActiveAt        pgtype.Timestamptz
 	PasswordPending bool

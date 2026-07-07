@@ -145,15 +145,6 @@ func (s *AuthorizationStore) Bind(_ context.Context, a domain.Authorization) err
 	s.mu.Lock()
 	if existing, ok := s.m[a.AuthKeyID]; ok && !existing.CreatedAt.IsZero() {
 		a.CreatedAt = existing.CreatedAt
-		if a.IP == "" {
-			a.IP = existing.IP
-		}
-		if a.Country == "" {
-			a.Country = existing.Country
-		}
-		if a.Region == "" {
-			a.Region = existing.Region
-		}
 	}
 	s.m[a.AuthKeyID] = a
 	s.mu.Unlock()

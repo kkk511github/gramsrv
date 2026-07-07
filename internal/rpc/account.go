@@ -7,7 +7,6 @@ import (
 
 	"github.com/gotd/td/tg"
 
-	"telesrv/internal/clientaddr"
 	"telesrv/internal/compat/tdesktop"
 	"telesrv/internal/domain"
 )
@@ -330,7 +329,6 @@ func (r *Router) onAccountGetAuthorizations(ctx context.Context) (*tg.AccountAut
 	}
 	out := &tg.AccountAuthorizations{Authorizations: make([]tg.Authorization, 0, len(items))}
 	for _, item := range items {
-		item = authorizationWithCurrentClientAddress(ctx, item, authKeyID)
 		out.Authorizations = append(out.Authorizations, tgAuthorization(item, authKeyID, int(r.clock.Now().Unix())))
 	}
 	return out, nil
@@ -1547,29 +1545,9 @@ func tgAuthorization(a domain.Authorization, currentAuthKeyID [8]byte, now int) 
 		DateCreated:   created,
 		DateActive:    active,
 		IP:            a.IP,
-		Country:       strings.TrimSpace(a.Country),
-		Region:        strings.TrimSpace(a.Region),
+		Country:       "Unknown",
+		Region:        "Unknown",
 	}
-}
-
-func authorizationWithCurrentClientAddress(ctx context.Context, a domain.Authorization, currentAuthKeyID [8]byte) domain.Authorization {
-	if a.AuthKeyID != currentAuthKeyID {
-		return a
-	}
-	info, ok := clientaddr.FromContext(ctx)
-	if !ok {
-		return a
-	}
-	if info.IP != "" {
-		a.IP = info.IP
-	}
-	if info.Country != "" {
-		a.Country = info.Country
-	}
-	if info.Region != "" {
-		a.Region = info.Region
-	}
-	return a
 }
 
 func (r *Router) onAccountGetDefaultProfilePhotoEmojis(ctx context.Context, hash int64) (tg.EmojiListClass, error) {

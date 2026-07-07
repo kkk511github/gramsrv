@@ -19,7 +19,7 @@ func (q *Queries) DeleteAuthorization(ctx context.Context, authKeyID int64) erro
 }
 
 const getAuthorizationByAuthKey = `-- name: GetAuthorizationByAuthKey :one
-SELECT auth_key_id, user_id, hash, layer, device_model, platform, system_version, api_id, app_version, ip, country, region, created_at, active_at, password_pending FROM authorizations WHERE auth_key_id = $1
+SELECT auth_key_id, user_id, hash, layer, device_model, platform, system_version, api_id, app_version, ip, created_at, active_at, password_pending FROM authorizations WHERE auth_key_id = $1
 `
 
 func (q *Queries) GetAuthorizationByAuthKey(ctx context.Context, authKeyID int64) (Authorization, error) {
@@ -36,8 +36,6 @@ func (q *Queries) GetAuthorizationByAuthKey(ctx context.Context, authKeyID int64
 		&i.ApiID,
 		&i.AppVersion,
 		&i.Ip,
-		&i.Country,
-		&i.Region,
 		&i.CreatedAt,
 		&i.ActiveAt,
 		&i.PasswordPending,
@@ -46,7 +44,7 @@ func (q *Queries) GetAuthorizationByAuthKey(ctx context.Context, authKeyID int64
 }
 
 const listAuthorizationsByUser = `-- name: ListAuthorizationsByUser :many
-SELECT auth_key_id, user_id, hash, layer, device_model, platform, system_version, api_id, app_version, ip, country, region, created_at, active_at, password_pending FROM authorizations
+SELECT auth_key_id, user_id, hash, layer, device_model, platform, system_version, api_id, app_version, ip, created_at, active_at, password_pending FROM authorizations
 WHERE user_id = $1
 ORDER BY active_at DESC, auth_key_id DESC
 `
@@ -71,8 +69,6 @@ func (q *Queries) ListAuthorizationsByUser(ctx context.Context, userID int64) ([
 			&i.ApiID,
 			&i.AppVersion,
 			&i.Ip,
-			&i.Country,
-			&i.Region,
 			&i.CreatedAt,
 			&i.ActiveAt,
 			&i.PasswordPending,
@@ -88,8 +84,8 @@ func (q *Queries) ListAuthorizationsByUser(ctx context.Context, userID int64) ([
 }
 
 const upsertAuthorization = `-- name: UpsertAuthorization :exec
-INSERT INTO authorizations (auth_key_id, user_id, layer, device_model, platform, system_version, api_id, app_version, ip, country, region)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+INSERT INTO authorizations (auth_key_id, user_id, layer, device_model, platform, system_version, api_id, app_version, ip)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (auth_key_id) DO UPDATE SET
   user_id = EXCLUDED.user_id,
   layer = EXCLUDED.layer,
@@ -98,9 +94,7 @@ ON CONFLICT (auth_key_id) DO UPDATE SET
   system_version = EXCLUDED.system_version,
   api_id = EXCLUDED.api_id,
   app_version = EXCLUDED.app_version,
-  ip = CASE WHEN EXCLUDED.ip <> '' THEN EXCLUDED.ip ELSE authorizations.ip END,
-  country = CASE WHEN EXCLUDED.country <> '' THEN EXCLUDED.country ELSE authorizations.country END,
-  region = CASE WHEN EXCLUDED.region <> '' THEN EXCLUDED.region ELSE authorizations.region END,
+  ip = EXCLUDED.ip,
   active_at = now()
 `
 
@@ -114,8 +108,6 @@ type UpsertAuthorizationParams struct {
 	ApiID         int32
 	AppVersion    string
 	Ip            string
-	Country       string
-	Region        string
 }
 
 func (q *Queries) UpsertAuthorization(ctx context.Context, arg UpsertAuthorizationParams) error {
@@ -129,8 +121,6 @@ func (q *Queries) UpsertAuthorization(ctx context.Context, arg UpsertAuthorizati
 		arg.ApiID,
 		arg.AppVersion,
 		arg.Ip,
-		arg.Country,
-		arg.Region,
 	)
 	return err
 }
