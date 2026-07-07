@@ -14,6 +14,7 @@ import (
 	"github.com/gotd/td/tg"
 
 	"telesrv/internal/app/auth"
+	"telesrv/internal/clientaddr"
 	"telesrv/internal/domain"
 )
 
@@ -757,10 +758,12 @@ func (r *Router) tgSignInServiceNotification(ctx context.Context, u domain.User,
 	if name == "" {
 		name = "there"
 	}
-	message := fmt.Sprintf("New login.\nDear %s, we detected a login into your account from a new device on %s.\n\nDevice: %s\nLocation: Unknown\n\nIf this wasn't you, you can terminate that session in Settings > Devices (or Privacy & Security > Active Sessions).",
+	location := signInLocationText(ctx)
+	message := fmt.Sprintf("New login.\nDear %s, we detected a login into your account from a new device on %s.\n\nDevice: %s\nLocation: %s\n\nIf this wasn't you, you can terminate that session in Settings > Devices (or Privacy & Security > Active Sessions).",
 		name,
 		now.UTC().Format(time.RFC1123),
 		client,
+		location,
 	)
 	authID := int64(binary.LittleEndian.Uint64(authKeyID[:]))
 	update := &tg.UpdateServiceNotification{
@@ -774,6 +777,33 @@ func (r *Router) tgSignInServiceNotification(ctx context.Context, u domain.User,
 		Updates: []tg.UpdateClass{update},
 		Date:    int(now.Unix()),
 	}
+}
+
+func signInLocationText(ctx context.Context) string {
+	info, ok := clientaddr.FromContext(ctx)
+	if !ok {
+		return "Unknown"
+	}
+	parts := make([]string, 0, 3)
+	appendPart := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		for _, existing := range parts {
+			if strings.EqualFold(existing, value) {
+				return
+			}
+		}
+		parts = append(parts, value)
+	}
+	appendPart(info.Country)
+	appendPart(info.Region)
+	appendPart(info.IP)
+	if len(parts) == 0 {
+		return "Unknown"
+	}
+	return strings.Join(parts, " / ")
 }
 
 func signInNotificationEntities(message string) []tg.MessageEntityClass {

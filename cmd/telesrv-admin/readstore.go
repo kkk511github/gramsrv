@@ -77,6 +77,8 @@ type AuthorizationRow struct {
 	APIID           int
 	AppVersion      string
 	IP              string
+	Country         string
+	Region          string
 	PasswordPending bool
 	CreatedAt       time.Time
 	ActiveAt        time.Time
@@ -403,7 +405,7 @@ WHERE user_id = $1`, userID).Scan(&r.Frozen, &r.Reason, &r.Actor, &r.CommandID, 
 
 func (s *readStore) authorizations(ctx context.Context, userID int64) ([]AuthorizationRow, error) {
 	rows, err := s.pool.Query(ctx, `
-SELECT auth_key_id, hash, layer, device_model, platform, system_version, api_id, app_version, ip, password_pending, created_at, active_at
+	SELECT auth_key_id, hash, layer, device_model, platform, system_version, api_id, app_version, ip, country, region, password_pending, created_at, active_at
 FROM authorizations
 WHERE user_id = $1
 ORDER BY active_at DESC, created_at DESC
@@ -415,7 +417,7 @@ LIMIT 100`, userID)
 	out := make([]AuthorizationRow, 0)
 	for rows.Next() {
 		var a AuthorizationRow
-		if err := rows.Scan(&a.AuthKeyID, &a.Hash, &a.Layer, &a.DeviceModel, &a.Platform, &a.SystemVersion, &a.APIID, &a.AppVersion, &a.IP, &a.PasswordPending, &a.CreatedAt, &a.ActiveAt); err != nil {
+		if err := rows.Scan(&a.AuthKeyID, &a.Hash, &a.Layer, &a.DeviceModel, &a.Platform, &a.SystemVersion, &a.APIID, &a.AppVersion, &a.IP, &a.Country, &a.Region, &a.PasswordPending, &a.CreatedAt, &a.ActiveAt); err != nil {
 			return nil, err
 		}
 		out = append(out, a)

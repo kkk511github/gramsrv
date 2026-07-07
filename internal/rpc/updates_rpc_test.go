@@ -12,6 +12,7 @@ import (
 
 	appchannels "telesrv/internal/app/channels"
 	appupdates "telesrv/internal/app/updates"
+	"telesrv/internal/clientaddr"
 	"telesrv/internal/domain"
 	"telesrv/internal/postresponse"
 	"telesrv/internal/store/memory"
@@ -125,6 +126,7 @@ func TestSignInServiceNotificationMatchesEnterpriseShape(t *testing.T) {
 		SystemVersion: "Windows",
 		AppVersion:    "6.8.4",
 	})
+	ctx = clientaddr.WithContext(ctx, clientaddr.Info{IP: "198.51.100.8", Country: "SG", Region: "Singapore"})
 
 	got := r.tgSignInServiceNotification(ctx, domain.User{
 		ID:        1000000001,
@@ -142,7 +144,7 @@ func TestSignInServiceNotificationMatchesEnterpriseShape(t *testing.T) {
 	if update.Popup || update.InboxDate == 0 || update.Media == nil {
 		t.Fatalf("notification flags/media = popup %v inbox %d media %T", update.Popup, update.InboxDate, update.Media)
 	}
-	for _, want := range []string{"New login.", "Test User", "Telegram Desktop", "Settings > Devices"} {
+	for _, want := range []string{"New login.", "Test User", "Telegram Desktop", "SG / Singapore / 198.51.100.8", "Settings > Devices"} {
 		if !strings.Contains(update.Message, want) {
 			t.Fatalf("notification message %q missing %q", update.Message, want)
 		}

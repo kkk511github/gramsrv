@@ -25,6 +25,7 @@ import (
 	"github.com/gotd/td/tmap"
 	"github.com/gotd/td/transport"
 
+	"telesrv/internal/clientaddr"
 	"telesrv/internal/store"
 	"telesrv/internal/store/memory"
 )
@@ -273,7 +274,7 @@ func (s *Server) serveMixed(ctx context.Context, ln net.Listener) error {
 	// 触发客户端 6s 重连风暴并误判「后端不健康」回退到外部 DNS。per-conn goroutine 模型已消解
 	// slow-loris 接入饥饿，故嗅探用满 handshakeTimeout 是安全的。
 	mux := newSamePortMux(ln, s.handshakeTimeout)
-	wsLn, wsHandler := transport.WebsocketListener(ln.Addr())
+	wsLn, wsHandler := newWebsocketListener(ln.Addr())
 
 	httpServer := &http.Server{
 		Handler:           websocketRouteHandler(wsHandler, s.websocketOrigins),
@@ -380,6 +381,12 @@ func (s *Server) acceptLoop(ctx context.Context, ln net.Listener, obfuscated boo
 // 连接循环。提升过程的读取放在本 goroutine、且受握手读超时约束，而非塞在 accept 循环里，
 // 这样慢连接不会阻塞其他连接接入，去混淆/codec 握手本身也有时间上界。
 func (s *Server) serveDetectedConn(ctx context.Context, raw net.Conn, obfuscated bool) {
+	if info, ok := clientaddr.FromProvider(raw); ok {
+		ctx = clientaddr.WithContext(ctx, info)
+	} else {
+		ctx = clientaddr.WithContext(ctx, clientaddr.FromNetAddr(raw.RemoteAddr()))
+	}
+
 	// 握手读超时只覆盖去混淆 + codec 探测这一小段；用真实墙钟时间（SetReadDeadline 语义），
 	// 不走可能被测试注入的逻辑 clock。
 	if err := raw.SetReadDeadline(time.Now().Add(s.handshakeTimeout)); err != nil {

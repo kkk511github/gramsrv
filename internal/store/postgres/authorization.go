@@ -29,8 +29,8 @@ func (s *AuthorizationStore) Bind(ctx context.Context, a domain.Authorization) e
 		a.Hash = authorizationHash(a.AuthKeyID)
 	}
 	_, err := s.db.Exec(ctx, `
-INSERT INTO authorizations (auth_key_id, user_id, hash, layer, device_model, platform, system_version, api_id, app_version, ip, password_pending)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+	INSERT INTO authorizations (auth_key_id, user_id, hash, layer, device_model, platform, system_version, api_id, app_version, ip, country, region, password_pending)
+	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 ON CONFLICT (auth_key_id) DO UPDATE SET
   user_id = EXCLUDED.user_id,
   hash = EXCLUDED.hash,
@@ -40,10 +40,12 @@ ON CONFLICT (auth_key_id) DO UPDATE SET
   system_version = EXCLUDED.system_version,
   api_id = EXCLUDED.api_id,
   app_version = EXCLUDED.app_version,
-  ip = EXCLUDED.ip,
-  password_pending = EXCLUDED.password_pending,
-  active_at = now()`,
-		authKeyIDToInt64(a.AuthKeyID), a.UserID, a.Hash, int32(a.Layer), a.DeviceModel, a.Platform, a.SystemVersion, int32(a.APIID), a.AppVersion, a.IP, a.PasswordPending,
+	  ip = CASE WHEN EXCLUDED.ip <> '' THEN EXCLUDED.ip ELSE authorizations.ip END,
+	  country = CASE WHEN EXCLUDED.country <> '' THEN EXCLUDED.country ELSE authorizations.country END,
+	  region = CASE WHEN EXCLUDED.region <> '' THEN EXCLUDED.region ELSE authorizations.region END,
+	  password_pending = EXCLUDED.password_pending,
+	  active_at = now()`,
+		authKeyIDToInt64(a.AuthKeyID), a.UserID, a.Hash, int32(a.Layer), a.DeviceModel, a.Platform, a.SystemVersion, int32(a.APIID), a.AppVersion, a.IP, a.Country, a.Region, a.PasswordPending,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert authorization: %w", err)
@@ -53,12 +55,12 @@ ON CONFLICT (auth_key_id) DO UPDATE SET
 
 func (s *AuthorizationStore) ByAuthKey(ctx context.Context, id [8]byte) (domain.Authorization, bool, error) {
 	row := s.db.QueryRow(ctx, `
-SELECT user_id, hash, layer, device_model, platform, system_version, api_id, app_version, ip, password_pending, created_at, active_at
-FROM authorizations WHERE auth_key_id = $1`, authKeyIDToInt64(id))
+	SELECT user_id, hash, layer, device_model, platform, system_version, api_id, app_version, ip, country, region, password_pending, created_at, active_at
+	FROM authorizations WHERE auth_key_id = $1`, authKeyIDToInt64(id))
 	a := domain.Authorization{AuthKeyID: id}
 	if err := row.Scan(
 		&a.UserID, &a.Hash, &a.Layer, &a.DeviceModel, &a.Platform, &a.SystemVersion,
-		&a.APIID, &a.AppVersion, &a.IP, &a.PasswordPending, &a.CreatedAt, &a.ActiveAt,
+		&a.APIID, &a.AppVersion, &a.IP, &a.Country, &a.Region, &a.PasswordPending, &a.CreatedAt, &a.ActiveAt,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Authorization{}, false, nil
@@ -112,12 +114,12 @@ func (s *AuthorizationStore) DeleteByHash(ctx context.Context, userID, hash int6
 	row := s.db.QueryRow(ctx, `
 DELETE FROM authorizations
 WHERE user_id = $1 AND hash = $2
-RETURNING auth_key_id, user_id, hash, layer, device_model, platform, system_version, api_id, app_version, ip, created_at, active_at`, userID, hash)
+	RETURNING auth_key_id, user_id, hash, layer, device_model, platform, system_version, api_id, app_version, ip, country, region, created_at, active_at`, userID, hash)
 	var a domain.Authorization
 	var authKeyID int64
 	if err := row.Scan(
 		&authKeyID, &a.UserID, &a.Hash, &a.Layer, &a.DeviceModel, &a.Platform, &a.SystemVersion,
-		&a.APIID, &a.AppVersion, &a.IP, &a.CreatedAt, &a.ActiveAt,
+		&a.APIID, &a.AppVersion, &a.IP, &a.Country, &a.Region, &a.CreatedAt, &a.ActiveAt,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Authorization{}, false, nil
@@ -133,7 +135,7 @@ RETURNING auth_key_id, user_id, hash, layer, device_model, platform, system_vers
 func (s *AuthorizationStore) RevokeByHash(ctx context.Context, userID, hash int64) (domain.Authorization, bool, error) {
 	row := s.db.QueryRow(ctx, `
 WITH target AS MATERIALIZED (
-	SELECT auth_key_id, user_id, hash, layer, device_model, platform, system_version, api_id, app_version, ip, password_pending, created_at, active_at
+		SELECT auth_key_id, user_id, hash, layer, device_model, platform, system_version, api_id, app_version, ip, country, region, password_pending, created_at, active_at
 	FROM authorizations
 	WHERE user_id = $1 AND hash = $2
 ), deleted_temp AS (
@@ -152,7 +154,7 @@ WITH target AS MATERIALIZED (
 	SELECT count(*) FROM deleted_temp
 )
 SELECT target.auth_key_id, target.user_id, target.hash, target.layer, target.device_model, target.platform,
-       target.system_version, target.api_id, target.app_version, target.ip, target.password_pending,
+	       target.system_version, target.api_id, target.app_version, target.ip, target.country, target.region, target.password_pending,
        target.created_at, target.active_at
 FROM target
 JOIN deleted_keys USING (auth_key_id)
@@ -168,7 +170,7 @@ func (s *AuthorizationStore) DeleteByUserExcept(ctx context.Context, userID int6
 	rows, err := s.db.Query(ctx, `
 DELETE FROM authorizations
 WHERE user_id = $1 AND auth_key_id <> $2
-RETURNING auth_key_id, user_id, hash, layer, device_model, platform, system_version, api_id, app_version, ip, created_at, active_at`, userID, authKeyIDToInt64(keepAuthKeyID))
+	RETURNING auth_key_id, user_id, hash, layer, device_model, platform, system_version, api_id, app_version, ip, country, region, created_at, active_at`, userID, authKeyIDToInt64(keepAuthKeyID))
 	if err != nil {
 		return nil, fmt.Errorf("delete authorizations by user: %w", err)
 	}
@@ -179,7 +181,7 @@ RETURNING auth_key_id, user_id, hash, layer, device_model, platform, system_vers
 		var authKeyID int64
 		if err := rows.Scan(
 			&authKeyID, &a.UserID, &a.Hash, &a.Layer, &a.DeviceModel, &a.Platform, &a.SystemVersion,
-			&a.APIID, &a.AppVersion, &a.IP, &a.CreatedAt, &a.ActiveAt,
+			&a.APIID, &a.AppVersion, &a.IP, &a.Country, &a.Region, &a.CreatedAt, &a.ActiveAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan deleted authorization: %w", err)
 		}
@@ -196,7 +198,7 @@ RETURNING auth_key_id, user_id, hash, layer, device_model, platform, system_vers
 func (s *AuthorizationStore) RevokeByUserExcept(ctx context.Context, userID int64, keepAuthKeyID [8]byte) ([]domain.Authorization, error) {
 	rows, err := s.db.Query(ctx, `
 WITH target AS MATERIALIZED (
-	SELECT auth_key_id, user_id, hash, layer, device_model, platform, system_version, api_id, app_version, ip, password_pending, created_at, active_at
+		SELECT auth_key_id, user_id, hash, layer, device_model, platform, system_version, api_id, app_version, ip, country, region, password_pending, created_at, active_at
 	FROM authorizations
 	WHERE user_id = $1 AND auth_key_id <> $2
 ), deleted_temp AS (
@@ -215,7 +217,7 @@ WITH target AS MATERIALIZED (
 	SELECT count(*) FROM deleted_temp
 )
 SELECT target.auth_key_id, target.user_id, target.hash, target.layer, target.device_model, target.platform,
-       target.system_version, target.api_id, target.app_version, target.ip, target.password_pending,
+	       target.system_version, target.api_id, target.app_version, target.ip, target.country, target.region, target.password_pending,
        target.created_at, target.active_at
 FROM target
 JOIN deleted_keys USING (auth_key_id)
@@ -241,18 +243,21 @@ ORDER BY target.created_at, target.auth_key_id`, userID, authKeyIDToInt64(keepAu
 
 func authorizationFromRow(row sqlcgen.Authorization) domain.Authorization {
 	return domain.Authorization{
-		AuthKeyID:     authKeyIDFromInt64(row.AuthKeyID),
-		UserID:        row.UserID,
-		Hash:          row.Hash,
-		Layer:         int(row.Layer),
-		DeviceModel:   row.DeviceModel,
-		Platform:      row.Platform,
-		SystemVersion: row.SystemVersion,
-		APIID:         int(row.ApiID),
-		AppVersion:    row.AppVersion,
-		IP:            row.Ip,
-		CreatedAt:     row.CreatedAt.Time,
-		ActiveAt:      row.ActiveAt.Time,
+		AuthKeyID:       authKeyIDFromInt64(row.AuthKeyID),
+		UserID:          row.UserID,
+		Hash:            row.Hash,
+		Layer:           int(row.Layer),
+		DeviceModel:     row.DeviceModel,
+		Platform:        row.Platform,
+		SystemVersion:   row.SystemVersion,
+		APIID:           int(row.ApiID),
+		AppVersion:      row.AppVersion,
+		IP:              row.Ip,
+		Country:         row.Country,
+		Region:          row.Region,
+		PasswordPending: row.PasswordPending,
+		CreatedAt:       row.CreatedAt.Time,
+		ActiveAt:        row.ActiveAt.Time,
 	}
 }
 
@@ -276,7 +281,7 @@ func scanRevokedAuthorizationRow(row authorizationScanner) (domain.Authorization
 	var authKeyID int64
 	if err := row.Scan(
 		&authKeyID, &a.UserID, &a.Hash, &a.Layer, &a.DeviceModel, &a.Platform, &a.SystemVersion,
-		&a.APIID, &a.AppVersion, &a.IP, &a.PasswordPending, &a.CreatedAt, &a.ActiveAt,
+		&a.APIID, &a.AppVersion, &a.IP, &a.Country, &a.Region, &a.PasswordPending, &a.CreatedAt, &a.ActiveAt,
 	); err != nil {
 		return domain.Authorization{}, err
 	}
