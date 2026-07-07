@@ -672,7 +672,8 @@ func TestSeedMediaRepairsCustomEmojiTGSWithoutThumb(t *testing.T) {
 func TestSeedMediaSkipsUnchangedEffectsDocuments(t *testing.T) {
 	ctx := context.Background()
 	seedDir := t.TempDir()
-	const sourceID int64 = 6666666
+	const sourceID int64 = 5382305375846410902
+	storageID := seedDocumentStorageID(sourceID)
 	writeEffectsSeed(t, seedDir, sourceID)
 
 	media := newFakeMediaStore()
@@ -688,6 +689,16 @@ func TestSeedMediaSkipsUnchangedEffectsDocuments(t *testing.T) {
 	if first.Effects != 1 || first.Documents != 1 || first.Blobs != 2 {
 		t.Fatalf("first stats = %+v, want one imported effect document with main plus synthetic preview blobs", first)
 	}
+	effects, _, err := svc.AvailableEffects(ctx)
+	if err != nil {
+		t.Fatalf("available effects: %v", err)
+	}
+	if len(effects) != 1 || effects[0].EffectStickerID != storageID {
+		t.Fatalf("effects = %+v, want effect sticker id %d", effects, storageID)
+	}
+	if _, ok, err := media.GetDocument(ctx, storageID); err != nil || !ok {
+		t.Fatalf("GetDocument(%d) ok=%v err=%v", storageID, ok, err)
+	}
 
 	second, err := svc.SeedMedia(ctx, seedDir, 0)
 	if err != nil {
@@ -697,7 +708,7 @@ func TestSeedMediaSkipsUnchangedEffectsDocuments(t *testing.T) {
 		t.Fatalf("second stats = %+v, want effects catalog loaded without document/blob import", second)
 	}
 
-	delete(media.blobs, fmt.Sprintf("doc:%d", sourceID))
+	delete(media.blobs, fmt.Sprintf("doc:%d", storageID))
 	repaired, err := svc.SeedMedia(ctx, seedDir, 0)
 	if err != nil {
 		t.Fatalf("repair seed: %v", err)

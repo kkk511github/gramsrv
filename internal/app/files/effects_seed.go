@@ -92,7 +92,7 @@ func seedEffectsCatalog(parsed seedEffectsFileJSON) ([]domain.AvailableEffect, [
 			return 0
 		}
 		required[id] = struct{}{}
-		return id
+		return seedDocumentStorageID(id)
 	}
 	effects := make([]domain.AvailableEffect, 0, len(parsed.Result.Effects))
 	for i, ej := range parsed.Result.Effects {
