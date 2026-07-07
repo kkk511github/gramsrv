@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -12,8 +13,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"telesrv/internal/brand"
 	"telesrv/internal/domain"
+	"telesrv/internal/links"
 )
 
 const (
@@ -410,7 +411,7 @@ func (s *Service) handleStickersAddEmoji(ctx context.Context, state domain.BotCh
 	if s.hooks != nil {
 		s.hooks.PushStickerSetsChanged(ctx, state.UserID, stickersBotSetKind(set))
 	}
-	return botReply{Text: fmt.Sprintf("Done. Added to %s.\n\n%s", stickersBotSetTitle(set), stickersBotPublicURL(set))}
+	return botReply{Text: fmt.Sprintf("Done. Added to %s.\n\n%s", stickersBotSetTitle(set), s.stickersBotPublicURL(set))}
 }
 
 func (s *Service) handleStickersDeleteDocument(ctx context.Context, state domain.BotChatState, msg domain.Message) botReply {
@@ -444,7 +445,7 @@ func (s *Service) handleStickersDeleteDocument(ctx context.Context, state domain
 	if s.hooks != nil {
 		s.hooks.PushStickerSetsChanged(ctx, state.UserID, stickersBotSetKind(set))
 	}
-	return botReply{Text: fmt.Sprintf("Done. Removed from %s.\n\n%s", stickersBotSetTitle(set), stickersBotPublicURL(set))}
+	return botReply{Text: fmt.Sprintf("Done. Removed from %s.\n\n%s", stickersBotSetTitle(set), s.stickersBotPublicURL(set))}
 }
 
 func (s *Service) handleStickersShortName(ctx context.Context, state domain.BotChatState, raw string) botReply {
@@ -485,7 +486,7 @@ func (s *Service) handleStickersShortName(ctx context.Context, state domain.BotC
 	if s.hooks != nil {
 		s.hooks.PushStickerSetsChanged(ctx, state.UserID, installKind)
 	}
-	return botReply{Text: "Done. Your pack is published and installed.\n\n" + stickersBotPublicURL(set)}
+	return botReply{Text: "Done. Your pack is published and installed.\n\n" + s.stickersBotPublicURL(set)}
 }
 
 func (s *Service) stickersBotCreateError(userID int64, err error) botReply {
@@ -543,7 +544,7 @@ func (s *Service) listStickersBotPacks(ctx context.Context, userID int64) botRep
 	lines := make([]string, 0, len(sets)+1)
 	lines = append(lines, "Your packs:")
 	for _, set := range sets {
-		lines = append(lines, fmt.Sprintf("%s - %s", set.Title, stickersBotPublicURL(set)))
+		lines = append(lines, fmt.Sprintf("%s - %s", set.Title, s.stickersBotPublicURL(set)))
 	}
 	if total > len(sets) {
 		lines = append(lines, fmt.Sprintf("Showing %d of %d.", len(sets), total))
@@ -747,8 +748,24 @@ func cloneStickersBotState(state domain.BotChatState) domain.BotChatState {
 
 func normalizeStickersBotShortName(raw string) string {
 	raw = strings.TrimSpace(raw)
-	raw = strings.TrimPrefix(raw, brand.PublicURL("addstickers/"))
-	raw = strings.TrimPrefix(raw, brand.PublicURL("addemoji/"))
+	raw = strings.TrimPrefix(raw, "telesrv://addstickers?set=")
+	raw = strings.TrimPrefix(raw, "telesrv://addemoji?set=")
+	raw = strings.TrimPrefix(raw, "tg://addstickers?set=")
+	raw = strings.TrimPrefix(raw, "tg://addemoji?set=")
+	if strings.Contains(raw, "://") {
+		if parsed, err := url.Parse(raw); err == nil {
+			if set := parsed.Query().Get("set"); set != "" {
+				raw = set
+			}
+			parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+			for i, part := range parts {
+				if (part == "addstickers" || part == "addemoji") && i+1 < len(parts) {
+					raw = parts[i+1]
+					break
+				}
+			}
+		}
+	}
 	return strings.ToLower(strings.Trim(raw, " /"))
 }
 
@@ -781,10 +798,18 @@ func validStickersBotEmoji(raw string) bool {
 	return hasEmoji
 }
 
-func stickersBotPublicURL(set domain.StickerSet) string {
+func (s *Service) stickersBotPublicURL(set domain.StickerSet) string {
 	part := "addstickers"
 	if stickersBotSetKind(set) == domain.StickerSetKindEmoji {
 		part = "addemoji"
 	}
-	return brand.StickerSetURL(part, set.ShortName)
+	return s.publicURL(part + "/" + set.ShortName)
+}
+
+func (s *Service) publicURL(path string) string {
+	baseURL := links.DefaultPublicBaseURL
+	if s != nil && s.publicBaseURL != "" {
+		baseURL = s.publicBaseURL
+	}
+	return links.Build(baseURL, path, nil)
 }

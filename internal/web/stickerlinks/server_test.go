@@ -88,6 +88,33 @@ func TestHandlerServesEmojiLandingPage(t *testing.T) {
 	}
 }
 
+func TestHandlerServesChatlistLandingPage(t *testing.T) {
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/addlist/zNhytIbwRwjaC2GH", nil)
+
+	NewHandler(fakeResolver{}, "http://127.0.0.1:2401").ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	for _, want := range []string{
+		"Shared Folder",
+		"http://127.0.0.1:2401/addlist/zNhytIbwRwjaC2GH",
+		"safelink://addlist?slug=zNhytIbwRwjaC2GH",
+		"preview and add it",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("body missing %q:\n%s", want, body)
+		}
+	}
+	for _, forbidden := range []string{"tg://", "telesrv://"} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("landing page must not contain %q:\n%s", forbidden, body)
+		}
+	}
+}
+
 func TestHandlerRedirectsMismatchedKindToCanonicalURL(t *testing.T) {
 	resolver := fakeResolver{
 		"emoji_pack": {
@@ -117,6 +144,8 @@ func TestHandlerNotFoundForMissingOrInvalidShortName(t *testing.T) {
 		"/addstickers/missing_pack",
 		"/addstickers/bad-name",
 		"/addemoji/%E4%B8%AD%E6%96%87",
+		"/addlist/bad!slug",
+		"/addlist/%E4%B8%AD%E6%96%87",
 	} {
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, path, nil)

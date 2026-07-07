@@ -8,8 +8,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"telesrv/internal/brand"
 	"telesrv/internal/domain"
+	"telesrv/internal/links"
 )
 
 const (
@@ -114,7 +114,7 @@ func (s *Service) CreateBusinessChatLink(ctx context.Context, userID int64, inpu
 		link, err := s.business.CreateBusinessChatLink(ctx, domain.BusinessChatLink{
 			OwnerUserID: userID,
 			Slug:        slug,
-			Link:        businessChatLinkURL(slug),
+			Link:        s.businessChatLinkURL(slug),
 			Message:     normalized.Message,
 			Entities:    normalized.Entities,
 			Title:       normalized.Title,
@@ -502,6 +502,10 @@ func randomBusinessChatLinkSlug() (string, error) {
 	return fmt.Sprintf("%x", value), nil
 }
 
-func businessChatLinkURL(slug string) string {
-	return brand.BusinessChatURL(slug)
+func (s *Service) businessChatLinkURL(slug string) string {
+	baseURL := links.DefaultPublicBaseURL
+	if s != nil && s.publicBaseURL != "" {
+		baseURL = s.publicBaseURL
+	}
+	return links.Build(baseURL, "m/"+slug, nil)
 }

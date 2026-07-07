@@ -70,6 +70,8 @@ type Config struct {
 	// RtmpIngestURL 是 getGroupCallStreamRtmpUrl 返回给推流端（OBS）的服务器地址，
 	// 形如 "rtmp://<host>:<port>/live"。为空时回落 "rtmp://<AdvertiseIP>:2400/live"。
 	RtmpIngestURL string
+	// PublicBaseURL 是所有客户端可见 telesrv 链接的公开根 URL。
+	PublicBaseURL string
 	// TempKeyResolveCacheTTL 是 PFS temp→perm auth key 解析的进程内缓存有效期。>0 时同一 temp key
 	// 在 TTL 内复用上次解析、跳过每帧 ResolveAuthKey 的 PG 查询；0（默认/测试）关闭=每帧重校验。
 	// 显式撤销会删除协议 auth key、清缓存并断开活跃连接；TTL 只影响自然过期或异常路径下的
@@ -138,6 +140,9 @@ type Router struct {
 	// 解析为卡片并就地替换。满则丢弃任务（消息留 pending）。nil=未启用（测试可直接调
 	// resolvePendingWebPage 同步验证）。
 	webPageResolveSem chan struct{}
+	// selfPhotoEchoPushDelay 是头像变更后向当前 session 回显 updateUser 的延迟
+	// （见 photos.go pushSelfPhotoUpdateToCurrentSession）；<=0 时同步推送（测试用）。
+	selfPhotoEchoPushDelay time.Duration
 }
 
 type clientInfoSessionKey struct {
@@ -166,6 +171,7 @@ func New(cfg Config, deps Deps, log *zap.Logger, clk clock.Clock) *Router {
 	r := &Router{cfg: cfg, log: log, clock: clk, deps: deps, presence: newPresenceTracker(), callbacks: newCallbackRegistry(), inlines: newInlineRegistry(botInlineQueryTTL, deps.Inline), webviews: newWebViewRegistry(webViewSessionTTL, deps.Inline), loginTokens: newLoginTokenRegistry(), tempKeyResolveCache: newTempKeyResolveCache(cfg.TempKeyResolveCacheMaxEntries), storyProjectionCache: newStoryProjectionCache(clk.Now), storyPinnedCache: newStoryPinnedAvailableCache(clk.Now), storyPinnedListCache: newStoryPinnedStoriesCache(clk.Now), channelFullBotCache: newChannelFullBotInfoCache(clk.Now), userFullProjectionCache: newUserFullProjectionCache(clk.Now), peerSettingsProjectionCache: newPeerSettingsProjectionCache(clk.Now), channelFullProjectionCache: newChannelFullProjectionCache(clk.Now), emojiStickers: newEmojiStickerIndex(clk.Now), notifySettings: newNotifySettingsCache(clk.Now), stickerCatalog: newStickerCatalogCache(clk.Now), accountSettings: newAccountSettingsCache(clk.Now), instanceID: instanceID}
 	r.channelFanout = newChannelFanoutDispatcher(r, defaultChannelFanoutShards, defaultChannelFanoutBuffer)
 	r.webPageResolveSem = make(chan struct{}, webPageResolveConcurrency)
+	r.selfPhotoEchoPushDelay = defaultSelfPhotoEchoPushDelay
 	if cfg.DC > 0 {
 		groupCallStreamDCID = cfg.DC
 	}
@@ -182,6 +188,7 @@ func New(cfg Config, deps Deps, log *zap.Logger, clk clock.Clock) *Router {
 	r.registerUpload(d)
 	r.registerPhotos(d)
 	r.registerFolders(d)
+	r.registerChatlists(d)
 	r.registerContacts(d)
 	r.registerLangpack(d)
 	r.registerStories(d)

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"telesrv/internal/brand"
+	"telesrv/internal/links"
 )
 
 const defaultConfigFile = ".env"
@@ -42,12 +43,19 @@ type Config struct {
 	AdminAPIAddr string
 	// AdminAPIToken 是 Admin API bearer token；开启 AdminAPIAddr 时必须显式配置。
 	AdminAPIToken string
-	// StickerWebAddr 是公开链接落地页监听地址；为空关闭。
-	// 生产应只监听 loopback，并由 nginx 将 safelink.chat 的网页请求反代到该地址。
+	// PublicBaseURL 是所有客户端可见 telesrv 链接的公开根 URL。
+	// 生产默认 https://safelink.chat；本地可设为 http://127.0.0.1:2401。
+	PublicBaseURL string
+	// PublicLinkWebAddr 是公开链接落地页监听地址；为空关闭。
+	// 生产应只监听 loopback，并由 nginx 将公开链接页面反代到该地址。
+	PublicLinkWebAddr string
+	// PublicLinkAppScheme 是网页 Open 按钮调起客户端时使用的已注册 URL scheme。
+	PublicLinkAppScheme string
+	// Deprecated: use PublicLinkWebAddr. 保留旧 env/字段兼容线上部署与旧测试。
 	StickerWebAddr string
-	// StickerWebPublicURL 是生成 canonical SafeLink 链接的公开根 URL。
+	// Deprecated: use PublicBaseURL.
 	StickerWebPublicURL string
-	// StickerWebAppScheme 是网页 Open 按钮调起客户端时使用的已注册 URL scheme。
+	// Deprecated: use PublicLinkAppScheme.
 	StickerWebAppScheme string
 	// Admin UI 独立进程配置项保留在统一配置中，cmd/telesrv-admin 也按同名 env 读取。
 	AdminUIAddr     string
@@ -287,6 +295,10 @@ func Load() (Config, error) {
 	envInt64Or := fileEnv.envInt64Or
 	envDurationOr := fileEnv.envDurationOr
 
+	publicBaseURL := links.NormalizeBaseURL(envOr("TELESRV_PUBLIC_BASE_URL", envOr("TELESRV_STICKER_WEB_PUBLIC_URL", brand.DefaultPublicBaseURL)))
+	publicLinkWebAddr := envOr("TELESRV_PUBLIC_LINK_WEB_ADDR", envOr("TELESRV_STICKER_WEB_ADDR", ""))
+	publicLinkAppScheme := envOr("TELESRV_PUBLIC_LINK_APP_SCHEME", envOr("TELESRV_STICKER_WEB_APP_SCHEME", brand.DefaultAppScheme))
+
 	cfg := Config{
 		ListenAddr:      envOr("TELESRV_LISTEN", "0.0.0.0:2398"),
 		WebSocketEnable: envBoolOr("TELESRV_WEBSOCKET_ENABLE", true),
@@ -304,10 +316,13 @@ func Load() (Config, error) {
 		BotAPIAddr:          envOr("TELESRV_BOT_API_ADDR", ""),
 		AdminAPIAddr:        envOr("TELESRV_ADMIN_API_ADDR", ""),
 		AdminAPIToken:       envOr("TELESRV_ADMIN_API_TOKEN", ""),
-		StickerWebAddr:      envOr("TELESRV_STICKER_WEB_ADDR", ""),
-		StickerWebPublicURL: envOr("TELESRV_STICKER_WEB_PUBLIC_URL", brand.DefaultPublicBaseURL),
-		StickerWebAppScheme: envOr("TELESRV_STICKER_WEB_APP_SCHEME", brand.DefaultAppScheme),
-		AdminUIAddr:         envOr("TELESRV_ADMIN_UI_ADDR", "127.0.0.1:2400"),
+		PublicBaseURL:       publicBaseURL,
+		PublicLinkWebAddr:   publicLinkWebAddr,
+		PublicLinkAppScheme: publicLinkAppScheme,
+		StickerWebAddr:      publicLinkWebAddr,
+		StickerWebPublicURL: publicBaseURL,
+		StickerWebAppScheme: publicLinkAppScheme,
+		AdminUIAddr:         envOr("TELESRV_ADMIN_UI_ADDR", "127.0.0.1:2600"),
 		AdminUIPassword:     envOr("TELESRV_ADMIN_UI_PASSWORD", ""),
 		AdminUIToken:        envOr("TELESRV_ADMIN_UI_TOKEN", ""),
 		AdminSessionKey:     envOr("TELESRV_ADMIN_SESSION_KEY", ""),

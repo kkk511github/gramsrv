@@ -44,6 +44,7 @@ codebase.
 | ✅ | Login and accounts | Development login code, sign-in, sign-up, log-out, authorizations, account settings, SRP/password state, email/passkey-oriented paths. |
 | ✅ | Users and contacts | User profiles, usernames, profile photos, contact import/search, blocked/privacy state, presence, and last-seen style status. |
 | ✅ | Dialogs and sync | Dialog list, pinned dialogs, manual unread, folders/filters, drafts, read boundaries, durable updates, online fan-out, and offline difference recovery. |
+| ✅ | Chatlists and public links | Chat folder sharing, exported chatlist invite links, join/import flows, revoked invite handling, and shared public link landing pages. |
 | ✅ | Private chats | Send, history, read receipts, edit, delete, forward, reply, rich entities, grouped/media messages, reactions, scheduled/TTL-oriented paths. |
 | ✅ | Rich messages | Telegram Desktop rich text messages, rich content conversion, send/edit/scheduled flows, dialog/history projections, and memory/PostgreSQL persistence. |
 | ✅ | AI compose and ChatBot | Input-box rewrite/polish, default and custom tones, addstyle previews, local and external provider chains, streamed `@ChatBot` draft replies, and Business AI reply hooks. |
@@ -76,9 +77,18 @@ docker compose -f deploy/docker-compose.yml up -d
 
 Build and run the single server program:
 
+Windows (PowerShell):
+
 ```powershell
 go build -o bin/gramsrv.exe ./cmd/telesrv
 .\bin\gramsrv.exe
+```
+
+Linux / macOS:
+
+```bash
+go build -o bin/gramsrv ./cmd/telesrv
+./bin/gramsrv
 ```
 
 On first start, `gramsrv` creates `data/server_rsa.pem`, applies database
@@ -94,15 +104,18 @@ Useful local environment variables:
 | `TELESRV_ADVERTISE_IP` | `127.0.0.1` | IP advertised to compatible clients |
 | `TELESRV_DC` | `2` | self-hosted DC id |
 | `TELESRV_DEV_AUTH_CODE` | `12345` | fixed login code for local development |
+| `TELESRV_PUBLIC_BASE_URL` | `https://safelink.chat` | canonical base URL for public links |
 | `TELESRV_POSTGRES_DSN` | local Compose DSN | PostgreSQL connection string |
 | `TELESRV_REDIS_ADDR` | `127.0.0.1:6399` | Redis address |
 | `TELESRV_LANGPACK_SEED_DIR` | `data/langpack` | bundled language pack seed directory |
-| `TELESRV_APP_NAME` | `Safelink` | app name shown through client language packs |
+| `TELESRV_APP_NAME` | `SafeLink` | app name shown through client language packs |
 | `TELESRV_BLOB_DIR` | `data/blobs` | local media blob directory |
 | `TELESRV_STICKER_SEED_DIR` | `data/sticker-seed` | optional sticker/reaction seed directory |
-| `TELESRV_STICKER_WEB_ADDR` | empty | public-link landing page listen address, commonly `127.0.0.1:2401` |
-| `TELESRV_STICKER_WEB_PUBLIC_URL` | `https://safelink.chat` | public base URL used for landing-page canonical links |
-| `TELESRV_STICKER_WEB_APP_SCHEME` | `safelink` | URL scheme used by landing pages to open the client, for example `tg` for the current iOS build |
+| `TELESRV_PUBLIC_LINK_WEB_ADDR` | empty | optional public-link landing page listen address, commonly `127.0.0.1:2401` |
+| `TELESRV_PUBLIC_LINK_APP_SCHEME` | `safelink` | URL scheme used by landing pages to open the client, for example `tg` for the current iOS build |
+| `TELESRV_STICKER_WEB_ADDR` | empty | legacy alias for `TELESRV_PUBLIC_LINK_WEB_ADDR` |
+| `TELESRV_STICKER_WEB_PUBLIC_URL` | `https://safelink.chat` | legacy alias for `TELESRV_PUBLIC_BASE_URL` |
+| `TELESRV_STICKER_WEB_APP_SCHEME` | `safelink` | legacy alias for `TELESRV_PUBLIC_LINK_APP_SCHEME` |
 | `TELESRV_AI_ENABLED` | `true` | enable AI compose entry points |
 | `TELESRV_AI_PROVIDERS` | `local` | ordered AI provider chain, such as `local` or `kimi,local` |
 | `TELESRV_AI_TIMEOUT` | `15s` | per AI provider call timeout |
@@ -120,7 +133,7 @@ language pack updates difficult to merge.
 For production branding, change one environment variable and restart `telesrv`:
 
 ```sh
-TELESRV_APP_NAME=Safelink
+TELESRV_APP_NAME=SafeLink
 ```
 
 On startup, `gramsrv` reads `TELESRV_LANGPACK_SEED_DIR`, maps language pack
@@ -130,7 +143,7 @@ changes so clients fetch the updated strings. Language pack keys are not
 rewritten, preserving client protocol compatibility.
 
 The code default lives in `internal/brand/brand.go` as `DefaultAppName`. Without
-an environment override, the displayed app name is `Safelink`.
+an environment override, the displayed app name is `SafeLink`.
 
 ### Sticker, Emoji, and Reaction Seeds
 
@@ -176,20 +189,23 @@ points such as:
 - `https://safelink.chat/+<invite_hash>` invite links
 - `https://safelink.chat/addstickers/<short_name>` sticker packs
 - `https://safelink.chat/addemoji/<short_name>` custom emoji packs
+- `https://safelink.chat/addlist/<slug>` shared folders
 - `https://safelink.chat/<username>` plus message, call, and addstyle links
 
 In production, run this endpoint on localhost and expose it through Nginx:
 
 ```sh
-TELESRV_STICKER_WEB_ADDR=127.0.0.1:2401
-TELESRV_STICKER_WEB_PUBLIC_URL=https://safelink.chat
-TELESRV_STICKER_WEB_APP_SCHEME=tg
+TELESRV_PUBLIC_BASE_URL=https://safelink.chat
+TELESRV_PUBLIC_LINK_WEB_ADDR=127.0.0.1:2401
+TELESRV_PUBLIC_LINK_APP_SCHEME=tg
 ```
 
-`TELESRV_STICKER_WEB_APP_SCHEME` must match the URL scheme registered by the
+`TELESRV_PUBLIC_LINK_APP_SCHEME` must match the URL scheme registered by the
 client. The current SafeLink iOS build registers `tg://`, so production should
 use `tg`; with the default `safelink`, the landing page renders but its open
-button will not launch that iOS build.
+button will not launch that iOS build. Existing deployments can keep the legacy
+aliases `TELESRV_STICKER_WEB_ADDR`, `TELESRV_STICKER_WEB_PUBLIC_URL`, and
+`TELESRV_STICKER_WEB_APP_SCHEME`; the loader maps them to the new names.
 
 Place Nginx rules before the Web SPA fallback
 `location / { try_files ... /index.html; }`. Otherwise `/+<invite_hash>` is
@@ -217,6 +233,46 @@ nginx -t && systemctl reload nginx
 systemctl restart slerv
 curl -sS https://safelink.chat/+example_hash | grep 'tg://join?invite='
 ```
+
+## Public Deployment Ports
+
+When deploying `gramsrv` on a public server, open the following ports according
+to the features you enable.
+
+### Minimal public deployment (chat only)
+
+| Port | Protocol | Purpose | Required |
+|---|---|---|---|
+| 2398 | TCP | MTProto main port; also handles WebSocket when `TELESRV_WEBSOCKET_ENABLE=true` | Yes |
+
+### With Admin backend
+
+| Port | Protocol | Purpose | Notes |
+|---|---|---|---|
+| 2399 | TCP | Admin REST API | Restrict to trusted IPs or put behind VPN |
+| 2600 | TCP | Admin Web UI | Use Nginx/reverse proxy + HTTPS in production |
+
+### Optional feature ports
+
+| Port | Protocol | Purpose | When needed |
+|---|---|---|---|
+| 2400 | TCP | RTMP live stream ingest | Live streaming |
+| 12399 | UDP | SFU/WebRTC conferencing | Voice/video group calls |
+| 12400 | UDP | TURN/STUN server | P2P/call relay |
+| 12500-12999 | UDP | TURN relay port range | TURN relay |
+| configurable | TCP | Bot API | When `TELESRV_BOT_API_ADDR` is set |
+| configurable | TCP | Public link deep-link landing | When `TELESRV_PUBLIC_LINK_WEB_ADDR` is set |
+
+### Internal/debug ports (do not expose publicly)
+
+| Port | Default bind | Purpose |
+|---|---|---|
+| 6060 | `127.0.0.1:6060` | pprof debugging endpoint |
+| 5432 | `127.0.0.1:5432` | PostgreSQL |
+| 6399 | `127.0.0.1:6399` | Redis |
+
+Make sure `TELESRV_LISTEN=0.0.0.0:2398` is set, and `TELESRV_ADVERTISE_IP`
+points to your public IP so clients can connect.
 
 ## Client Compatibility
 

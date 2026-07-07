@@ -7,7 +7,6 @@ import (
 
 	"github.com/gotd/td/tg"
 
-	"telesrv/internal/brand"
 	"telesrv/internal/domain"
 )
 
@@ -456,10 +455,10 @@ func (r *Router) connectedBusinessBotPeerSettings(ctx context.Context, ownerUser
 	if botUser, found, err := r.connectedBusinessBotByID(ctx, ownerUserID, bot.BotUserID); err != nil {
 		return domain.PeerSettings{}, err
 	} else if found {
-		settings.BusinessBotManageURL = connectedBusinessBotManageURL(botUser)
+		settings.BusinessBotManageURL = r.connectedBusinessBotManageURL(botUser)
 	}
 	if settings.BusinessBotManageURL == "" {
-		settings.BusinessBotManageURL = brand.PublicURL("business-bot")
+		settings.BusinessBotManageURL = r.publicLink("business-bot")
 	}
 	return settings, nil
 }
@@ -478,11 +477,11 @@ func (r *Router) connectedBusinessPeerFacts(ctx context.Context, ownerUserID, pe
 	return existingChat, isContact
 }
 
-func connectedBusinessBotManageURL(bot domain.User) string {
+func (r *Router) connectedBusinessBotManageURL(bot domain.User) string {
 	if bot.Username == "" {
 		return ""
 	}
-	return brand.UserURL(bot.Username)
+	return r.publicLink(bot.Username)
 }
 
 func (r *Router) recordConnectedBusinessPeerSettings(ctx context.Context, userID int64, peer domain.Peer, settings domain.PeerSettings) error {

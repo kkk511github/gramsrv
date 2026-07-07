@@ -41,6 +41,7 @@ https://github.com/user-attachments/assets/25e651dc-a022-4d60-8b9b-ca3e8bfe216c
 | ✅ | 登录与账号 | 开发验证码登录、sign-in、sign-up、log-out、授权设备、账号设置、SRP/password 状态、email/passkey 相关路径。 |
 | ✅ | 用户与联系人 | 用户资料、username、头像、联系人导入/搜索、block/privacy 状态、presence、last seen。 |
 | ✅ | 会话与同步 | dialog list、置顶、手动未读、folders/filters、草稿、read boundary、durable updates、在线 fan-out、离线 difference 恢复。 |
+| ✅ | Chatlists 与公开链接 | 聊天文件夹分享、chatlist invite links、加入/导入流程、撤销邀请处理，以及统一公开链接落地页。 |
 | ✅ | 私聊消息 | send、history、read receipts、edit、delete、forward、reply、富文本实体、媒体/相册消息、reactions、scheduled/TTL 相关路径。 |
 | ✅ | 富文本消息 | Telegram Desktop rich text message、富文本内容转换、send/edit/scheduled 流程、dialog/history 投影，以及 memory/PostgreSQL 持久化。 |
 | ✅ | AI 输入框与 ChatBot | 输入框改写/润色、默认和自定义 tone、addstyle 预览、本地与外部 provider 链、流式 `@ChatBot` 草稿回复、Business AI 回复钩子。 |
@@ -71,9 +72,18 @@ docker compose -f deploy/docker-compose.yml up -d
 
 编译并启动唯一的 server 程序：
 
+Windows (PowerShell)：
+
 ```powershell
 go build -o bin/gramsrv.exe ./cmd/telesrv
 .\bin\gramsrv.exe
+```
+
+Linux / macOS：
+
+```bash
+go build -o bin/gramsrv ./cmd/telesrv
+./bin/gramsrv
 ```
 
 第一次启动时，`gramsrv` 会创建 `data/server_rsa.pem`，自动执行数据库 migrations，导入内置语言包，准备可选媒体资源，在 `0.0.0.0:2398` 监听 MTProto，并在同一进程里启动 updates、media、后台调度等 worker。
@@ -86,15 +96,18 @@ go build -o bin/gramsrv.exe ./cmd/telesrv
 | `TELESRV_ADVERTISE_IP` | `127.0.0.1` | 下发给兼容客户端的连接 IP |
 | `TELESRV_DC` | `2` | 自建 DC id |
 | `TELESRV_DEV_AUTH_CODE` | `12345` | 本地开发固定登录验证码 |
+| `TELESRV_PUBLIC_BASE_URL` | `https://safelink.chat` | 公开链接的 canonical base URL |
 | `TELESRV_POSTGRES_DSN` | local Compose DSN | PostgreSQL 连接串 |
 | `TELESRV_REDIS_ADDR` | `127.0.0.1:6399` | Redis 地址 |
 | `TELESRV_LANGPACK_SEED_DIR` | `data/langpack` | 内置语言包种子目录 |
-| `TELESRV_APP_NAME` | `Safelink` | 客户端语言包里展示的应用名称 |
+| `TELESRV_APP_NAME` | `SafeLink` | 客户端语言包里展示的应用名称 |
 | `TELESRV_BLOB_DIR` | `data/blobs` | 本地媒体 blob 目录 |
 | `TELESRV_STICKER_SEED_DIR` | `data/sticker-seed` | 可选 sticker/reaction 种子目录 |
-| `TELESRV_STICKER_WEB_ADDR` | empty | 公开链接落地页监听地址，常用 `127.0.0.1:2401` |
-| `TELESRV_STICKER_WEB_PUBLIC_URL` | `https://safelink.chat` | 公开链接落地页生成 canonical URL 的根地址 |
-| `TELESRV_STICKER_WEB_APP_SCHEME` | `safelink` | 落地页打开客户端时使用的 URL scheme，例如当前 iOS 包使用 `tg` |
+| `TELESRV_PUBLIC_LINK_WEB_ADDR` | 空 | 可选公开链接落地页监听地址，常用 `127.0.0.1:2401` |
+| `TELESRV_PUBLIC_LINK_APP_SCHEME` | `safelink` | 落地页打开客户端时使用的 URL scheme，例如当前 iOS 包使用 `tg` |
+| `TELESRV_STICKER_WEB_ADDR` | 空 | `TELESRV_PUBLIC_LINK_WEB_ADDR` 的旧兼容别名 |
+| `TELESRV_STICKER_WEB_PUBLIC_URL` | `https://safelink.chat` | `TELESRV_PUBLIC_BASE_URL` 的旧兼容别名 |
+| `TELESRV_STICKER_WEB_APP_SCHEME` | `safelink` | `TELESRV_PUBLIC_LINK_APP_SCHEME` 的旧兼容别名 |
 | `TELESRV_AI_ENABLED` | `true` | 启用 AI compose 入口 |
 | `TELESRV_AI_PROVIDERS` | `local` | AI provider 调用链，例如 `local` 或 `kimi,local` |
 | `TELESRV_AI_TIMEOUT` | `15s` | 单次 AI provider 调用超时 |
@@ -110,12 +123,12 @@ go build -o bin/gramsrv.exe ./cmd/telesrv
 生产环境改应用名称只需要改一处：
 
 ```sh
-TELESRV_APP_NAME=Safelink
+TELESRV_APP_NAME=SafeLink
 ```
 
 如果要换成其它名字，改服务端环境变量后重启 `telesrv` 即可。启动时 `gramsrv` 会读取 `TELESRV_LANGPACK_SEED_DIR`，把语言包 value 中的 `Telegram`、`Telesrv`、`SafeLink`、`Safelink` 映射成 `TELESRV_APP_NAME`，并在内容变化时自动提升语言包版本，让客户端重新拉取。语言包 key 不会被改动，避免破坏客户端协议兼容。
 
-代码默认值在 `internal/brand/brand.go` 的 `DefaultAppName`。如果没有环境变量，默认展示为 `Safelink`。
+代码默认值在 `internal/brand/brand.go` 的 `DefaultAppName`。如果没有环境变量，默认展示为 `SafeLink`。
 
 ### 贴纸、表情和回应 Seed
 
@@ -154,19 +167,22 @@ Telegram 相同形态的公开入口，例如：
 - `https://safelink.chat/+<invite_hash>` 邀请链接
 - `https://safelink.chat/addstickers/<short_name>` 贴纸包
 - `https://safelink.chat/addemoji/<short_name>` 自定义表情包
+- `https://safelink.chat/addlist/<slug>` 共享文件夹
 - `https://safelink.chat/<username>` 和消息、通话、addstyle 等公开链接
 
 生产环境通常让 `slerv` 只在本机监听 landing 服务，再由 Nginx 挂到公网域名：
 
 ```sh
-TELESRV_STICKER_WEB_ADDR=127.0.0.1:2401
-TELESRV_STICKER_WEB_PUBLIC_URL=https://safelink.chat
-TELESRV_STICKER_WEB_APP_SCHEME=tg
+TELESRV_PUBLIC_BASE_URL=https://safelink.chat
+TELESRV_PUBLIC_LINK_WEB_ADDR=127.0.0.1:2401
+TELESRV_PUBLIC_LINK_APP_SCHEME=tg
 ```
 
-`TELESRV_STICKER_WEB_APP_SCHEME` 必须和客户端实际注册的 scheme 一致。当前
+`TELESRV_PUBLIC_LINK_APP_SCHEME` 必须和客户端实际注册的 scheme 一致。当前
 SafeLink iOS 包注册的是 `tg://`，因此线上配置应使用 `tg`；如果使用默认的
-`safelink`，落地页能显示，但按钮不会拉起当前 iOS 包。
+`safelink`，落地页能显示，但按钮不会拉起当前 iOS 包。已有部署也可以继续使用
+旧兼容变量 `TELESRV_STICKER_WEB_ADDR`、`TELESRV_STICKER_WEB_PUBLIC_URL` 和
+`TELESRV_STICKER_WEB_APP_SCHEME`；配置加载器会映射到新变量。
 
 Nginx 规则要放在 Web SPA 的 `location / { try_files ... /index.html; }` 之前，
 否则 `/+<invite_hash>` 会被当成前端路由，显示 Web 界面，而不会进入邀请落地页。
@@ -193,6 +209,44 @@ nginx -t && systemctl reload nginx
 systemctl restart slerv
 curl -sS https://safelink.chat/+example_hash | grep 'tg://join?invite='
 ```
+
+## 最小公网部署端口清单
+
+在公网服务器部署 `gramsrv` 时，需要根据启用的功能开放以下端口。
+
+### 最小公网部署（仅聊天）
+
+| 端口 | 协议 | 用途 | 是否必须 |
+|---|---|---|---|
+| 2398 | TCP | MTProto 主端口；`TELESRV_WEBSOCKET_ENABLE=true` 时同时处理 WebSocket | 是 |
+
+### 启用管理后台
+
+| 端口 | 协议 | 用途 | 说明 |
+|---|---|---|---|
+| 2399 | TCP | Admin REST API | 建议限制可访问 IP 或放在 VPN 后 |
+| 2600 | TCP | Admin Web UI | 生产环境建议前面加 Nginx/反向代理 + HTTPS |
+
+### 可选功能端口
+
+| 端口 | 协议 | 用途 | 何时需要 |
+|---|---|---|---|
+| 2400 | TCP | RTMP 直播推流 ingest | 启用直播 |
+| 12399 | UDP | SFU/WebRTC 群通话 | 启用语音/视频群通话 |
+| 12400 | UDP | TURN/STUN 服务器 | 启用 P2P/通话 relay |
+| 12500-12999 | UDP | TURN relay 端口段 | 启用 TURN relay |
+| 可配置 | TCP | Bot API | 设置 `TELESRV_BOT_API_ADDR` 时 |
+| 可配置 | TCP | 公开链接深链落地页 | 设置 `TELESRV_PUBLIC_LINK_WEB_ADDR` 时 |
+
+### 内部/调试端口（不要暴露到公网）
+
+| 端口 | 默认监听 | 用途 |
+|---|---|---|
+| 6060 | `127.0.0.1:6060` | pprof 调试端点 |
+| 5432 | `127.0.0.1:5432` | PostgreSQL |
+| 6399 | `127.0.0.1:6399` | Redis |
+
+确保设置 `TELESRV_LISTEN=0.0.0.0:2398`，且 `TELESRV_ADVERTISE_IP` 指向公网 IP，客户端才能正确连接。
 
 ## 客户端兼容
 

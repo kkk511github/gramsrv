@@ -16,9 +16,8 @@ import (
 
 	"telesrv/internal/brand"
 	"telesrv/internal/domain"
+	"telesrv/internal/links"
 )
-
-const defaultPublicBaseURL = brand.DefaultPublicBaseURL
 
 type Config struct {
 	Addr          string
@@ -55,9 +54,9 @@ func Start(ctx context.Context, cfg Config, resolver Resolver, logger *zap.Logge
 		return nil, err
 	}
 	go func() {
-		logger.Info("Sticker link Web endpoint enabled", zap.String("addr", addr), zap.String("public_base_url", normalizePublicBaseURL(cfg.PublicBaseURL)))
+		logger.Info("Public link Web endpoint enabled", zap.String("addr", addr), zap.String("public_base_url", normalizePublicBaseURL(cfg.PublicBaseURL)))
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Warn("Sticker link Web endpoint exited", zap.Error(err))
+			logger.Warn("Public link Web endpoint exited", zap.Error(err))
 		}
 	}()
 	go func() {
@@ -89,6 +88,7 @@ func NewHandlerWithConfig(resolver Resolver, cfg HandlerConfig) http.Handler {
 	mux.HandleFunc("GET /", h.root)
 	mux.HandleFunc("GET /addstickers/{shortName}", h.addStickers)
 	mux.HandleFunc("GET /addemoji/{shortName}", h.addEmoji)
+	mux.HandleFunc("GET /addlist/{slug}", h.addList)
 	mux.HandleFunc("GET /c/{channelID}/{messageID}", h.privateMessage)
 	mux.HandleFunc("GET /call/{slug}", h.call)
 	mux.HandleFunc("GET /m/{slug}", h.businessChat)
@@ -287,6 +287,27 @@ func (h *handler) aiStyle(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *handler) addList(w http.ResponseWriter, r *http.Request) {
+	slug := strings.TrimSpace(r.PathValue("slug"))
+	if !validSlugPath(slug) {
+		http.NotFound(w, r)
+		return
+	}
+	appName := brand.DefaultAppName
+	h.serveLanding(w, landingPage{
+		Title:        appName + ": Shared Folder",
+		CanonicalURL: h.publicURL("/addlist/" + url.PathEscape(slug)),
+		AppURL:       h.appURL("addlist", "slug", slug),
+		KindLabel:    appName + " Shared Folder",
+		PageTitle:    "Shared Folder",
+		Extra:        slug,
+		Description:  "Open this shared folder in " + appName + " to preview and add it.",
+		ActionText:   "Open in " + appName,
+		Icon:         "folder",
+		PathFull:     "/addlist/" + slug,
+	})
+}
+
 func (h *handler) serveSet(w http.ResponseWriter, r *http.Request, pathKind string) {
 	shortName := strings.TrimSpace(r.PathValue("shortName"))
 	if !validShortNamePath(shortName) {
@@ -403,13 +424,9 @@ func (h *handler) serveLanding(w http.ResponseWriter, data landingPage) {
 }
 
 func normalizePublicBaseURL(raw string) string {
-	raw = strings.TrimRight(strings.TrimSpace(raw), "/")
-	if raw == "" {
-		return defaultPublicBaseURL
-	}
-	u, err := url.Parse(raw)
+	u, err := url.Parse(links.NormalizeBaseURL(raw))
 	if err != nil || u.Scheme == "" || u.Host == "" {
-		return defaultPublicBaseURL
+		return brand.DefaultPublicBaseURL
 	}
 	u.Path = strings.TrimRight(u.Path, "/")
 	u.RawQuery = ""
@@ -504,6 +521,10 @@ func positivePathInt(raw string) (int, bool) {
 		return 0, false
 	}
 	return v, true
+}
+
+func validSlugPath(slug string) bool {
+	return links.ValidChatlistSlug(slug)
 }
 
 func linkKind(set domain.StickerSet) string {
@@ -636,7 +657,7 @@ var landingTemplate = template.Must(template.New("landing").Parse(`<!doctype htm
     </header>
     <main>
       <section class="page">
-        <div class="page-icon">{{if eq .Icon "stickers"}}S{{else if eq .Icon "invite"}}+{{else if eq .Icon "message"}}M{{else if eq .Icon "call"}}C{{else if eq .Icon "style"}}A{{else if eq .Icon "profile"}}@{{else}}{{.SiteInitial}}{{end}}</div>
+        <div class="page-icon">{{if eq .Icon "stickers"}}S{{else if eq .Icon "invite"}}+{{else if eq .Icon "message"}}M{{else if eq .Icon "call"}}C{{else if eq .Icon "style"}}A{{else if eq .Icon "profile"}}@{{else if eq .Icon "folder"}}F{{else}}{{.SiteInitial}}{{end}}</div>
         <p class="kind">{{.KindLabel}}</p>
         <h1>{{.PageTitle}}</h1>
         {{if .Extra}}<p class="extra">{{.Extra}}</p>{{end}}

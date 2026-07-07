@@ -3,13 +3,11 @@ package rpc
 import (
 	"context"
 	"errors"
-	"net/url"
 	"strings"
 
 	"github.com/gotd/td/tg"
 	"github.com/gotd/td/tgerr"
 
-	"telesrv/internal/brand"
 	"telesrv/internal/domain"
 )
 
@@ -45,7 +43,7 @@ func (r *Router) onMessagesExportChatInvite(ctx context.Context, req *tg.Message
 		return nil, channelInviteErr(err)
 	}
 	r.invalidateRPCProjectionForChannel(res.Channel.ID)
-	return tgExportedChannelInvite(res.Invite), nil
+	return r.tgExportedChannelInvite(res.Invite), nil
 }
 
 func (r *Router) onMessagesCheckChatInvite(ctx context.Context, hash string) (tg.ChatInviteClass, error) {
@@ -145,7 +143,7 @@ func (r *Router) onMessagesGetExportedChatInvites(ctx context.Context, req *tg.M
 	userIDs := []int64{adminID}
 	invites := make([]tg.ExportedChatInviteClass, 0, len(list.Invites))
 	for _, invite := range list.Invites {
-		invites = append(invites, tgExportedChannelInvite(invite))
+		invites = append(invites, r.tgExportedChannelInvite(invite))
 		userIDs = append(userIDs, invite.AdminUserID)
 	}
 	return &tg.MessagesExportedChatInvites{
@@ -173,7 +171,7 @@ func (r *Router) onMessagesGetExportedChatInvite(ctx context.Context, req *tg.Me
 		return nil, channelInviteErr(err)
 	}
 	return &tg.MessagesExportedChatInvite{
-		Invite: tgExportedChannelInvite(invite),
+		Invite: r.tgExportedChannelInvite(invite),
 		Users:  r.tgUsersForIDs(ctx, userID, []int64{invite.AdminUserID}),
 	}, nil
 }
@@ -216,12 +214,12 @@ func (r *Router) onMessagesEditExportedChatInvite(ctx context.Context, req *tg.M
 	users := r.tgUsersForIDs(ctx, userID, []int64{edited.Invite.AdminUserID})
 	if edited.NewInvite != nil {
 		return &tg.MessagesExportedChatInviteReplaced{
-			Invite:    tgExportedChannelInvite(edited.Invite),
-			NewInvite: tgExportedChannelInvite(*edited.NewInvite),
+			Invite:    r.tgExportedChannelInvite(edited.Invite),
+			NewInvite: r.tgExportedChannelInvite(*edited.NewInvite),
 			Users:     users,
 		}, nil
 	}
-	return &tg.MessagesExportedChatInvite{Invite: tgExportedChannelInvite(edited.Invite), Users: users}, nil
+	return &tg.MessagesExportedChatInvite{Invite: r.tgExportedChannelInvite(edited.Invite), Users: users}, nil
 }
 
 func (r *Router) onMessagesDeleteRevokedExportedChatInvites(ctx context.Context, req *tg.MessagesDeleteRevokedExportedChatInvitesRequest) (bool, error) {
@@ -357,12 +355,16 @@ func createChatInviteMemberIDs(ids []int64, selfUserID int64) []int64 {
 	return out
 }
 
-func tgExportedChannelInvite(invite domain.ChannelInvite) tg.ExportedChatInviteClass {
+func (r *Router) tgExportedChannelInvite(invite domain.ChannelInvite) tg.ExportedChatInviteClass {
+	return tgExportedChannelInvite(invite, r.cfg.PublicBaseURL)
+}
+
+func tgExportedChannelInvite(invite domain.ChannelInvite, publicBaseURL string) tg.ExportedChatInviteClass {
 	out := &tg.ChatInviteExported{
 		Revoked:       invite.Revoked,
 		Permanent:     invite.Permanent,
 		RequestNeeded: invite.RequestNeeded,
-		Link:          brand.InviteURL(invite.Hash),
+		Link:          publicLinkWithBaseURL(publicBaseURL, "+"+invite.Hash),
 		AdminID:       invite.AdminUserID,
 		Date:          invite.Date,
 	}
@@ -400,16 +402,15 @@ func channelInviteHashFromLink(link string) (string, error) {
 		return "", err
 	}
 	link = strings.TrimSpace(link)
+	link = strings.TrimPrefix(link, "tg://join?invite=")
 	if strings.Contains(link, "://") {
-		u, err := url.Parse(link)
-		if err != nil || !brand.KnownPublicHost(u.Hostname()) {
-			return "", tgerr400("INVITE_HASH_INVALID")
+		if idx := strings.LastIndex(link, "/+"); idx >= 0 {
+			link = link[idx+2:]
+		} else if idx := strings.LastIndex(link, "/joinchat/"); idx >= 0 {
+			link = link[idx+10:]
+		} else if idx := strings.LastIndex(link, "/"); idx >= 0 {
+			link = link[idx+1:]
 		}
-		path := strings.TrimSpace(u.EscapedPath())
-		if !strings.HasPrefix(path, "/+") {
-			return "", tgerr400("INVITE_HASH_INVALID")
-		}
-		link = strings.TrimPrefix(path, "/+")
 	}
 	link = strings.TrimPrefix(link, "+")
 	link = strings.TrimSpace(link)
