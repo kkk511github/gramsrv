@@ -143,6 +143,25 @@ TELESRV_APP_NAME=SafeLink
 go run ./cmd/stickerseeddeploy -source /path/to/HSgram_-premium-promo -dest data/sticker-seed
 ```
 
+消息发送特效是单独的 seed。`stickerseeddeploy` 不会生成
+`telegram_effects_export`，生产部署时必须保留或生成这个目录：
+
+```text
+data/sticker-seed/telegram_effects_export/effects.json
+data/sticker-seed/telegram_effects_export/documents/
+```
+
+如果缺少 `telegram_effects_export/effects.json`，服务端仍会启动，但
+`messages.getAvailableEffects` 会返回空目录。客户端就会看不到表情/消息特效选择器，
+非零 message effect 发送也会被拒。刷新官方特效目录需要已授权的 Telegram session：
+
+```sh
+SESSION=/tmp/appearance.session go run ./cmd/stickerfetch data/sticker-seed effects
+```
+
+如果 session 还没授权，先用 `appearancefetch` 的 `sendcode`、`fetch` 登录，并复用
+同一个 `SESSION` 路径。
+
 生成后的 `data/sticker-seed` 必须按完整目录树部署，不要只手工拷贝顶层文件：
 reaction 动画、贴纸文档、缩略图和 set 元数据分布在多层目录里。服务器部署时把
 它放在服务数据目录旁边，并配置：
@@ -155,6 +174,14 @@ TELESRV_STICKER_SEED_DIR=/www/safelink/slerv/data/sticker-seed
 记录 seed 状态，所以普通重启是增量导入。如果要强制从零重新导入，需要重置数据
 库，或同时清理 seed-state 与已导入的 sticker/media 数据；否则未变化的 seed 会被
 有意跳过。
+
+重启后必须检查 effects seed 日志：
+
+```sh
+journalctl -u slerv.service --since "5 minutes ago" --no-pager | grep '"phase": "effects"'
+```
+
+`effects` 数量必须大于 `0`；如果是 `effects=0`，说明特效 seed 没有部署上。
 
 可选的 OpenAI-compatible、Kimi/Moonshot、Gemini、Anthropic provider 变量见 `.env.example`。
 

@@ -442,6 +442,20 @@ go run ./cmd/stickerseeddeploy \
   -dest data/sticker-seed
 ```
 
+特别注意：消息发送特效不是 `stickerseeddeploy` 自动生成的目录，必须额外保留或生成：
+
+```text
+data/sticker-seed/telegram_effects_export/effects.json
+data/sticker-seed/telegram_effects_export/documents/
+```
+
+缺这个目录时，`messages.getAvailableEffects` 会返回空，iOS/PC 表情特效选择器会像“没了”一样。
+有已授权 Telegram session 时用下面命令刷新官方特效 seed：
+
+```sh
+SESSION=/tmp/appearance.session go run ./cmd/stickerfetch data/sticker-seed effects
+```
+
 部署时完整同步目录树：
 
 ```sh
@@ -456,6 +470,12 @@ TELESRV_STICKER_PUBLIC_URL=https://safelink.chat
 ```
 
 重启后看日志里 seed 导入是否完成。
+
+尤其要看 effects 阶段，数量必须大于 0：
+
+```sh
+journalctl -u slerv.service --since "5 minutes ago" --no-pager | grep '"phase": "effects"'
+```
 
 ## 坑 8：部署 Web 后文件 owner 不是重点，但文件必须完整
 

@@ -160,6 +160,27 @@ generate or refresh the official sticker, emoji, and reaction catalog, run:
 go run ./cmd/stickerseeddeploy -source /path/to/HSgram_-premium-promo -dest data/sticker-seed
 ```
 
+Message sending effects are a separate seed. `stickerseeddeploy` does not
+create `telegram_effects_export`, so production deploys must keep or generate
+this directory as well:
+
+```text
+data/sticker-seed/telegram_effects_export/effects.json
+data/sticker-seed/telegram_effects_export/documents/
+```
+
+If `telegram_effects_export/effects.json` is missing, the server still starts,
+but `messages.getAvailableEffects` returns an empty catalog. Clients then show
+no emoji/message effect picker, and non-zero message effects are rejected. To
+refresh the official effects catalog, use an authorized Telegram session:
+
+```sh
+SESSION=/tmp/appearance.session go run ./cmd/stickerfetch data/sticker-seed effects
+```
+
+If the session is not authorized yet, create it first with `appearancefetch`
+(`sendcode`, then `fetch`) and reuse the same `SESSION` path.
+
 The generated `data/sticker-seed` directory must be copied as a complete
 directory tree. Do not hand-copy only the top-level files: reaction animations,
 sticker documents, thumbnails, and set metadata live several levels deep. On a
@@ -175,6 +196,15 @@ startup and records seed state in the database, so a normal restart is
 incremental. To force a completely clean import, reset the database or clear the
 seed-state rows together with the imported sticker/media rows; otherwise
 unchanged seed sets are intentionally skipped.
+
+After restart, always check the effects seed log before handing the build over:
+
+```sh
+journalctl -u slerv.service --since "5 minutes ago" --no-pager | grep '"phase": "effects"'
+```
+
+The `effects` count must be greater than `0`; `effects=0` means the effect seed
+was not deployed.
 
 Optional OpenAI-compatible, Kimi/Moonshot, Gemini, and Anthropic provider
 variables are documented in `.env.example`.
