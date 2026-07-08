@@ -26,3 +26,15 @@ type IPLocation struct {
 	Country string
 	Region  string
 }
+
+// AuthKeyClientInfo 是未登录 auth_key 也需要保留的客户端协商元数据。
+// 登录后的设备授权仍由 Authorization 表达；这里仅用于服务端重启后恢复
+// pre-auth / setup 流程的 client type 与 layer。
+type AuthKeyClientInfo struct {
+	Layer         int
+	DeviceModel   string
+	Platform      string
+	SystemVersion string
+	APIID         int
+	AppVersion    string
+}
