@@ -223,7 +223,7 @@ func (r *Router) starsTopupPaymentForm(userID int64, purpose *tg.InputStorePayme
 		FormID:      starsTopupFormID(userID, purpose.Stars, purpose.Currency, purpose.Amount),
 		BotID:       domain.OfficialSystemUserID,
 		Title:       "Telegram Stars",
-		Description: "telesrv dev Stars top-up",
+		Description: "SafeLink dev Stars top-up",
 		Invoice: tg.Invoice{
 			Currency: "XTR",
 			Prices:   []tg.LabeledPrice{{Label: "Telegram Stars", Amount: purpose.Stars}},
@@ -253,7 +253,7 @@ func (r *Router) sendStarsTopupForm(ctx context.Context, userID, formID int64, i
 	if _, err := r.deps.Stars.GetBalance(ctx, userID); err != nil {
 		return nil, starsErr(err)
 	}
-	balance, err := r.deps.Stars.Credit(ctx, userID, purpose.Stars, domain.StarsReasonTopup, peer, "Stars top-up", "telesrv dev purchase")
+	balance, err := r.deps.Stars.Credit(ctx, userID, purpose.Stars, domain.StarsReasonTopup, peer, "Stars top-up", "SafeLink dev purchase")
 	if err != nil {
 		return nil, starsErr(err)
 	}

@@ -11,7 +11,7 @@ import (
 	"telesrv/internal/store"
 )
 
-const readModelChangeNotifyChannel = "telesrv_read_model_changed"
+const readModelChangeNotifyChannel = "safelink_read_model_changed"
 
 // ReadModelCacheSet 是 read_model_versions 通知可失效的进程内投影缓存集合。
 // 后续新增 read model 时，把缓存接到这里即可复用同一条 LISTEN 连接。

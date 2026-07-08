@@ -10,8 +10,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// channelChangeNotifyChannel 是 channels 触发器(迁移 0117) pg_notify 的频道名，必须与 SQL 一致。
-const channelChangeNotifyChannel = "telesrv_channel_changed"
+// channelChangeNotifyChannel 是 channels 触发器 pg_notify 的频道名，必须与 SQL 一致。
+const channelChangeNotifyChannel = "safelink_channel_changed"
 
 const (
 	channelListenerInitialBackoff = 500 * time.Millisecond

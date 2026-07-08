@@ -13,9 +13,9 @@ param(
     [string]$ServerLogPath,
     [string]$AndroidPackage = "org.telegram.messenger.beta",
     [string]$DeviceSerial,
-    [string]$PostgresContainer = "telesrv-postgres",
-    [string]$Database = "telesrv",
-    [string]$DbUser = "telesrv",
+    [string]$PostgresContainer = "safelink-postgres",
+    [string]$Database = "safelink",
+    [string]$DbUser = "safelink",
     [int]$RecentLogLines = 1200,
     [switch]$SkipAdb
 )

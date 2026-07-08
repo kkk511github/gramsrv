@@ -5,7 +5,7 @@
 //
 // 运行方式（PowerShell）：
 //
-//	$env:TELESRV_TEST_POSTGRES_DSN = "postgres://telesrv:telesrv@localhost:5432/telesrv?sslmode=disable"
+//	$env:TELESRV_TEST_POSTGRES_DSN = "postgres://safelink:safelink@localhost:5432/safelink?sslmode=disable"
 //	$env:TELESRV_TEST_REDIS_ADDR   = "localhost:6399"
 //	go test ./internal/loadtest/ -run TestMessageSendBaseline -v -count=1
 //

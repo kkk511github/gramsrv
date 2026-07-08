@@ -29,9 +29,9 @@ export function LoginPage({ onLogin }: { onLogin: (actor: string) => void }) {
       <section className="login-panel">
         <div className="login-head">
           <div className="brand brand-elevated">
-            <span className="brand-mark">T</span>
+            <span className="brand-mark">S</span>
             <span>
-              <strong>telesrv</strong>
+              <strong>SafeLink</strong>
               <small>{t("app.adminConsole")}</small>
             </span>
           </div>

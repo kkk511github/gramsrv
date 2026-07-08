@@ -6,6 +6,8 @@ import (
 
 	"github.com/gotd/td/tg"
 	"github.com/gotd/td/tgerr"
+
+	"telesrv/internal/domain"
 )
 
 func TestStorageFileTypePrefersMagicOverMime(t *testing.T) {
@@ -48,7 +50,7 @@ func TestUploadGetFileRejectsInvalidRanges(t *testing.T) {
 	}
 }
 
-func TestFileLocationKeyNormalizesHighClientDocumentID(t *testing.T) {
+func TestFileLocationKeyKeepsHighDocumentID(t *testing.T) {
 	key, ok := fileLocationKey(&tg.InputDocumentFileLocation{
 		ID:        5382305375846410902,
 		ThumbSize: "m",
@@ -56,24 +58,93 @@ func TestFileLocationKeyNormalizesHighClientDocumentID(t *testing.T) {
 	if !ok {
 		t.Fatal("fileLocationKey returned !ok")
 	}
-	const want = "doc:1382305375846410902:m"
+	const want = "doc:5382305375846410902:m"
 	if key != want {
 		t.Fatalf("key = %q, want %q", key, want)
 	}
 }
 
-func TestFileLocationKeyDecodesClientDocumentAlias(t *testing.T) {
+func TestFileLocationKeysIncludeClientDocumentAliasFallback(t *testing.T) {
 	const documentID int64 = 1382305375846410902
-	key, ok := fileLocationKey(&tg.InputDocumentFileLocation{
+	keys, ok := fileLocationKeys(&tg.InputDocumentFileLocation{
 		ID:        clientDocumentIDFromServerID(documentID),
 		ThumbSize: "m",
 	})
 	if !ok {
-		t.Fatal("fileLocationKey returned !ok")
+		t.Fatal("fileLocationKeys returned !ok")
 	}
-	const want = "doc:1382305375846410902:m"
-	if key != want {
-		t.Fatalf("key = %q, want %q", key, want)
+	want := []string{
+		"doc:5382305375846410902:m",
+		"doc:1382305375846410902:m",
+	}
+	if len(keys) != len(want) {
+		t.Fatalf("keys = %#v, want %#v", keys, want)
+	}
+	for i := range want {
+		if keys[i] != want[i] {
+			t.Fatalf("keys = %#v, want %#v", keys, want)
+		}
+	}
+}
+
+func TestUploadGetFileKeepsHighDocumentIDBeforeAliasFallback(t *testing.T) {
+	const documentID int64 = 8335947515028759735
+	var seen []string
+	r := &Router{deps: Deps{Files: &fakeFiles{
+		getFileFn: func(req domain.FileDownloadRequest) (domain.FileChunk, bool, error) {
+			seen = append(seen, req.LocationKey)
+			if req.LocationKey != "doc:8335947515028759735:m" {
+				return domain.FileChunk{}, false, nil
+			}
+			return domain.FileChunk{Bytes: []byte{0xff, 0xd8, 0xff}, MimeType: "image/jpeg"}, true, nil
+		},
+	}}}
+
+	out, err := r.onUploadGetFile(context.Background(), &tg.UploadGetFileRequest{
+		Location: &tg.InputDocumentFileLocation{ID: documentID, ThumbSize: "m"},
+		Offset:   0,
+		Limit:    1024,
+	})
+	if err != nil {
+		t.Fatalf("onUploadGetFile: %v", err)
+	}
+	if out == nil {
+		t.Fatal("onUploadGetFile returned nil output")
+	}
+	if len(seen) != 1 || seen[0] != "doc:8335947515028759735:m" {
+		t.Fatalf("seen keys = %#v, want direct high document id only", seen)
+	}
+}
+
+func TestUploadGetFileFallsBackToClientDocumentAlias(t *testing.T) {
+	const documentID int64 = 1382305375846410902
+	var seen []string
+	r := &Router{deps: Deps{Files: &fakeFiles{
+		getFileFn: func(req domain.FileDownloadRequest) (domain.FileChunk, bool, error) {
+			seen = append(seen, req.LocationKey)
+			if req.LocationKey != "doc:1382305375846410902:m" {
+				return domain.FileChunk{}, false, nil
+			}
+			return domain.FileChunk{Bytes: []byte{0xff, 0xd8, 0xff}, MimeType: "image/jpeg"}, true, nil
+		},
+	}}}
+
+	_, err := r.onUploadGetFile(context.Background(), &tg.UploadGetFileRequest{
+		Location: &tg.InputDocumentFileLocation{ID: clientDocumentIDFromServerID(documentID), ThumbSize: "m"},
+		Offset:   0,
+		Limit:    1024,
+	})
+	if err != nil {
+		t.Fatalf("onUploadGetFile: %v", err)
+	}
+	want := []string{"doc:5382305375846410902:m", "doc:1382305375846410902:m"}
+	if len(seen) != len(want) {
+		t.Fatalf("seen keys = %#v, want %#v", seen, want)
+	}
+	for i := range want {
+		if seen[i] != want[i] {
+			t.Fatalf("seen keys = %#v, want %#v", seen, want)
+		}
 	}
 }
 

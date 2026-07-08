@@ -20,9 +20,9 @@ export function BootScreen() {
   return (
     <div className="boot-screen">
       <div className="brand compact brand-elevated">
-        <span className="brand-mark">T</span>
+        <span className="brand-mark">S</span>
         <span>
-          <strong>telesrv</strong>
+          <strong>SafeLink</strong>
           <small>{t("app.adminConsole")}</small>
         </span>
       </div>
@@ -63,9 +63,9 @@ export function Shell({
     <div className="shell">
       <aside className="sidebar">
         <AppLink className="brand" href="/" navigate={navigate}>
-          <span className="brand-mark">T</span>
+          <span className="brand-mark">S</span>
           <span>
-            <strong>telesrv</strong>
+            <strong>SafeLink</strong>
             <small>{t("app.adminConsole")}</small>
           </span>
         </AppLink>

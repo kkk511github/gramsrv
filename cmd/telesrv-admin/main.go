@@ -56,7 +56,7 @@ func run() error {
 		defer cancel()
 		_ = httpServer.Shutdown(shutdownCtx)
 	}()
-	log.Printf("telesrv-admin listening on %s", cfg.Addr)
+	log.Printf("SafeLink admin listening on %s", cfg.Addr)
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return err
 	}
@@ -74,7 +74,7 @@ type uiConfig struct {
 }
 
 // loadConfig 通过 internal/config.Load() 加载 .env 配置文件与环境变量，
-// 并转换为 telesrv-admin 需要的 uiConfig。环境变量优先级高于 .env 文件。
+// 并转换为 SafeLink admin 需要的 uiConfig。环境变量优先级高于 .env 文件。
 func loadConfig() (uiConfig, error) {
 	appCfg, err := config.Load()
 	if err != nil {

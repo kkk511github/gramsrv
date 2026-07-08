@@ -222,7 +222,7 @@ BEGIN
     RETURNING version, hash INTO next_version, next_hash;
 
     PERFORM pg_notify(
-        'telesrv_read_model_changed',
+        'safelink_read_model_changed',
         json_build_object(
             'model', p_model,
             'owner_user_id', COALESCE(p_owner_user_id, 0),
@@ -494,7 +494,7 @@ BEGIN
     ELSE
         changed_id := NEW.id;
     END IF;
-    PERFORM pg_notify('telesrv_channel_changed', changed_id::text);
+    PERFORM pg_notify('safelink_channel_changed', changed_id::text);
     RETURN NULL;
 END;
 $$;

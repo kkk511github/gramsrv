@@ -171,7 +171,7 @@ func defaultFetchInlineWebFile(ctx context.Context, document domain.BotInlineWeb
 	if err != nil {
 		return nil, "", err
 	}
-	req.Header.Set("User-Agent", "telesrv-inline-webfile")
+	req.Header.Set("User-Agent", "SafeLink-inline-webfile")
 	client := &http.Client{
 		Timeout: inlineWebFileFetchTimeout,
 		Transport: &http.Transport{

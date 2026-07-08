@@ -47,8 +47,9 @@ func NewSMTP(cfg Config) *SMTP {
 }
 
 func (s *SMTP) SendLoginCode(ctx context.Context, to, code string, ttl time.Duration) error {
-	subject := "Your telesrv login code"
-	body := fmt.Sprintf("Your telesrv login code is %s.\n\nThis code expires in %s. If you did not request it, ignore this email.\n", code, humanTTL(ttl))
+	const appName = "SafeLink"
+	subject := "Your " + appName + " login code"
+	body := fmt.Sprintf("Your %s login code is %s.\n\nThis code expires in %s. If you did not request it, ignore this email.\n", appName, code, humanTTL(ttl))
 	return s.send(ctx, to, subject, body)
 }
 

@@ -39,11 +39,11 @@ type Config struct {
 	// BotAPIAddr 是最小 HTTP Bot API 网关监听地址；为空关闭。该网关复用 MTProto
 	// app/store 事实源，不维护独立 bot 状态。
 	BotAPIAddr string
-	// AdminAPIAddr 是 telesrv 进程内管理写 API 监听地址；为空关闭。
+	// AdminAPIAddr 是 SafeLink 进程内管理写 API 监听地址；为空关闭。
 	AdminAPIAddr string
 	// AdminAPIToken 是 Admin API bearer token；开启 AdminAPIAddr 时必须显式配置。
 	AdminAPIToken string
-	// PublicBaseURL 是所有客户端可见 telesrv 链接的公开根 URL。
+	// PublicBaseURL 是所有客户端可见 SafeLink 链接的公开根 URL。
 	// 生产默认 https://safelink.chat；本地可设为 http://127.0.0.1:2401。
 	PublicBaseURL string
 	// PublicLinkWebAddr 是公开链接落地页监听地址；为空关闭。
@@ -351,7 +351,7 @@ func Load() (Config, error) {
 		// Desktop 的端口转发只在 IPv4 监听，IPv6 连接要等 ~1s 超时才回退 IPv4（实测 localhost
 		// 建连 1.0s vs 127.0.0.1 6ms）。冷连接洪峰下池扩容的新连接各等 1s → pre-handler 惊群卡顿。
 		// 生产由 TELESRV_POSTGRES_DSN 覆盖；该默认值仅作用于本地开发。
-		PostgresDSN:      envOr("TELESRV_POSTGRES_DSN", "postgres://telesrv:telesrv@127.0.0.1:5432/telesrv?sslmode=disable"),
+		PostgresDSN:      envOr("TELESRV_POSTGRES_DSN", "postgres://safelink:safelink@127.0.0.1:5432/safelink?sslmode=disable"),
 		PostgresMaxConns: envIntOr("TELESRV_POSTGRES_MAX_CONNS", 50),
 		PostgresMinConns: envIntOr("TELESRV_POSTGRES_MIN_CONNS", 16),
 		RedisAddr:        envOr("TELESRV_REDIS_ADDR", "127.0.0.1:6399"), // 同理避开 localhost→IPv6 回退延迟
@@ -369,7 +369,7 @@ func Load() (Config, error) {
 		SMTPUsername:                  envOr("TELESRV_SMTP_USERNAME", ""),
 		SMTPPassword:                  envOr("TELESRV_SMTP_PASSWORD", ""),
 		SMTPFrom:                      envOr("TELESRV_SMTP_FROM", ""),
-		SMTPFromName:                  envOr("TELESRV_SMTP_FROM_NAME", "telesrv"),
+		SMTPFromName:                  envOr("TELESRV_SMTP_FROM_NAME", brand.DefaultAppName),
 		SMTPTLSMode:                   strings.ToLower(strings.TrimSpace(envOr("TELESRV_SMTP_TLS", "starttls"))),
 		SMTPTimeout:                   envDurationOr("TELESRV_SMTP_TIMEOUT", 10*time.Second),
 		LangPackSeedDir:               envOr("TELESRV_LANGPACK_SEED_DIR", "data/langpack"),

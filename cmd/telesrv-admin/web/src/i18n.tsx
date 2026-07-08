@@ -4,13 +4,13 @@ export type Language = "en" | "zh";
 export type TranslationParams = Record<string, string | number | boolean>;
 export type TFunction = (key: string, params?: TranslationParams) => string;
 
-const storageKey = "telesrv.admin.lang";
+const storageKey = "safelink.admin.lang";
 
 const translations: Record<Language, Record<string, string>> = {
   en: {
     "app.adminConsole": "Admin Console",
     "app.localAccess": "Local access",
-    "app.title": "telesrv admin",
+    "app.title": "SafeLink admin",
     "common.actions": "Actions",
     "common.admins": "Admins",
     "common.backToList": "Back to list",
@@ -275,7 +275,7 @@ const translations: Record<Language, Record<string, string>> = {
   zh: {
     "app.adminConsole": "管理控制台",
     "app.localAccess": "本地访问",
-    "app.title": "telesrv 管理后台",
+    "app.title": "SafeLink 管理后台",
     "common.actions": "操作",
     "common.admins": "管理员",
     "common.backToList": "返回列表",

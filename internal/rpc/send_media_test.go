@@ -33,6 +33,7 @@ type fakeFiles struct {
 	lastProfileOffset  int
 	lastProfileLimit   int
 	lastProfileMaxID   int64
+	getFileFn          func(domain.FileDownloadRequest) (domain.FileChunk, bool, error)
 	resolveWebPageFn   func(string) (domain.MessageWebPage, error)
 	lookupWebPageFn    func(string) (domain.MessageWebPage, bool)
 	webPagePreviewOn   bool
@@ -58,7 +59,10 @@ func (f *fakeFiles) SaveFilePart(context.Context, int64, int64, int, []byte) (bo
 func (f *fakeFiles) SaveBigFilePart(context.Context, int64, int64, int, int, []byte) (bool, error) {
 	return true, nil
 }
-func (f *fakeFiles) GetFile(context.Context, domain.FileDownloadRequest) (domain.FileChunk, bool, error) {
+func (f *fakeFiles) GetFile(_ context.Context, req domain.FileDownloadRequest) (domain.FileChunk, bool, error) {
+	if f.getFileFn != nil {
+		return f.getFileFn(req)
+	}
 	return domain.FileChunk{}, false, nil
 }
 func (f *fakeFiles) CreateEncryptedFileFromUpload(context.Context, domain.UploadedFileRef, int) (domain.EncryptedFileRef, error) {

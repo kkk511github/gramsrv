@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const sessionCookieName = "telesrv_admin_session"
+const sessionCookieName = "safelink_admin_session"
 
 type sessionClaims struct {
 	Actor string `json:"actor"`

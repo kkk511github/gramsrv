@@ -79,24 +79,26 @@ func (r *Router) onUploadGetFile(ctx context.Context, req *tg.UploadGetFileReque
 	if r.deps.Files == nil {
 		return nil, notImplementedErr()
 	}
-	key, ok := fileLocationKey(req.Location)
+	keys, ok := fileLocationKeys(req.Location)
 	if !ok {
 		return nil, locationInvalidErr()
 	}
-	chunk, found, err := r.deps.Files.GetFile(ctx, domain.FileDownloadRequest{
-		LocationKey: key,
-		Offset:      req.Offset,
-		Limit:       req.Limit,
-	})
-	if err != nil {
-		return nil, internalErr()
-	}
-	if found {
-		return &tg.UploadFile{
-			Type:  storageFileType(chunk.MimeType, chunk.Bytes),
-			Mtime: 0,
-			Bytes: chunk.Bytes,
-		}, nil
+	for _, key := range keys {
+		chunk, found, err := r.deps.Files.GetFile(ctx, domain.FileDownloadRequest{
+			LocationKey: key,
+			Offset:      req.Offset,
+			Limit:       req.Limit,
+		})
+		if err != nil {
+			return nil, internalErr()
+		}
+		if found {
+			return &tg.UploadFile{
+				Type:  storageFileType(chunk.MimeType, chunk.Bytes),
+				Mtime: 0,
+				Bytes: chunk.Bytes,
+			}, nil
+		}
 	}
 	return nil, locationInvalidErr()
 }
@@ -161,73 +163,98 @@ func (r *Router) onUploadGetFileHashes(ctx context.Context, req *tg.UploadGetFil
 //	doc:<id>:<type>     文档缩略图
 //	photo:<id>:<type>   照片某尺寸（头像 big→c / small→a）
 func fileLocationKey(location tg.InputFileLocationClass) (string, bool) {
+	keys, ok := fileLocationKeys(location)
+	if !ok || len(keys) == 0 {
+		return "", false
+	}
+	return keys[0], true
+}
+
+func fileLocationKeys(location tg.InputFileLocationClass) ([]string, bool) {
 	switch loc := location.(type) {
 	case *tg.InputFileLocation:
-		return legacyVolumeLocationKey(loc.VolumeID, loc.LocalID)
+		return singleFileLocationKey(legacyVolumeLocationKey(loc.VolumeID, loc.LocalID))
 	case *tg.InputDocumentFileLocation:
 		if loc.ID == 0 {
-			return "", false
+			return nil, false
 		}
-		id := serverDocumentIDFromClientID(loc.ID)
-		if loc.ThumbSize == "" {
-			return fmt.Sprintf("doc:%d", id), true
+		keys := []string{documentFileLocationKey(loc.ID, loc.ThumbSize)}
+		if aliasID := serverDocumentIDFromClientID(loc.ID); aliasID != loc.ID {
+			aliasKey := documentFileLocationKey(aliasID, loc.ThumbSize)
+			if aliasKey != keys[0] {
+				keys = append(keys, aliasKey)
+			}
 		}
-		return fmt.Sprintf("doc:%d:%s", id, loc.ThumbSize), true
+		return keys, true
 	case *tg.InputPhotoFileLocation:
 		if loc.ID == 0 || loc.ThumbSize == "" {
-			return "", false
+			return nil, false
 		}
-		return fmt.Sprintf("photo:%d:%s", loc.ID, loc.ThumbSize), true
+		return []string{fmt.Sprintf("photo:%d:%s", loc.ID, loc.ThumbSize)}, true
 	case *tg.InputPeerPhotoFileLocation:
 		if loc.PhotoID == 0 {
-			return "", false
+			return nil, false
 		}
 		size := "a"
 		if loc.Big {
 			size = "c"
 		}
-		return fmt.Sprintf("photo:%d:%s", loc.PhotoID, size), true
+		return []string{fmt.Sprintf("photo:%d:%s", loc.PhotoID, size)}, true
 	case *tg.InputPhotoLegacyFileLocation:
 		photoID := loc.ID
 		if photoID == 0 && loc.VolumeID < 0 {
 			photoID = -loc.VolumeID
 		}
 		if photoID == 0 {
-			return "", false
+			return nil, false
 		}
 		size, ok := legacyPhotoSizeType(loc.LocalID)
 		if !ok {
-			return "", false
+			return nil, false
 		}
-		return fmt.Sprintf("photo:%d:%s", photoID, size), true
+		return []string{fmt.Sprintf("photo:%d:%s", photoID, size)}, true
 	case *tg.InputPeerPhotoFileLocationLegacy:
 		photoID := int64(0)
 		if loc.VolumeID < 0 {
 			photoID = -loc.VolumeID
 		}
 		if photoID == 0 {
-			return "", false
+			return nil, false
 		}
 		size := "a"
 		if loc.Big {
 			size = "c"
 		}
-		return fmt.Sprintf("photo:%d:%s", photoID, size), true
+		return []string{fmt.Sprintf("photo:%d:%s", photoID, size)}, true
 	case *tg.InputStickerSetThumb:
-		return stickerSetThumbLocationKey(loc.Stickerset)
+		return singleFileLocationKey(stickerSetThumbLocationKey(loc.Stickerset))
 	case *tg.InputStickerSetThumbLegacy:
-		return stickerSetThumbLocationKey(loc.Stickerset)
+		return singleFileLocationKey(stickerSetThumbLocationKey(loc.Stickerset))
 	case *tg.InputEncryptedFileLocation:
 		// 密聊文件（P2）：盲 blob，location_key "enc:<id>"。access_hash 不强校验
 		// （沿用现有媒体 dev 姿态，依赖不可枚举 id）。
 		if loc.ID == 0 {
-			return "", false
+			return nil, false
 		}
-		return fmt.Sprintf("enc:%d", loc.ID), true
+		return []string{fmt.Sprintf("enc:%d", loc.ID)}, true
 	default:
 		// secure / takeout 等本阶段不生成对应资源。
-		return "", false
+		return nil, false
 	}
+}
+
+func singleFileLocationKey(key string, ok bool) ([]string, bool) {
+	if !ok {
+		return nil, false
+	}
+	return []string{key}, true
+}
+
+func documentFileLocationKey(id int64, thumbSize string) string {
+	if thumbSize == "" {
+		return fmt.Sprintf("doc:%d", id)
+	}
+	return fmt.Sprintf("doc:%d:%s", id, thumbSize)
 }
 
 func stickerSetThumbLocationKey(set tg.InputStickerSetClass) (string, bool) {
