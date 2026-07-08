@@ -54,6 +54,7 @@ import (
 	"telesrv/internal/botapi"
 	"telesrv/internal/config"
 	"telesrv/internal/domain"
+	"telesrv/internal/ipgeo"
 	"telesrv/internal/mtprotoedge"
 	"telesrv/internal/rpc"
 	"telesrv/internal/seed/catalog"
@@ -615,6 +616,7 @@ func run(logger *zap.Logger) error {
 	)
 	authService := auth.NewService(userStore, authzStore, codeStore, authKeyStore, tempAuthKeyStore, cfg.DevAuthCode, auth.WithLoginMessages(messageStore, dialogStore), auth.WithPasswords(passwordStore), auth.WithBotLogin(botStore), auth.WithPremiumGrant(cfg.PremiumGrantMonths))
 	updatesService := updates.NewService(updateStateStore, updateEventStore, updates.WithLogger(logger.Named("app").Named("updates")))
+	ipGeoResolver := ipgeo.NewResolver(ipgeo.Options{})
 	router := rpc.New(rpc.Config{
 		DC:                       cfg.DC,
 		IP:                       cfg.AdvertiseIP,
@@ -636,6 +638,7 @@ func run(logger *zap.Logger) error {
 		TempKeyResolveCacheMaxEntries: cfg.TempKeyResolveCacheMaxEntries,
 	}, rpc.Deps{
 		Auth:             authService,
+		IPGeo:            ipGeoResolver,
 		Account:          accountService,
 		Privacy:          privacyService,
 		Help:             help.NewService(helpStore, helpStore, help.WithMapboxToken(cfg.MapboxToken)),

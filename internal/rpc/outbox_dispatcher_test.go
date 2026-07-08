@@ -734,9 +734,21 @@ type captureScopedSessions struct {
 	*captureSessions
 	// scopedMu 保护本层扩展字段：presence 等异步推送 goroutine 会并发写
 	// scopedAuthKeyID，测试主 goroutine 并发读（race detector 抓过这里）。
-	scopedMu        sync.Mutex
-	scopedAuthKeyID [8]byte
-	immediatePush   bool
+	scopedMu              sync.Mutex
+	scopedAuthKeyID       [8]byte
+	immediatePush         bool
+	immediateRawAuthKeyID [8]byte
+	immediateSessionID    int64
+	immediateMessageType  proto.MessageType
+	immediateMessage      bin.Encoder
+}
+
+type captureScopedImmediatePush struct {
+	seen         bool
+	rawAuthKeyID [8]byte
+	sessionID    int64
+	messageType  proto.MessageType
+	message      bin.Encoder
 }
 
 func (s *captureScopedSessions) setScopedAuthKeyID(rawAuthKeyID [8]byte) {
@@ -755,6 +767,18 @@ func (s *captureScopedSessions) immediatePushSeen() bool {
 	s.scopedMu.Lock()
 	defer s.scopedMu.Unlock()
 	return s.immediatePush
+}
+
+func (s *captureScopedSessions) immediatePushSnapshot() captureScopedImmediatePush {
+	s.scopedMu.Lock()
+	defer s.scopedMu.Unlock()
+	return captureScopedImmediatePush{
+		seen:         s.immediatePush,
+		rawAuthKeyID: s.immediateRawAuthKeyID,
+		sessionID:    s.immediateSessionID,
+		messageType:  s.immediateMessageType,
+		message:      s.immediateMessage,
+	}
 }
 
 func (s *captureScopedSessions) BindAuthKeyForSession(rawAuthKeyID [8]byte, sessionID int64, authKeyID [8]byte) {
@@ -790,6 +814,10 @@ func (s *captureScopedSessions) PushToSessionForAuthKeyImmediate(_ context.Conte
 	s.scopedMu.Lock()
 	s.immediatePush = true
 	s.scopedAuthKeyID = rawAuthKeyID
+	s.immediateRawAuthKeyID = rawAuthKeyID
+	s.immediateSessionID = sessionID
+	s.immediateMessageType = t
+	s.immediateMessage = msg
 	s.scopedMu.Unlock()
 	return s.PushToSession(context.Background(), sessionID, t, msg)
 }

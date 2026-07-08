@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"telesrv/internal/domain"
@@ -159,32 +160,42 @@ func TestSeedDirectoryAppliesBrandingAndBumpsWhenAppNameChanges(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`
 "TelegramPremium" = "Telegram Premium";
 "lng_business" = "SafeLink Business";
+"lng_tidings" = "Tidings Desktop";
+"lng_link" = "https://telegram.org/faq and https://t.me/example and tg://resolve?domain=test";
 `), 0o600); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
 
 	store := memory.NewLangPackStore()
 	service := NewService(store, WithBranding(Branding{AppName: "Safelink"}))
-	if seeded, err := service.SeedDirectory(context.Background(), root); err != nil || seeded != 2 {
-		t.Fatalf("first seed = %d, %v; want 2, nil", seeded, err)
+	if seeded, err := service.SeedDirectory(context.Background(), root); err != nil || seeded != 4 {
+		t.Fatalf("first seed = %d, %v; want 4, nil", seeded, err)
 	}
 	pack, err := service.GetLangPack(context.Background(), "tdesktop", "en")
 	if err != nil {
 		t.Fatalf("get first pack: %v", err)
 	}
-	if pack.Version != 1 || langPackTestValue(pack, "TelegramPremium") != "Safelink Premium" || langPackTestValue(pack, "lng_business") != "Safelink Business" {
+	if pack.Version != 1 ||
+		langPackTestValue(pack, "TelegramPremium") != "Safelink Premium" ||
+		langPackTestValue(pack, "lng_business") != "Safelink Business" ||
+		langPackTestValue(pack, "lng_tidings") != "Safelink Desktop" ||
+		langPackTestValue(pack, "lng_link") != "https://safelink.chat/faq and https://safelink.chat/example and safelink://resolve?domain=test" {
 		t.Fatalf("first pack = %+v", pack)
 	}
 
 	service = NewService(store, WithBranding(Branding{AppName: "NewName"}))
-	if seeded, err := service.SeedDirectory(context.Background(), root); err != nil || seeded != 2 {
-		t.Fatalf("second seed = %d, %v; want 2, nil", seeded, err)
+	if seeded, err := service.SeedDirectory(context.Background(), root); err != nil || seeded != 4 {
+		t.Fatalf("second seed = %d, %v; want 4, nil", seeded, err)
 	}
 	pack, err = service.GetLangPack(context.Background(), "tdesktop", "en")
 	if err != nil {
 		t.Fatalf("get second pack: %v", err)
 	}
-	if pack.Version != 2 || langPackTestValue(pack, "TelegramPremium") != "NewName Premium" || langPackTestValue(pack, "lng_business") != "NewName Business" {
+	if pack.Version != 2 ||
+		langPackTestValue(pack, "TelegramPremium") != "NewName Premium" ||
+		langPackTestValue(pack, "lng_business") != "NewName Business" ||
+		langPackTestValue(pack, "lng_tidings") != "NewName Desktop" ||
+		langPackTestValue(pack, "lng_link") != "https://safelink.chat/faq and https://safelink.chat/example and safelink://resolve?domain=test" {
 		t.Fatalf("second pack = %+v", pack)
 	}
 }
@@ -213,10 +224,85 @@ func TestBundledAndroidPersianLangPackParses(t *testing.T) {
 	t.Fatalf("TranslateLanguageFA not found in bundled android fa pack")
 }
 
+func TestBundledLangPacksBrandingRemovesLegacyPublicValues(t *testing.T) {
+	root := filepath.Join("..", "..", "..", "data", "langpack")
+	if _, err := os.Stat(root); err != nil {
+		t.Skipf("bundled langpack dir unavailable: %v", err)
+	}
+	replacer := newBrandReplacer(Branding{AppName: "SafeLink"})
+	if replacer == nil {
+		t.Fatal("brand replacer is nil")
+	}
+	checked := 0
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || filepath.Ext(path) != ".strings" {
+			return nil
+		}
+		pack, err := ParseTDesktopFile(path)
+		if err != nil {
+			return err
+		}
+		applyBrandingToPack(&pack, replacer)
+		for _, item := range pack.Strings {
+			for _, value := range langPackStringValues(item) {
+				if forbidden := legacyPublicBrandToken(value); forbidden != "" {
+					t.Fatalf("%s %s value still contains %q: %q", path, item.Key, forbidden, value)
+				}
+			}
+			checked++
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk bundled langpacks: %v", err)
+	}
+	if checked == 0 {
+		t.Fatal("checked no bundled langpack strings")
+	}
+}
+
 func langPackTestValue(pack domain.LangPack, key string) string {
 	for _, item := range pack.Strings {
 		if item.Key == key {
 			return item.Value
+		}
+	}
+	return ""
+}
+
+func langPackStringValues(item domain.LangPackString) []string {
+	return []string{
+		item.Value,
+		item.ZeroValue,
+		item.OneValue,
+		item.TwoValue,
+		item.FewValue,
+		item.ManyValue,
+		item.OtherValue,
+	}
+}
+
+func legacyPublicBrandToken(value string) string {
+	lower := strings.ToLower(value)
+	for _, token := range []string{
+		"telegram",
+		"tidings",
+		"tiding",
+		"telesrv",
+		"t.me",
+		"tg://",
+		"telegram.org",
+		"telegram.me",
+		"tidings.org",
+		"tidings.me",
+		"core.telegram",
+		"core.tidings",
+	} {
+		if strings.Contains(lower, token) {
+			return token
 		}
 	}
 	return ""

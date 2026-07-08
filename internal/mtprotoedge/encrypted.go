@@ -19,6 +19,7 @@ import (
 	"github.com/gotd/td/tgerr"
 	"github.com/gotd/td/transport"
 
+	"telesrv/internal/clientaddr"
 	"telesrv/internal/compat/layerwire"
 	"telesrv/internal/observability/dbtrace"
 	"telesrv/internal/postresponse"
@@ -81,7 +82,7 @@ const (
 // 后回落）；为 nil 表示走快路径——serveConn 判定 current 仍持同一未销毁的 auth key，直接复用
 // current.key/current.salt 解密，既不回查 AuthKeyStore 也不重建 store.AuthKeyData。
 // plain 是 serveConn 持有的复用明文缓冲，frame 的 slice 仅在下一帧解密前有效。
-func (s *Server) handleEncrypted(ctx context.Context, tc transport.Conn, cs *connState, current *Conn, fetchedKey *store.AuthKeyData, b, plain *bin.Buffer) (*Conn, error) {
+func (s *Server) handleEncrypted(ctx context.Context, tc transport.Conn, remoteIP string, cs *connState, current *Conn, fetchedKey *store.AuthKeyData, b, plain *bin.Buffer) (*Conn, error) {
 	var key crypto.AuthKey
 	var serverSalt int64
 	if fetchedKey != nil {
@@ -102,7 +103,7 @@ func (s *Server) handleEncrypted(ctx context.Context, tc transport.Conn, cs *con
 		c := current
 		temp := false
 		if c == nil || c.sessionID != frame.sessionID {
-			c = s.newConn(tc, key, frame.sessionID, serverSalt)
+			c = s.newConn(tc, key, frame.sessionID, serverSalt, remoteIP)
 			temp = true
 		}
 		err := s.sendBadServerSalt(ctx, c, frame.messageID, frame.seqNo, serverSalt)
@@ -121,7 +122,7 @@ func (s *Server) handleEncrypted(ctx context.Context, tc transport.Conn, cs *con
 			s.conns.Unregister(current)
 			current.Close()
 		}
-		current = s.newConn(tc, key, frame.sessionID, serverSalt)
+		current = s.newConn(tc, key, frame.sessionID, serverSalt, remoteIP)
 		// 注册即播种协商 layer：新 Conn 的 clientLayer 为 0（=canonical 227），若等到
 		// 首条 RPC 的 Dispatch 返回后才刷新，重连老客户端在首条 RPC handler 执行期间
 		// 收到的 pending flush / 并发 push 会漏降级。进程内重连时 rpc 层留有
@@ -505,6 +506,9 @@ func (s *Server) handleRPC(ctx context.Context, c *Conn, msgID int64, method str
 	}
 
 	ctx = postresponse.WithCallbacks(ctx)
+	if ip := c.RemoteIP(); ip != "" {
+		ctx = clientaddr.WithIP(ctx, ip)
+	}
 	ctx, dbStats := dbtrace.WithStats(ctx)
 	start := s.clock.Now()
 	result, err := s.rpc.Dispatch(ctx, c.authKeyID, c.sessionID, b)

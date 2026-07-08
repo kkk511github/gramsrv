@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gotd/td/tg"
+	"go.uber.org/zap"
 
 	"telesrv/internal/compat/tdesktop"
 	"telesrv/internal/domain"
@@ -329,7 +330,7 @@ func (r *Router) onAccountGetAuthorizations(ctx context.Context) (*tg.AccountAut
 	}
 	out := &tg.AccountAuthorizations{Authorizations: make([]tg.Authorization, 0, len(items))}
 	for _, item := range items {
-		out.Authorizations = append(out.Authorizations, tgAuthorization(item, authKeyID, int(r.clock.Now().Unix())))
+		out.Authorizations = append(out.Authorizations, r.tgAuthorization(ctx, item, authKeyID, int(r.clock.Now().Unix())))
 	}
 	return out, nil
 }
@@ -1523,7 +1524,11 @@ func (r *Router) pushSelfUserChangedUpdate(ctx context.Context, u domain.User) {
 	})
 }
 
-func tgAuthorization(a domain.Authorization, currentAuthKeyID [8]byte, now int) tg.Authorization {
+func (r *Router) tgAuthorization(ctx context.Context, a domain.Authorization, currentAuthKeyID [8]byte, now int) tg.Authorization {
+	return tgAuthorization(a, currentAuthKeyID, now, r.authorizationLocation(ctx, a.IP))
+}
+
+func tgAuthorization(a domain.Authorization, currentAuthKeyID [8]byte, now int, loc domain.IPLocation) tg.Authorization {
 	created := int(a.CreatedAt.Unix())
 	if created == 0 {
 		created = now
@@ -1532,6 +1537,7 @@ func tgAuthorization(a domain.Authorization, currentAuthKeyID [8]byte, now int) 
 	if active == 0 {
 		active = created
 	}
+	ip := strings.TrimSpace(a.IP)
 	return tg.Authorization{
 		Current:       a.AuthKeyID == currentAuthKeyID,
 		OfficialApp:   true,
@@ -1540,13 +1546,53 @@ func tgAuthorization(a domain.Authorization, currentAuthKeyID [8]byte, now int) 
 		Platform:      a.Platform,
 		SystemVersion: a.SystemVersion,
 		APIID:         a.APIID,
-		AppName:       "Telegram Desktop",
+		AppName:       authorizationAppName(a),
 		AppVersion:    a.AppVersion,
 		DateCreated:   created,
 		DateActive:    active,
-		IP:            a.IP,
-		Country:       "Unknown",
-		Region:        "Unknown",
+		IP:            ip,
+		Country:       loc.Country,
+		Region:        loc.Region,
+	}
+}
+
+func (r *Router) authorizationLocation(ctx context.Context, ip string) domain.IPLocation {
+	if strings.TrimSpace(ip) == "" {
+		return unknownIPLocation()
+	}
+	if r.deps.IPGeo == nil {
+		return unknownIPLocation()
+	}
+	loc, ok, err := r.deps.IPGeo.LookupIPLocation(ctx, ip)
+	if err != nil && r.log != nil {
+		r.log.Debug("ip geo lookup failed", zap.String("ip", ip), zap.Error(err))
+	}
+	if err != nil || !ok || (strings.TrimSpace(loc.Country) == "" && strings.TrimSpace(loc.Region) == "") {
+		return unknownIPLocation()
+	}
+	loc.Country = strings.TrimSpace(loc.Country)
+	loc.Region = strings.TrimSpace(loc.Region)
+	if loc.Country == "" {
+		loc.Country = "Unknown"
+	}
+	return loc
+}
+
+func unknownIPLocation() domain.IPLocation {
+	return domain.IPLocation{Country: "Unknown", Region: "Unknown"}
+}
+
+func authorizationAppName(a domain.Authorization) string {
+	client := strings.ToLower(strings.TrimSpace(a.Platform + " " + a.DeviceModel + " " + a.SystemVersion + " " + a.AppVersion))
+	switch {
+	case strings.Contains(client, "iphone"), strings.Contains(client, "ipad"), strings.Contains(client, "ios"):
+		return "SafeLink iOS"
+	case strings.Contains(client, "android"), androidSDKVersionRE.MatchString(client):
+		return "SafeLink Android"
+	case strings.Contains(client, "tdesktop"), strings.Contains(client, "desktop"), strings.Contains(client, "windows"), strings.Contains(client, "macos"), strings.Contains(client, "linux"):
+		return "SafeLink Desktop"
+	default:
+		return "SafeLink"
 	}
 }
 
@@ -1602,12 +1648,16 @@ func statusPackEmojiDocumentIDs(ctx context.Context, files FilesService, limit i
 }
 
 func (r *Router) defaultProfilePhotoEmojiDocumentIDs(ctx context.Context, limit int) ([]int64, error) {
-	ids, err := profilePhotoEmojiDocumentIDsFromRef(ctx, r.deps.Files, domain.StickerSetRef{
-		Kind:      domain.StickerSetRefByShortName,
-		ShortName: "TelesrvDefaultStatuses",
-	}, limit)
-	if err != nil || len(ids) > 0 {
-		return ids, err
+	var ids []int64
+	var err error
+	for _, shortName := range []string{"SafeLinkDefaultStatuses", "TelesrvDefaultStatuses"} {
+		ids, err = profilePhotoEmojiDocumentIDsFromRef(ctx, r.deps.Files, domain.StickerSetRef{
+			Kind:      domain.StickerSetRefByShortName,
+			ShortName: shortName,
+		}, limit)
+		if err != nil || len(ids) > 0 {
+			return ids, err
+		}
 	}
 	ids, err = defaultProfilePhotoEmojiDocumentIDsFromKind(ctx, r.deps.Files, domain.StickerSetKindSystem, limit, func(set domain.StickerSet) bool {
 		return set.SystemKey == "animated_emoji"

@@ -6,6 +6,7 @@ import (
 
 	"github.com/gotd/td/tg"
 
+	"telesrv/internal/brand"
 	"telesrv/internal/compat/tdesktop"
 )
 
@@ -18,7 +19,7 @@ func (r *Router) registerHelp(d *tg.ServerDispatcher) {
 		return tdesktop.NearestDC(r.cfg.DC), nil
 	})
 	d.OnHelpGetInviteText(func(ctx context.Context) (*tg.HelpInviteText, error) {
-		return &tg.HelpInviteText{Message: "Join me on Telegram."}, nil
+		return &tg.HelpInviteText{Message: "Join me on " + brand.DefaultAppName + "."}, nil
 	})
 	d.OnHelpGetAppUpdate(func(ctx context.Context, source string) (tg.HelpAppUpdateClass, error) {
 		return &tg.HelpNoAppUpdate{}, nil
@@ -85,7 +86,7 @@ func (r *Router) registerHelp(d *tg.ServerDispatcher) {
 // 六个字段全是 TL 必填项，空值也必须给出空集合而非缺失。
 func (r *Router) onHelpGetPremiumPromo(ctx context.Context) (*tg.HelpPremiumPromo, error) {
 	promo := &tg.HelpPremiumPromo{
-		StatusText:     "Telegram Premium is not active on this account.",
+		StatusText:     brand.DefaultAppName + " Premium is not active on this account.",
 		StatusEntities: []tg.MessageEntityClass{},
 		VideoSections:  []string{},
 		Videos:         []tg.DocumentClass{},
@@ -102,7 +103,7 @@ func (r *Router) onHelpGetPremiumPromo(ctx context.Context) (*tg.HelpPremiumProm
 	}
 	if u.PremiumActiveAt(r.clock.Now().Unix()) {
 		until := time.Unix(int64(u.PremiumUntil), 0)
-		promo.StatusText = "Telegram Premium is active until " + until.Format("2006-01-02") + "."
+		promo.StatusText = brand.DefaultAppName + " Premium is active until " + until.Format("2006-01-02") + "."
 	}
 	return promo, nil
 }

@@ -21,3 +21,8 @@ type Authorization struct {
 	CreatedAt       time.Time
 	ActiveAt        time.Time
 }
+
+type IPLocation struct {
+	Country string
+	Region  string
+}

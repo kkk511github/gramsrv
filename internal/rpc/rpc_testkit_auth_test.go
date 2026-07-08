@@ -116,6 +116,10 @@ func (s *blockingUserAuthService) UpdateAuthorizationLayer(context.Context, [8]b
 	return nil
 }
 
+func (s *blockingUserAuthService) UpdateAuthorizationIP(context.Context, [8]byte, string) error {
+	return nil
+}
+
 func (s *blockingUserAuthService) ListAuthorizations(context.Context, int64) ([]domain.Authorization, error) {
 	return nil, nil
 }
@@ -232,6 +236,16 @@ func (s *captureAuthService) UpdateAuthorizationLayer(_ context.Context, authKey
 	for i := range s.authorizations {
 		if s.authorizations[i].AuthKeyID == authKeyID {
 			s.authorizations[i].Layer = layer
+			return nil
+		}
+	}
+	return nil
+}
+
+func (s *captureAuthService) UpdateAuthorizationIP(_ context.Context, authKeyID [8]byte, ip string) error {
+	for i := range s.authorizations {
+		if s.authorizations[i].AuthKeyID == authKeyID {
+			s.authorizations[i].IP = ip
 			return nil
 		}
 	}

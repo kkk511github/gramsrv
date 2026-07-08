@@ -526,6 +526,13 @@ func (s *Service) UpdateAuthorizationLayer(ctx context.Context, authKeyID [8]byt
 	return s.auths.UpdateLayer(ctx, authKeyID, layer)
 }
 
+func (s *Service) UpdateAuthorizationIP(ctx context.Context, authKeyID [8]byte, ip string) error {
+	if s == nil || s.auths == nil || authKeyID == ([8]byte{}) {
+		return nil
+	}
+	return s.auths.UpdateIP(ctx, authKeyID, ip)
+}
+
 func (s *Service) ListAuthorizations(ctx context.Context, userID int64) ([]domain.Authorization, error) {
 	if s == nil || s.auths == nil || userID == 0 {
 		return nil, nil

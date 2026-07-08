@@ -101,21 +101,25 @@ func TestAuthLoginTokenAcceptedByAndroidBindsTargetSession(t *testing.T) {
 	}
 
 	snap := sessions.snapshot()
-	if got := sessions.scopedAuthKey(); got != targetRawAuthKeyID {
-		t.Fatalf("scoped raw auth key = %x, want %x", got, targetRawAuthKeyID)
-	}
 	if snap.sessionID != targetSession || snap.userID != scannerUserID || !snap.userResolved {
 		t.Fatalf("target session snapshot = %+v, want session/user/resolved %d/%d/true", snap, targetSession, scannerUserID)
 	}
-	if snap.messageType != proto.MessageFromServer {
-		t.Fatalf("push message type = %v, want MessageFromServer", snap.messageType)
-	}
-	if !sessions.immediatePushSeen() {
+	immediate := sessions.immediatePushSnapshot()
+	if !immediate.seen {
 		t.Fatal("login token update was not pushed through the immediate pre-auth path")
 	}
-	short, ok := snap.message.(*tg.UpdateShort)
+	if got := immediate.rawAuthKeyID; got != targetRawAuthKeyID {
+		t.Fatalf("immediate raw auth key = %x, want %x", got, targetRawAuthKeyID)
+	}
+	if immediate.sessionID != targetSession {
+		t.Fatalf("immediate session id = %d, want %d", immediate.sessionID, targetSession)
+	}
+	if immediate.messageType != proto.MessageFromServer {
+		t.Fatalf("push message type = %v, want MessageFromServer", immediate.messageType)
+	}
+	short, ok := immediate.message.(*tg.UpdateShort)
 	if !ok {
-		t.Fatalf("push message = %T, want *tg.UpdateShort", snap.message)
+		t.Fatalf("push message = %T, want *tg.UpdateShort", immediate.message)
 	}
 	if _, ok := short.Update.(*tg.UpdateLoginToken); !ok {
 		t.Fatalf("pushed update = %T, want *tg.UpdateLoginToken", short.Update)

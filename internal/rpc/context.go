@@ -28,6 +28,7 @@ const (
 	ClientTypeUnknown  ClientType = "unknown"
 	ClientTypeTDesktop ClientType = "tdesktop"
 	ClientTypeAndroid  ClientType = "android"
+	ClientTypeIOS      ClientType = "ios"
 )
 
 // ClientInfo 是 initConnection 携带的客户端信息。
@@ -90,7 +91,7 @@ func (info ClientInfo) ClientType() ClientType {
 
 func knownClientType(t ClientType) bool {
 	switch t {
-	case ClientTypeTDesktop, ClientTypeAndroid:
+	case ClientTypeTDesktop, ClientTypeAndroid, ClientTypeIOS:
 		return true
 	default:
 		return false
@@ -104,8 +105,13 @@ func detectClientType(info ClientInfo) ClientType {
 	if strings.EqualFold(info.LangPack, string(ClientTypeTDesktop)) {
 		return ClientTypeTDesktop
 	}
+	if strings.EqualFold(info.LangPack, string(ClientTypeIOS)) {
+		return ClientTypeIOS
+	}
 	client := strings.ToLower(info.DeviceModel + " " + info.SystemVersion + " " + info.AppVersion)
 	switch {
+	case strings.Contains(client, "iphone"), strings.Contains(client, "ipad"), strings.Contains(client, "ios"):
+		return ClientTypeIOS
 	case strings.Contains(client, "android"), androidSDKVersionRE.MatchString(client):
 		return ClientTypeAndroid
 	case strings.Contains(client, "tdesktop"), strings.Contains(client, "desktop"):

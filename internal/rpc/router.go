@@ -14,6 +14,7 @@ import (
 	"github.com/gotd/td/clock"
 	"github.com/gotd/td/tg"
 
+	"telesrv/internal/clientaddr"
 	"telesrv/internal/compat/layerwire"
 	"telesrv/internal/domain"
 	"telesrv/internal/observability/dbtrace"
@@ -118,6 +119,8 @@ type Router struct {
 	// 故可无 TTL 缓存。userIsBot 在 PFS 连接上被 announceSessionOnline 每 RPC 调用，不缓存则每次一发
 	// Users.ByID 重投影——开群洪峰 ~50 并发时退化成 ~300ms herd（既拖尾延迟也飙 PG CPU）。零值即可用。
 	botStatus sync.Map // userID(int64) -> bool
+	// authIP 记录进程内已写入的 auth_key -> client IP，避免每条 RPC 都触发 authorizations.ip UPDATE。
+	authIP sync.Map // authKeyID([8]byte) -> string
 	// lastSeenPersist 记录每个 user 最近一次 last_seen 落库时刻（unix），用于写去抖：
 	// updateStatus 高频续期时数秒内只落一次 DB。
 	lastSeenPersist sync.Map // userID(int64) -> int64(unix)
@@ -223,6 +226,7 @@ func (r *Router) Dispatch(ctx context.Context, authKeyID [8]byte, sessionID int6
 	}
 	if hasUserID {
 		ctx = WithUserID(ctx, userID)
+		r.maybeUpdateAuthorizationIP(ctx, effectiveAuthKeyID)
 	}
 	tUser := r.clock.Now()
 	info, hasClientMetadata, clientMetadataStored := r.clientSessionInfo(ctx)
@@ -758,6 +762,27 @@ func (r *Router) rememberClientLayer(ctx context.Context, layer int) {
 				zap.Error(err))
 		}
 	}
+}
+
+func (r *Router) maybeUpdateAuthorizationIP(ctx context.Context, authKeyID [8]byte) {
+	if r.deps.Auth == nil || authKeyID == ([8]byte{}) {
+		return
+	}
+	ip, ok := clientaddr.IPFrom(ctx)
+	if !ok {
+		return
+	}
+	if cached, ok := r.authIP.Load(authKeyID); ok && cached == ip {
+		return
+	}
+	if err := r.deps.Auth.UpdateAuthorizationIP(ctx, authKeyID, ip); err != nil {
+		r.log.Warn("update authorization ip failed",
+			zap.String("ip", ip),
+			zap.String("auth_key_id", fmt.Sprintf("%x", authKeyID[:])),
+			zap.Error(err))
+		return
+	}
+	r.authIP.Store(authKeyID, ip)
 }
 
 // NegotiatedLayer returns the TL layer the given session negotiated via

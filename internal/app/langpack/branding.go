@@ -21,7 +21,11 @@ func newBrandReplacer(branding Branding) *strings.Replacer {
 	}
 	sourceNames := branding.SourceNames
 	if len(sourceNames) == 0 {
-		sourceNames = brand.SourceNames()
+		args := brand.SourceReplacements(appName)
+		if len(args) == 0 {
+			return nil
+		}
+		return strings.NewReplacer(args...)
 	}
 	args := make([]string, 0, len(sourceNames)*2)
 	seen := make(map[string]struct{}, len(sourceNames))

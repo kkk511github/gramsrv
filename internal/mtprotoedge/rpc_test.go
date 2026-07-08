@@ -148,6 +148,7 @@ func TestDuplicateRPCResultAcrossReconnectUsesSessionCache(t *testing.T) {
 func TestCanceledRPCErrorIsNotCachedAcrossReconnect(t *testing.T) {
 	const dc = 2
 	handler := &canceledInternalRPC{
+		started:   make(chan struct{}),
 		firstDone: make(chan struct{}),
 	}
 	addr, pub, _ := startTestServer(t, Options{DC: dc, RPC: handler})
@@ -157,6 +158,11 @@ func TestCanceledRPCErrorIsNotCachedAcrossReconnect(t *testing.T) {
 	reqMsgID := clientMsgID.New(proto.MessageFromClient)
 	sendEncrypted(t, conn, cipher, auth, reqMsgID, &tg.HelpGetConfigRequest{})
 
+	select {
+	case <-handler.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for first rpc to start")
+	}
 	_ = conn.Close()
 	select {
 	case <-handler.firstDone:
@@ -213,11 +219,13 @@ func (h *blockingRPC) NegotiatedLayer([8]byte, int64) (int, bool) { return 227, 
 
 type canceledInternalRPC struct {
 	calls     atomic.Int32
+	started   chan struct{}
 	firstDone chan struct{}
 }
 
 func (h *canceledInternalRPC) Dispatch(ctx context.Context, _ [8]byte, _ int64, _ *bin.Buffer) (bin.Encoder, error) {
 	if h.calls.Add(1) == 1 {
+		close(h.started)
 		<-ctx.Done()
 		close(h.firstDone)
 		return nil, tgerr.New(500, "INTERNAL_SERVER_ERROR")

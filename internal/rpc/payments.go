@@ -9,6 +9,7 @@ import (
 
 	"telesrv/internal/compat/tdesktop"
 	"telesrv/internal/domain"
+	"telesrv/internal/links"
 )
 
 // registerPayments 注册 payments.* RPC：Stars 本地账本（余额/流水真实化）+ 其余
@@ -57,7 +58,7 @@ func (r *Router) registerPayments(d *tg.ServerDispatcher) {
 		if _, err := r.checkedDomainPeerFromInputPeer(ctx, userID, peer); err != nil {
 			return nil, err
 		}
-		return &tg.PaymentsStarsRevenueAdsAccountURL{URL: "https://ads.telegram.org/"}, nil
+		return &tg.PaymentsStarsRevenueAdsAccountURL{URL: links.Build(r.cfg.PublicBaseURL, "ads", nil)}, nil
 	})
 	d.OnPaymentsGetStarsRevenueStats(func(ctx context.Context, req *tg.PaymentsGetStarsRevenueStatsRequest) (*tg.PaymentsStarsRevenueStats, error) {
 		userID, _, err := r.currentUserID(ctx)

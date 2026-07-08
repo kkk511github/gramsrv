@@ -14,7 +14,98 @@ const (
 )
 
 func SourceNames() []string {
-	return []string{"Telegram", "Telesrv", "SafeLink", "Safelink"}
+	return []string{
+		"Telegram",
+		"TELEGRAM",
+		"telegram",
+		"Tidings",
+		"TIDINGS",
+		"tidings",
+		"Tiding",
+		"TIDING",
+		"tiding",
+		"Telesrv",
+		"TELESRV",
+		"telesrv",
+		"SafeLink",
+		"SAFELINK",
+		"safelink",
+		"Safelink",
+	}
+}
+
+func SourceReplacements(appName string) []string {
+	appName = strings.TrimSpace(appName)
+	if appName == "" {
+		appName = DefaultAppName
+	}
+	lowerAppName := strings.ToLower(appName)
+	return []string{
+		"translations.telegram.org",
+		DefaultPublicHost,
+		"translations.tidings.org",
+		DefaultPublicHost,
+		"getdesktop.telegram.org",
+		DefaultPublicHost,
+		"desktop.telegram.org",
+		DefaultPublicHost,
+		"web.telegram.org",
+		DefaultPublicHost,
+		"ads.telegram.org",
+		DefaultPublicHost,
+		"core.telegram.org",
+		DefaultPublicHost,
+		"core.tidings.org",
+		DefaultPublicHost,
+		"telegram.org",
+		DefaultPublicHost,
+		"telegram.me",
+		DefaultPublicHost,
+		"tidings.org",
+		DefaultPublicHost,
+		"tidings.me",
+		DefaultPublicHost,
+		"https://t.me",
+		DefaultPublicBaseURL,
+		"http://t.me",
+		DefaultPublicBaseURL,
+		"t.me",
+		DefaultPublicHost,
+		"tg://",
+		DefaultAppScheme + "://",
+		"Telegram",
+		appName,
+		"TELEGRAM",
+		appName,
+		"telegram",
+		lowerAppName,
+		"Tidings",
+		appName,
+		"TIDINGS",
+		appName,
+		"tidings",
+		lowerAppName,
+		"Tiding",
+		appName,
+		"TIDING",
+		appName,
+		"tiding",
+		lowerAppName,
+		"Telesrv",
+		appName,
+		"TELESRV",
+		appName,
+		"telesrv",
+		lowerAppName,
+		"SafeLink",
+		appName,
+		"SAFELINK",
+		appName,
+		"safelink",
+		lowerAppName,
+		"Safelink",
+		appName,
+	}
 }
 
 func PublicURL(path string) string {

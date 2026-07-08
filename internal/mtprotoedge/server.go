@@ -25,6 +25,7 @@ import (
 	"github.com/gotd/td/tmap"
 	"github.com/gotd/td/transport"
 
+	"telesrv/internal/clientaddr"
 	"telesrv/internal/store"
 	"telesrv/internal/store/memory"
 )
@@ -222,7 +223,7 @@ func (s *Server) Conns() *SessionManager {
 }
 
 // newConn 基于一次解密结果创建一个可发送的连接对象。
-func (s *Server) newConn(tc transport.Conn, key crypto.AuthKey, sessionID, salt int64) *Conn {
+func (s *Server) newConn(tc transport.Conn, key crypto.AuthKey, sessionID, salt int64, remoteIP string) *Conn {
 	c := &Conn{
 		transport:    tc,
 		writer:       tc,
@@ -235,6 +236,7 @@ func (s *Server) newConn(tc transport.Conn, key crypto.AuthKey, sessionID, salt 
 		sessionID:    sessionID,
 		salt:         salt,
 		key:          key,
+		remoteIP:     remoteIP,
 		createdAt:    s.clock.Now(),
 	}
 	c.startOutbound()
@@ -380,6 +382,7 @@ func (s *Server) acceptLoop(ctx context.Context, ln net.Listener, obfuscated boo
 // 连接循环。提升过程的读取放在本 goroutine、且受握手读超时约束，而非塞在 accept 循环里，
 // 这样慢连接不会阻塞其他连接接入，去混淆/codec 握手本身也有时间上界。
 func (s *Server) serveDetectedConn(ctx context.Context, raw net.Conn, obfuscated bool) {
+	remoteIP := clientaddr.IPFromAddr(raw.RemoteAddr())
 	// 握手读超时只覆盖去混淆 + codec 探测这一小段；用真实墙钟时间（SetReadDeadline 语义），
 	// 不走可能被测试注入的逻辑 clock。
 	if err := raw.SetReadDeadline(time.Now().Add(s.handshakeTimeout)); err != nil {
@@ -415,7 +418,7 @@ func (s *Server) serveDetectedConn(ctx context.Context, raw net.Conn, obfuscated
 		_ = conn.Close()
 		return
 	}
-	if err := s.serveConn(ctx, conn); err != nil && !isClientDisconnect(err) {
+	if err := s.serveConn(ctx, conn, remoteIP); err != nil && !isClientDisconnect(err) {
 		s.log.Info("Connection closed with error", zap.Error(err))
 	}
 }
@@ -438,7 +441,7 @@ func (s *Server) promoteConn(raw net.Conn, obfuscated bool) (transport.Conn, err
 //   - auth_key_id 未注册：回 AuthKeyNotFound，促使客户端重新握手。
 //
 // 连接建立 session 后注册到 SessionManager，结束时注销。
-func (s *Server) serveConn(ctx context.Context, conn transport.Conn) (err error) {
+func (s *Server) serveConn(ctx context.Context, conn transport.Conn, remoteIP string) (err error) {
 	s.metrics.ConnOpened()
 	s.log.Debug("Connection accepted")
 
@@ -518,7 +521,7 @@ func (s *Server) serveConn(ctx context.Context, conn transport.Conn) (err error)
 			fetchedKey = &d
 		}
 
-		current, err = s.handleEncrypted(ctx, conn, cs, current, fetchedKey, &b, &plain)
+		current, err = s.handleEncrypted(ctx, conn, remoteIP, cs, current, fetchedKey, &b, &plain)
 		if err != nil {
 			return err
 		}

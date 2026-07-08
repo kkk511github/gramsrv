@@ -40,6 +40,7 @@ type Conn struct {
 	sessionID  int64
 	salt       int64
 	key        crypto.AuthKey
+	remoteIP   string
 
 	outbound        chan outboundOp
 	outboundControl chan outboundOp
@@ -117,6 +118,9 @@ func (c *Conn) SetClientLayer(layer int) { c.clientLayer.Store(int32(layer)) }
 
 // AuthKeyID 返回连接的 auth_key_id。
 func (c *Conn) AuthKeyID() [8]byte { return c.authKeyID }
+
+// RemoteIP 返回连接建立时从 socket 观测到的客户端 IP。
+func (c *Conn) RemoteIP() string { return c.remoteIP }
 
 // BusinessAuthKeyID 返回业务视角的 auth_key_id。
 //

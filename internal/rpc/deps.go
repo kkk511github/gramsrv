@@ -40,9 +40,14 @@ type AuthService interface {
 	LogOut(ctx context.Context, authKeyID [8]byte) error
 	Authorization(ctx context.Context, authKeyID [8]byte) (domain.Authorization, bool, error)
 	UpdateAuthorizationLayer(ctx context.Context, authKeyID [8]byte, layer int) error
+	UpdateAuthorizationIP(ctx context.Context, authKeyID [8]byte, ip string) error
 	ListAuthorizations(ctx context.Context, userID int64) ([]domain.Authorization, error)
 	ResetAuthorization(ctx context.Context, userID, hash int64) (domain.Authorization, bool, error)
 	ResetAuthorizations(ctx context.Context, userID int64, keepAuthKeyID [8]byte) ([]domain.Authorization, error)
+}
+
+type IPLocationResolver interface {
+	LookupIPLocation(ctx context.Context, ip string) (domain.IPLocation, bool, error)
 }
 
 // SessionBinder 抽象登录后 session 与 user 的在线绑定。
@@ -704,6 +709,7 @@ type AIComposeService interface {
 // Deps 按业务域注入服务接口。各域的 handler 注册见对应文件（auth.go / users.go / updates.go）。
 type Deps struct {
 	Auth             AuthService
+	IPGeo            IPLocationResolver
 	Account          AccountService
 	Privacy          PrivacyService
 	Help             HelpService

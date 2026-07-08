@@ -14,6 +14,7 @@ import (
 	"github.com/gotd/td/tg"
 
 	"telesrv/internal/app/auth"
+	"telesrv/internal/clientaddr"
 	"telesrv/internal/domain"
 )
 
@@ -161,7 +162,7 @@ func (r *Router) onAuthAcceptLoginToken(ctx context.Context, token []byte) (*tg.
 	r.setAuthUserCache(bound.AuthKeyID, userID, true)
 	r.bindLoginTokenTarget(accept.target, userID)
 	r.pushLoginTokenAccepted(ctx, accept.target)
-	out := tgAuthorization(bound, scannerAuthKeyID, int(now.Unix()))
+	out := r.tgAuthorization(ctx, bound, scannerAuthKeyID, int(now.Unix()))
 	return &out, nil
 }
 
@@ -712,6 +713,7 @@ func (r *Router) pushSignInServiceNotificationToOthers(ctx context.Context, u do
 		return
 	}
 	authKeyID, hasAuthKeyID := AuthKeyIDFrom(ctx)
+	rawAuthKeyID, _ := rawOrEffectiveAuthKeyIDFrom(ctx)
 	sessionID, hasSessionID := SessionIDFrom(ctx)
 	if !hasAuthKeyID || !hasSessionID {
 		return
@@ -721,7 +723,7 @@ func (r *Router) pushSignInServiceNotificationToOthers(ctx context.Context, u do
 		pushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if scoped, ok := r.scopedSessions(); ok {
-			if sent, err := scoped.PushToUserExceptAuthKeySession(pushCtx, u.ID, authKeyID, sessionID, proto.MessageFromServer, notification); err != nil {
+			if sent, err := scoped.PushToUserExceptAuthKeySession(pushCtx, u.ID, rawAuthKeyID, sessionID, proto.MessageFromServer, notification); err != nil {
 				r.log.Debug("push sign-in service notification", zap.Int64("user_id", u.ID), zap.Int("sent", sent), zap.Error(err))
 			}
 			return
@@ -757,10 +759,15 @@ func (r *Router) tgSignInServiceNotification(ctx context.Context, u domain.User,
 	if name == "" {
 		name = "there"
 	}
-	message := fmt.Sprintf("New login.\nDear %s, we detected a login into your account from a new device on %s.\n\nDevice: %s\nLocation: Unknown\n\nIf this wasn't you, you can terminate that session in Settings > Devices (or Privacy & Security > Active Sessions).",
+	location := ""
+	if ip, ok := clientaddr.IPFrom(ctx); ok {
+		location = ip
+	}
+	message := fmt.Sprintf("New login.\nDear %s, we detected a login into your account from a new device on %s.\n\nDevice: %s\nLocation: %s\n\nIf this wasn't you, you can terminate that session in Settings > Devices (or Privacy & Security > Active Sessions).",
 		name,
 		now.UTC().Format(time.RFC1123),
 		client,
+		location,
 	)
 	authID := int64(binary.LittleEndian.Uint64(authKeyID[:]))
 	update := &tg.UpdateServiceNotification{

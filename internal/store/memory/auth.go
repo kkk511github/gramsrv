@@ -172,6 +172,17 @@ func (s *AuthorizationStore) UpdateLayer(_ context.Context, id [8]byte, layer in
 	return nil
 }
 
+func (s *AuthorizationStore) UpdateIP(_ context.Context, id [8]byte, ip string) error {
+	s.mu.Lock()
+	if a, ok := s.m[id]; ok && a.IP != ip {
+		a.IP = ip
+		a.ActiveAt = time.Now()
+		s.m[id] = a
+	}
+	s.mu.Unlock()
+	return nil
+}
+
 func (s *AuthorizationStore) MarkPasswordPassed(_ context.Context, id [8]byte) error {
 	s.mu.Lock()
 	if a, ok := s.m[id]; ok {
