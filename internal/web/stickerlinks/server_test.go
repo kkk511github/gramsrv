@@ -118,6 +118,45 @@ func TestHandlerServesChatlistLandingPage(t *testing.T) {
 	}
 }
 
+func TestHandlerServesBotUsernameLandingPage(t *testing.T) {
+	users := fakeUsers{
+		"tetrisbot": {
+			ID:        1001,
+			Username:  "TetrisBot",
+			FirstName: "Tetris Bot",
+			Bot:       true,
+		},
+	}
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/tetrisbot", nil)
+
+	NewHandlerWithUsers(fakeResolver{}, users, "http://127.0.0.1:2401").ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	for _, want := range []string{
+		"Tetris Bot",
+		"SafeLink Bot",
+		"@TetrisBot",
+		"http://127.0.0.1:2401/TetrisBot",
+		"safelink://resolve?domain=TetrisBot",
+		"tg://resolve?domain=TetrisBot",
+		"start a chat",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("body missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `window.location.href = "tg://`) {
+		t.Fatalf("landing page must not auto-open tg:// and steal official Telegram:\n%s", body)
+	}
+	if strings.Contains(body, "telesrv://") {
+		t.Fatalf("landing page must not contain old scheme:\n%s", body)
+	}
+}
+
 func TestHandlerRedirectsMismatchedKindToCanonicalURL(t *testing.T) {
 	resolver := fakeResolver{
 		"emoji_pack": {
@@ -149,6 +188,8 @@ func TestHandlerNotFoundForMissingOrInvalidShortName(t *testing.T) {
 		"/addemoji/%E4%B8%AD%E6%96%87",
 		"/addlist/bad!slug",
 		"/addlist/%E4%B8%AD%E6%96%87",
+		"/bad-name-bot",
+		"/1stBot",
 	} {
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -400,4 +441,11 @@ type errorResolver struct{}
 
 func (errorResolver) ResolveStickerSet(context.Context, domain.StickerSetRef) (domain.StickerSet, []domain.Document, bool, error) {
 	return domain.StickerSet{}, nil, false, errors.New("boom")
+}
+
+type fakeUsers map[string]domain.User
+
+func (f fakeUsers) ByUsername(_ context.Context, username string) (domain.User, bool, error) {
+	u, ok := f[strings.ToLower(strings.TrimPrefix(username, "@"))]
+	return u, ok, nil
 }

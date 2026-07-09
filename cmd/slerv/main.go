@@ -319,6 +319,7 @@ func run(logger *zap.Logger) error {
 	readModelVersionStore := storepkg.NewCachedReadModelVersionStore(postgres.NewReadModelVersionStore(pool), 0, 0)
 	dispatchOutboxStore := postgres.NewDispatchOutboxStore(pool, postgres.WithLeaseTimeout(cfg.OutboxLeaseTimeout))
 	bootstrapUpdateStore := postgres.NewBootstrapUpdateJobStore(pool)
+	botAPIUpdateStore := postgres.NewBotAPIUpdateStore(pool)
 	boxIDAllocator := redisstore.NewBoxIDAllocator(rdb, postgres.NewMessageBoxCounterSource(pool))
 	channelIDAllocator := redisstore.NewChannelIDAllocator(rdb, postgres.NewChannelIDCounterSource(pool))
 	channelMessageIDAllocator := redisstore.NewChannelMessageIDAllocator(rdb, postgres.NewChannelMessageIDCounterSource(pool))
@@ -433,7 +434,7 @@ func run(logger *zap.Logger) error {
 		cfg.UpdateEventRetention,
 		cfg.RetentionInterval,
 		cfg.RetentionBatch,
-	).Run(ctx)
+	).WithBotAPIUpdateRetention(botAPIUpdateStore, cfg.BotAPIUpdateRetention).Run(ctx)
 	go filesapp.NewUploadPartGCWorker(filesService, logger.Named("files").Named("upload_gc"),
 		cfg.UploadPartTTL,
 		cfg.UploadPartGCInterval,
@@ -677,6 +678,7 @@ func run(logger *zap.Logger) error {
 		Users:            usersService,
 		Updates:          updatesService,
 		BootstrapUpdates: bootstrapUpdateStore,
+		BotAPIUpdates:    botAPIUpdateStore,
 		Contacts:         contactsService,
 		Dialogs:          dialogsService,
 		Chatlists:        chatlistsService,
@@ -713,6 +715,7 @@ func run(logger *zap.Logger) error {
 		ProfilePhotos:      cachedPhotos,
 		Stories:            router,
 		ChannelFullBots:    router,
+		ChannelBotMembers:  channelsService,
 		ChannelMediaCounts: channelsService,
 		PrivateMediaCounts: messagesService,
 		RPCProjections:     router,
@@ -749,11 +752,12 @@ func run(logger *zap.Logger) error {
 	go rpc.NewPhoneExpiryDispatcher(router, logger.Named("rpc").Named("phone-expiry"), cfg.CallExpiryInterval).Run(ctx)
 	go rpc.NewGroupCallSweepDispatcher(router, logger.Named("rpc").Named("groupcall-sweep"), cfg.GroupCallSweepInterval, cfg.GroupCallCheckTTL).Run(ctx)
 	go router.RunChannelFanout(ctx)
+	go router.RunBotAPIEnqueue(ctx)
 	go router.RunPresenceSweeper(ctx, time.Minute)
 	go activeSessions.RunPendingSweeper(ctx, time.Minute)
 	go router.RunPremiumSweeper(ctx, cfg.PremiumSweepInterval, cfg.PremiumSweepBatch)
 	go router.RunInlineBotPushSubscriber(ctx)
-	if _, err := botapi.Start(ctx, cfg.BotAPIAddr, botsService, usersService, router, logger.Named("botapi")); err != nil {
+	if _, err := botapi.Start(ctx, cfg.BotAPIAddr, botsService, usersService, router, router, logger.Named("botapi")); err != nil {
 		return fmt.Errorf("start bot api: %w", err)
 	}
 	if _, err := adminapi.Start(ctx, adminapi.Config{Addr: cfg.AdminAPIAddr, Token: cfg.AdminAPIToken}, adminService, logger.Named("adminapi")); err != nil {
@@ -763,6 +767,7 @@ func run(logger *zap.Logger) error {
 		Addr:          cfg.PublicLinkWebAddr,
 		PublicBaseURL: cfg.PublicBaseURL,
 		AppScheme:     cfg.PublicLinkAppScheme,
+		Users:         userStore,
 	}, filesService, logger.Named("stickerlinks")); err != nil {
 		return fmt.Errorf("start sticker links: %w", err)
 	}

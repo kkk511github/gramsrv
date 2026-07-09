@@ -31,10 +31,15 @@ type Config struct {
 	Addr          string
 	PublicBaseURL string
 	AppScheme     string
+	Users         UsernameResolver
 }
 
 type Resolver interface {
 	ResolveStickerSet(ctx context.Context, ref domain.StickerSetRef) (domain.StickerSet, []domain.Document, bool, error)
+}
+
+type UsernameResolver interface {
+	ByUsername(ctx context.Context, username string) (domain.User, bool, error)
 }
 
 func Start(ctx context.Context, cfg Config, resolver Resolver, logger *zap.Logger) (*http.Server, error) {
@@ -51,6 +56,7 @@ func Start(ctx context.Context, cfg Config, resolver Resolver, logger *zap.Logge
 	handler := NewHandlerWithConfig(resolver, HandlerConfig{
 		PublicBaseURL: cfg.PublicBaseURL,
 		AppScheme:     cfg.AppScheme,
+		Users:         cfg.Users,
 	})
 	srv := &http.Server{
 		Addr:              addr,
@@ -80,14 +86,23 @@ func NewHandler(resolver Resolver, publicBaseURL string) http.Handler {
 	return NewHandlerWithConfig(resolver, HandlerConfig{PublicBaseURL: publicBaseURL})
 }
 
+func NewHandlerWithUsers(resolver Resolver, users UsernameResolver, publicBaseURL string) http.Handler {
+	return NewHandlerWithConfig(resolver, HandlerConfig{
+		PublicBaseURL: publicBaseURL,
+		Users:         users,
+	})
+}
+
 type HandlerConfig struct {
 	PublicBaseURL string
 	AppScheme     string
+	Users         UsernameResolver
 }
 
 func NewHandlerWithConfig(resolver Resolver, cfg HandlerConfig) http.Handler {
 	h := &handler{
 		resolver:      resolver,
+		users:         cfg.Users,
 		publicBaseURL: normalizePublicBaseURL(cfg.PublicBaseURL),
 		appScheme:     normalizeAppScheme(cfg.AppScheme),
 	}
@@ -124,6 +139,7 @@ func NewHandlerWithConfig(resolver Resolver, cfg HandlerConfig) http.Handler {
 
 type handler struct {
 	resolver      Resolver
+	users         UsernameResolver
 	publicBaseURL string
 	appScheme     string
 }
@@ -522,6 +538,9 @@ func (h *handler) username(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	if h.serveBotUsername(w, r, username) {
+		return
+	}
 	appName := brand.DefaultAppName
 	h.serveLanding(w, landingPage{
 		Title:        appName + ": View @" + username,
@@ -535,6 +554,38 @@ func (h *handler) username(w http.ResponseWriter, r *http.Request) {
 		Icon:         "profile",
 		PathFull:     "/" + username,
 	})
+}
+
+func (h *handler) serveBotUsername(w http.ResponseWriter, r *http.Request, username string) bool {
+	if h.users == nil {
+		return false
+	}
+	u, found, err := h.users.ByUsername(r.Context(), username)
+	if err != nil {
+		http.Error(w, "username lookup failed", http.StatusInternalServerError)
+		return true
+	}
+	if !found || !u.Bot || strings.TrimSpace(u.Username) == "" {
+		return false
+	}
+	appName := brand.DefaultAppName
+	title := strings.TrimSpace(u.FirstName)
+	if title == "" {
+		title = u.Username
+	}
+	h.serveLanding(w, landingPage{
+		Title:        appName + ": " + title,
+		CanonicalURL: h.publicUsernameURL(u.Username),
+		AppURL:       h.appURL("resolve", "domain", u.Username),
+		KindLabel:    appName + " Bot",
+		PageTitle:    title,
+		Extra:        "@" + u.Username,
+		Description:  "Open this bot in " + appName + " to start a chat.",
+		ActionText:   "Open in " + appName,
+		Icon:         "profile",
+		PathFull:     "/" + u.Username,
+	})
+	return true
 }
 
 func (h *handler) publicMessage(w http.ResponseWriter, r *http.Request) {
@@ -873,6 +924,10 @@ func compatAppURL(primary string) string {
 	return u.String()
 }
 
+func (h *handler) publicUsernameURL(username string) string {
+	return h.publicBaseURL + "/" + url.PathEscape(username)
+}
+
 func normalizePublicBaseURL(raw string) string {
 	u, err := url.Parse(links.NormalizeBaseURL(raw))
 	if err != nil || u.Scheme == "" || u.Host == "" {
@@ -931,23 +986,6 @@ func validShortNamePath(shortName string) bool {
 	return true
 }
 
-func validUsernamePath(username string) bool {
-	if username == "" || len(username) > 64 {
-		return false
-	}
-	for _, r := range username {
-		switch {
-		case r >= 'a' && r <= 'z':
-		case r >= 'A' && r <= 'Z':
-		case r >= '0' && r <= '9':
-		case r == '_':
-		default:
-			return false
-		}
-	}
-	return true
-}
-
 func validTokenPath(token string) bool {
 	if token == "" || len(token) > 256 {
 		return false
@@ -975,6 +1013,24 @@ func positivePathInt(raw string) (int, bool) {
 
 func validSlugPath(slug string) bool {
 	return links.ValidChatlistSlug(slug)
+}
+
+func validUsernamePath(username string) bool {
+	if username == "" || len(username) < 5 || len(username) > 32 {
+		return false
+	}
+	for i, r := range username {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9', r == '_':
+			if i == 0 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func linkKind(set domain.StickerSet) string {
