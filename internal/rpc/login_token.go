@@ -2,7 +2,10 @@ package rpc
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"fmt"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -100,10 +103,9 @@ func (r *loginTokenRegistry) lookup(now time.Time, token []byte) (loginTokenExpo
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	rec := r.byToken[string(token)]
-	if rec == nil {
-		r.cleanupExpiredLocked(now)
-		return loginTokenExport{}, authTokenInvalidErr()
+	rec, err := r.findLocked(now, token)
+	if err != nil {
+		return loginTokenExport{}, err
 	}
 	if !rec.expires.After(now) {
 		r.deleteLocked(rec)
@@ -122,10 +124,9 @@ func (r *loginTokenRegistry) beginAccept(now time.Time, token []byte, userID int
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	rec := r.byToken[string(token)]
-	if rec == nil {
-		r.cleanupExpiredLocked(now)
-		return loginTokenAcceptStart{}, authTokenInvalidErr()
+	rec, err := r.findLocked(now, token)
+	if err != nil {
+		return loginTokenAcceptStart{}, err
 	}
 	if !rec.expires.After(now) {
 		r.deleteLocked(rec)
@@ -142,13 +143,23 @@ func (r *loginTokenRegistry) beginAccept(now time.Time, token []byte, userID int
 	return loginTokenAcceptStart{target: rec.target, authz: rec.authz}, nil
 }
 
+func (r *loginTokenRegistry) findLocked(now time.Time, token []byte) (*loginTokenRecord, error) {
+	for _, candidate := range loginTokenCandidates(token) {
+		if rec := r.byToken[string(candidate)]; rec != nil {
+			return rec, nil
+		}
+	}
+	r.cleanupExpiredLocked(now)
+	return nil, authTokenInvalidErr()
+}
+
 func (r *loginTokenRegistry) finishAccept(now time.Time, token []byte, userID int64, acceptedAuth domain.Authorization) {
 	if r == nil {
 		return
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	rec := r.byToken[string(token)]
+	rec, _ := r.findLocked(now, token)
 	if rec == nil {
 		return
 	}
@@ -222,4 +233,60 @@ func loginTokenExceptSet(ids []int64) map[int64]struct{} {
 		}
 	}
 	return out
+}
+
+func loginTokenCandidates(token []byte) [][]byte {
+	seen := map[string]struct{}{}
+	out := make([][]byte, 0, 4)
+	add := func(candidate []byte) {
+		if len(candidate) == 0 {
+			return
+		}
+		key := string(candidate)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		out = append(out, append([]byte(nil), candidate...))
+	}
+	add(token)
+
+	text := strings.TrimSpace(string(token))
+	if text == "" {
+		return out
+	}
+	addEncodedLoginTokenCandidates(text, add)
+	if u, err := url.Parse(text); err == nil {
+		if v := u.Query().Get("token"); v != "" {
+			addEncodedLoginTokenCandidates(v, add)
+		}
+	}
+	if i := strings.Index(text, "token="); i >= 0 {
+		values, err := url.ParseQuery(strings.TrimLeft(text[i:], "?&"))
+		if err == nil {
+			if v := values.Get("token"); v != "" {
+				addEncodedLoginTokenCandidates(v, add)
+			}
+		}
+	}
+	return out
+}
+
+func addEncodedLoginTokenCandidates(raw string, add func([]byte)) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return
+	}
+	for _, value := range []string{raw, strings.ReplaceAll(raw, " ", "+")} {
+		for _, encoding := range []*base64.Encoding{
+			base64.RawURLEncoding,
+			base64.URLEncoding,
+			base64.RawStdEncoding,
+			base64.StdEncoding,
+		} {
+			if decoded, err := encoding.DecodeString(value); err == nil && len(decoded) == loginTokenBytes {
+				add(decoded)
+			}
+		}
+	}
 }

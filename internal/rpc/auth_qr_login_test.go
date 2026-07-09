@@ -3,6 +3,7 @@ package rpc
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"testing"
 	"time"
 
@@ -164,6 +165,37 @@ func TestAuthLoginTokenExpires(t *testing.T) {
 	}
 	if _, err := reg.beginAccept(now.Add(loginTokenTTL+time.Second), exported.token, 1000000001); !tgerr.Is(err, "AUTH_TOKEN_EXPIRED") {
 		t.Fatalf("expired accept err = %v, want AUTH_TOKEN_EXPIRED", err)
+	}
+}
+
+func TestLoginTokenRegistryAcceptsEncodedScannerTokens(t *testing.T) {
+	now := time.Unix(1700000000, 0)
+	reg := newLoginTokenRegistry()
+	target := loginTokenTarget{
+		rawAuthKeyID: [8]byte{1},
+		authKeyID:    [8]byte{2},
+		sessionID:    3,
+	}
+	exported, err := reg.export(now, target, domain.Authorization{AuthKeyID: target.authKeyID}, nil)
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	encoded := base64.RawURLEncoding.EncodeToString(exported.token)
+
+	lookedUp, err := reg.lookup(now, []byte(encoded))
+	if err != nil {
+		t.Fatalf("lookup encoded token: %v", err)
+	}
+	if !bytes.Equal(lookedUp.token, exported.token) {
+		t.Fatal("encoded token lookup did not resolve original token")
+	}
+
+	accept, err := reg.beginAccept(now, []byte("tg://login?token="+encoded), 1000000001)
+	if err != nil {
+		t.Fatalf("begin accept full login URL token: %v", err)
+	}
+	if accept.target != target {
+		t.Fatalf("accept target = %+v, want %+v", accept.target, target)
 	}
 }
 
