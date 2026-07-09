@@ -1229,6 +1229,9 @@ func clientSessionInfoNeedsAuthKeyInfo(info clientSessionInfo) bool {
 func (r *Router) fallback(ctx context.Context, b *bin.Buffer) (bin.Encoder, error) {
 	// DrKLO 12.8.1 的 theme 方法构造器比 gotd schema 新,dispatcher 匹配不上;
 	// 在落到「未实现」前先按 DrKLO 字段序手动解码处理。
+	if enc, handled, err := r.tryLegacyStoriesRPC(ctx, b); handled {
+		return enc, err
+	}
 	if enc, handled, err := r.tryLegacyThemeRPC(ctx, b); handled {
 		return enc, err
 	}

@@ -94,6 +94,16 @@ func TestDispatchRejectsAuthorizedRPCBeforeLogin(t *testing.T) {
 		t.Fatalf("help.getConfig should be allowed before login: %v", err)
 	}
 
+	var helpTest bin.Buffer
+	helpTest.PutID(helpTestID)
+	helpTestEnc, err := r.Dispatch(context.Background(), authKeyID, 1, &helpTest)
+	if err != nil {
+		t.Fatalf("help.test should be allowed before login: %v", err)
+	}
+	if _, ok := helpTestEnc.(*tg.BoolTrue); !ok {
+		t.Fatalf("help.test result = %T, want *tg.BoolTrue", helpTestEnc)
+	}
+
 	var sendCode bin.Buffer
 	if err := (&tg.AuthSendCodeRequest{
 		PhoneNumber: "+15550001111",
@@ -491,6 +501,11 @@ func TestClientTypeDetectsAndroidSDKVersion(t *testing.T) {
 	info = normalizeClientInfo(ClientInfo{APIID: 2040})
 	if got := info.ClientType(); got != ClientTypeTDesktop {
 		t.Fatalf("TDesktop api_id=2040 client type = %s, want %s", got, ClientTypeTDesktop)
+	}
+
+	info = normalizeClientInfo(ClientInfo{APIID: 9})
+	if got := info.ClientType(); got != ClientTypeTelegramSwift {
+		t.Fatalf("TelegramSwift api_id=9 client type = %s, want %s", got, ClientTypeTelegramSwift)
 	}
 }
 

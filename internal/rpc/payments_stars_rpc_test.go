@@ -85,6 +85,26 @@ func TestOnPaymentsGetStarsTransactions(t *testing.T) {
 	}
 }
 
+func TestOnPaymentsGetStarsSubscriptionsEmpty(t *testing.T) {
+	r := starsRouter(t, 1000)
+	ctx := WithUserID(context.Background(), 1000000001)
+
+	status, err := r.onPaymentsGetStarsSubscriptions(ctx, &tg.PaymentsGetStarsSubscriptionsRequest{Peer: &tg.InputPeerSelf{}})
+	if err != nil {
+		t.Fatalf("getStarsSubscriptions: %v", err)
+	}
+	if amount, ok := status.Balance.(*tg.StarsAmount); !ok || amount.Amount != 0 {
+		t.Fatalf("subscriptions balance = %#v, want zero StarsAmount", status.Balance)
+	}
+	subscriptions, ok := status.GetSubscriptions()
+	if !ok || len(subscriptions) != 0 {
+		t.Fatalf("subscriptions = %d ok=%v, want present empty vector", len(subscriptions), ok)
+	}
+	if status.Chats == nil || status.Users == nil {
+		t.Fatalf("chats/users must be non-nil vectors, got chats=%v users=%v", status.Chats, status.Users)
+	}
+}
+
 // deps.Stars==nil 兜底：返回合法的空 starsStatus（余额 0），不崩。
 func TestOnPaymentsGetStarsStatusNilDeps(t *testing.T) {
 	r := New(Config{}, Deps{}, zaptest.NewLogger(t), clock.System)

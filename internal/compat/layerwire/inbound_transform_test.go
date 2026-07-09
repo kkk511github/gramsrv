@@ -199,6 +199,31 @@ func TestInboundBodyTransforms(t *testing.T) {
 			t.Fatalf("upgraded password = %T, want inputCheckPasswordEmpty", req.Password)
 		}
 	})
+
+	t.Run("channelsGetForumTopicsByIDToMessagesGetForumTopicsByID", func(t *testing.T) {
+		var in bin.Buffer
+		in.PutID(0xb0831eb9)
+		_ = (&tg.InputChannel{ChannelID: 132, AccessHash: 8956724956393200600}).Encode(&in)
+		in.PutVectorHeader(2)
+		in.PutInt(1)
+		in.PutInt(42)
+		out, ok, err := UpgradeInbound(0xb0831eb9, &in)
+		if !ok || err != nil {
+			t.Fatalf("upgrade: ok=%v err=%v", ok, err)
+		}
+		validateMethodRequest(t, out, tg.MessagesGetForumTopicsByIDRequestTypeID, "messagesGetForumTopicsByID")
+		var req tg.MessagesGetForumTopicsByIDRequest
+		if err := req.Decode(&bin.Buffer{Buf: append([]byte(nil), out.Buf...)}); err != nil {
+			t.Fatalf("decode upgraded getForumTopicsByID: %v", err)
+		}
+		peer, ok := req.Peer.(*tg.InputPeerChannel)
+		if !ok || peer.ChannelID != 132 || peer.AccessHash != 8956724956393200600 {
+			t.Fatalf("upgraded peer = %T %+v, want inputPeerChannel", req.Peer, req.Peer)
+		}
+		if len(req.Topics) != 2 || req.Topics[0] != 1 || req.Topics[1] != 42 {
+			t.Fatalf("upgraded topics = %+v, want [1 42]", req.Topics)
+		}
+	})
 }
 
 // TestInboundCRCSwaps covers the body-compatible client-drift methods that only

@@ -90,6 +90,9 @@ go build -o bin/gramsrv ./cmd/telesrv
 
 常用本地环境变量：
 
+生产 `.env` 可能仍包含历史 `SLERV_*` 别名。同一配置同时存在 `SLERV_*` 和
+`TELESRV_*` 时，`SLERV_*` 会优先生效，因此部署改参数时要同步两边或移除旧别名。
+
 | 变量 | 默认值 | 说明 |
 |---|---:|---|
 | `TELESRV_LISTEN` | `0.0.0.0:2398` | MTProto 监听地址 |
@@ -99,6 +102,7 @@ go build -o bin/gramsrv ./cmd/telesrv
 | `TELESRV_AUTH_CODE_MAX_ATTEMPTS` | `5` | 同一验证码 hash 允许的错误次数，达到后删除并要求重发 |
 | `TELESRV_LOGIN_EMAIL_ENABLE` | `false` | 已绑定登录邮箱的账号通过 SMTP 接收登录验证码 |
 | `TELESRV_LOGIN_EMAIL_REQUIRE_SETUP` | `false` | 登录/注册时强制先设置登录邮箱 |
+| `TELESRV_LOGIN_EMAIL_CODE_LENGTH` | `5` | 邮箱登录/设置验证码的数字位数 |
 | `TELESRV_SMTP_HOST` | 空 | 开启登录邮箱验证时使用的 SMTP host |
 | `TELESRV_PUBLIC_BASE_URL` | `https://safelink.chat` | 公开链接的 canonical base URL |
 | `TELESRV_POSTGRES_DSN` | local Compose DSN | PostgreSQL 连接串 |

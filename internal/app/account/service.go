@@ -24,6 +24,7 @@ const (
 	codeChannelEmailSetup        = "email_setup"
 	codeChannelEmailChange       = "email_change"
 	codeChannelEmailLogin        = "email_login"
+	defaultLoginEmailCodeLength  = 5
 )
 
 // Service 提供账号安全配置查询。
@@ -129,7 +130,7 @@ func WithLoginEmailVerification(codes store.CodeStore, sender mail.Sender, ttl t
 
 // NewService 创建 account 服务。
 func NewService(passwords store.PasswordStore, opts ...ServiceOption) *Service {
-	s := &Service{passwords: passwords, publicBaseURL: links.DefaultPublicBaseURL, loginEmailCodeTTL: 5 * time.Minute, loginEmailCodeMaxAttempts: 5, loginEmailCodeLength: 6}
+	s := &Service{passwords: passwords, publicBaseURL: links.DefaultPublicBaseURL, loginEmailCodeTTL: 5 * time.Minute, loginEmailCodeMaxAttempts: 5, loginEmailCodeLength: defaultLoginEmailCodeLength}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -498,7 +499,7 @@ func randomInt64() (int64, error) {
 
 func randomDigits(n int) (string, error) {
 	if n <= 0 {
-		n = 6
+		n = defaultLoginEmailCodeLength
 	}
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {

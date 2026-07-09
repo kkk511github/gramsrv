@@ -1349,6 +1349,20 @@ func TestContactsBlockGetBlockedAndUnblockRPC(t *testing.T) {
 	if user, ok := full.Users[0].(*tg.User); !ok || user.ID != alice.ID {
 		t.Fatalf("blocked user = %#v, want alice", full.Users[0])
 	}
+	blockedDefaultLimit, err := r.onContactsGetBlocked(WithUserID(ctx, bob.ID), &tg.ContactsGetBlockedRequest{})
+	if err != nil {
+		t.Fatalf("contacts.getBlocked default limit: %v", err)
+	}
+	if full, ok := blockedDefaultLimit.(*tg.ContactsBlocked); !ok || len(full.Blocked) != 1 {
+		t.Fatalf("blocked default limit = %T %+v, want one blocked user", blockedDefaultLimit, blockedDefaultLimit)
+	}
+	blockedClampedLimit, err := r.onContactsGetBlocked(WithUserID(ctx, bob.ID), &tg.ContactsGetBlockedRequest{Limit: 500})
+	if err != nil {
+		t.Fatalf("contacts.getBlocked clamped limit: %v", err)
+	}
+	if full, ok := blockedClampedLimit.(*tg.ContactsBlocked); !ok || len(full.Blocked) != 1 {
+		t.Fatalf("blocked clamped limit = %T %+v, want one blocked user", blockedClampedLimit, blockedClampedLimit)
+	}
 
 	ok, err = r.onContactsUnblock(WithUserID(ctx, bob.ID), &tg.ContactsUnblockRequest{
 		ID: &tg.InputPeerUser{UserID: alice.ID, AccessHash: alice.AccessHash},

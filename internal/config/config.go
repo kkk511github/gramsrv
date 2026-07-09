@@ -363,7 +363,7 @@ func Load() (Config, error) {
 		AuthCodeMaxAttempts:           envIntOr("TELESRV_AUTH_CODE_MAX_ATTEMPTS", 5),
 		LoginEmailEnable:              envBoolOr("TELESRV_LOGIN_EMAIL_ENABLE", false),
 		LoginEmailRequireSetup:        envBoolOr("TELESRV_LOGIN_EMAIL_REQUIRE_SETUP", false),
-		LoginEmailCodeLength:          envIntOr("TELESRV_LOGIN_EMAIL_CODE_LENGTH", 6),
+		LoginEmailCodeLength:          envIntOr("TELESRV_LOGIN_EMAIL_CODE_LENGTH", 5),
 		SMTPHost:                      envOr("TELESRV_SMTP_HOST", ""),
 		SMTPPort:                      envIntOr("TELESRV_SMTP_PORT", 587),
 		SMTPUsername:                  envOr("TELESRV_SMTP_USERNAME", ""),

@@ -33,4 +33,8 @@ var clientMethodAliases = map[uint32]uint32{
 	// #92ceddd4; the legacy-shaped response is produced by ClientType==Android
 	// (createChatNeedsLegacyChat), so no dedicated handler is needed.
 	0x0034a818: 0x92ceddd4,
+	// TelegramSwift 11.15 messages.sendMessage. The body matches canonical
+	// #fef48f62 for every flag bit this client can set; canonical-only
+	// rich_message/schedule_repeat_period bits are absent on the client side.
+	0xfe05dc9a: 0xfef48f62,
 }

@@ -1,6 +1,13 @@
 package layerwire
 
-import "testing"
+import (
+	"bytes"
+	"encoding/binary"
+	"testing"
+
+	"github.com/gotd/td/bin"
+	"github.com/gotd/td/tg"
+)
 
 // TestInboundUpgradeTableWellFormed checks every inbound upgrade maps an old id
 // to a real canonical method id, and that the old id is genuinely historical
@@ -111,5 +118,31 @@ func TestInboundUpgradeSendMessage(t *testing.T) {
 	}
 	if newID != canon.crc {
 		t.Fatalf("sendMessage upgrade = %#08x, want canonical %#08x", newID, canon.crc)
+	}
+}
+
+func TestInboundUpgradeTelegramSwift211SendMessageAlias(t *testing.T) {
+	const telegramSwiftSendMessageCRC = 0xfe05dc9a
+	req := &tg.MessagesSendMessageRequest{
+		Peer:     &tg.InputPeerSelf{},
+		Message:  "from mac",
+		RandomID: 42,
+	}
+	raw := mustEncode(t, req)
+	old := append([]byte(nil), raw...)
+	binary.LittleEndian.PutUint32(old[:4], telegramSwiftSendMessageCRC)
+
+	upgraded, ok, err := UpgradeInbound(telegramSwiftSendMessageCRC, &bin.Buffer{Buf: old})
+	if err != nil {
+		t.Fatalf("upgrade TelegramSwift sendMessage: %v", err)
+	}
+	if !ok {
+		t.Fatalf("TelegramSwift sendMessage alias was not upgraded")
+	}
+	if got, err := upgraded.PeekID(); err != nil || got != tg.MessagesSendMessageRequestTypeID {
+		t.Fatalf("upgraded id = %#08x, err=%v; want %#08x", got, err, tg.MessagesSendMessageRequestTypeID)
+	}
+	if !bytes.Equal(upgraded.Buf[4:], raw[4:]) {
+		t.Fatalf("TelegramSwift sendMessage alias changed request body")
 	}
 }

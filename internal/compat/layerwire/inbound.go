@@ -40,8 +40,9 @@ func mustLoadDrift() *schemaModel {
 // Pure schema diff cannot recover a rename, so it is declared here (data, not a
 // transform). It is the only thing a structural rename needs.
 var driftFieldRenames = map[string]string{
-	"bots.exportBotToken\x00bot":       "bot_id",
-	"messages.editChatCreator\x00peer": "channel",
+	"bots.exportBotToken\x00bot":          "bot_id",
+	"messages.editChatCreator\x00peer":    "channel",
+	"messages.getForumTopicsByID\x00peer": "channel",
 }
 
 // fieldConverter rewrites one field whose wire type changed between the old and

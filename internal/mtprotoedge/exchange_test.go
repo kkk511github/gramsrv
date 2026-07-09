@@ -147,13 +147,60 @@ func TestKeyExchangeAcceptsAndroidMediaTempNegativeDC(t *testing.T) {
 
 func TestKeyExchangeRejectsWrongNegativeTempDC(t *testing.T) {
 	ex := serverExchangeCompat{dc: 2, log: zaptest.NewLogger(t)}
-	err := ex.validatePQInnerDataDC(&mt.PQInnerDataTempDC{DC: -3})
+	err := ex.validatePQInnerDataDC(compatPQInnerData{DC: -3, HasDC: true, IsTemp: true})
 	var exErr *exchange.ServerExchangeError
 	if !errors.As(err, &exErr) {
 		t.Fatalf("err = %T %v, want ServerExchangeError", err, err)
 	}
 	if exErr.Code != codec.CodeWrongDC {
 		t.Fatalf("error code = %d, want %d", exErr.Code, codec.CodeWrongDC)
+	}
+}
+
+func TestDecodeCompatPQInnerDataTempWithoutDC(t *testing.T) {
+	var nonce bin.Int128
+	var serverNonce bin.Int128
+	var newNonce bin.Int256
+	for i := range nonce {
+		nonce[i] = byte(i + 1)
+	}
+	for i := range serverNonce {
+		serverNonce[i] = byte(i + 17)
+	}
+	for i := range newNonce {
+		newNonce[i] = byte(i + 33)
+	}
+
+	var b bin.Buffer
+	b.PutID(pqInnerDataTempTypeID)
+	b.PutBytes([]byte{0x17, 0xed})
+	b.PutBytes([]byte{0x13})
+	b.PutBytes([]byte{0x03})
+	b.Put(nonce[:])
+	b.Put(serverNonce[:])
+	b.Put(newNonce[:])
+	b.PutInt(86400)
+
+	decoded, err := decodeCompatPQInnerData(&b)
+	if err != nil {
+		t.Fatalf("decode p_q_inner_data_temp: %v", err)
+	}
+	if decoded.HasDC {
+		t.Fatal("decoded temp inner data unexpectedly has DC")
+	}
+	if !decoded.IsTemp {
+		t.Fatal("decoded temp inner data is not marked temporary")
+	}
+	if decoded.ExpiresIn != 86400 {
+		t.Fatalf("expires_in = %d, want 86400", decoded.ExpiresIn)
+	}
+	if decoded.Nonce != nonce || decoded.ServerNonce != serverNonce || decoded.NewNonce != newNonce {
+		t.Fatal("decoded nonce fields mismatch")
+	}
+
+	ex := serverExchangeCompat{dc: 2, log: zaptest.NewLogger(t)}
+	if err := ex.validatePQInnerDataDC(decoded); err != nil {
+		t.Fatalf("validate p_q_inner_data_temp without DC: %v", err)
 	}
 }
 

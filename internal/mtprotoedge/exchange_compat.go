@@ -60,46 +60,61 @@ func (s serverExchangeCompat) run(ctx context.Context) (exchange.ServerExchangeR
 	}
 
 	var req compatReqPQ
-	b := new(bin.Buffer)
-	if err := s.readUnencrypted(ctx, b, &req); err != nil {
-		return exchange.ServerExchangeResult{}, err
-	}
-	s.log.Debug("Received client ReqPqMultiRequest")
-
-	serverNonce, err := crypto.RandInt128(s.rand)
-	if err != nil {
-		return exchange.ServerExchangeResult{}, gofaster.Wrap(err, "generate server nonce")
-	}
-
-	pq, err := s.rng.PQ()
-	if err != nil {
-		return exchange.ServerExchangeResult{}, gofaster.Wrap(err, "generate pq")
-	}
-
-SendResPQ:
-	s.log.Debug("Sending ResPQ", zap.String("pq", pq.String()))
-	if err := s.writeUnencrypted(ctx, b, &mt.ResPQ{
-		Pq:          pq.Bytes(),
-		Nonce:       req.Nonce,
-		ServerNonce: serverNonce,
-		ServerPublicKeyFingerprints: []int64{
-			s.key.Fingerprint(),
-		},
-	}); err != nil {
-		return exchange.ServerExchangeResult{}, err
-	}
-
 	var dhParams compatReqOrDH
+	haveDHParams := false
+	b := new(bin.Buffer)
 	if err := s.readUnencrypted(ctx, b, &dhParams); err != nil {
 		return exchange.ServerExchangeResult{}, err
 	}
 	switch dhParams.Type {
 	case mt.ReqPqRequestTypeID, mt.ReqPqMultiRequestTypeID:
-		s.log.Debug("Received ReqPQ again")
 		req = dhParams.Req
-		goto SendResPQ
+		s.log.Debug("Received client ReqPqMultiRequest")
+	case mt.ReqDHParamsRequestTypeID:
+		req = compatReqPQ{Nonce: dhParams.DH.Nonce}
+		haveDHParams = true
+		s.log.Debug("Received client ReqDHParamsRequest without ReqPQ on this connection")
 	default:
-		s.log.Debug("Received client ReqDHParamsRequest")
+		return exchange.ServerExchangeResult{}, bin.NewUnexpectedID(dhParams.Type)
+	}
+
+	serverNonce, err := crypto.RandInt128(s.rand)
+	if err != nil {
+		return exchange.ServerExchangeResult{}, gofaster.Wrap(err, "generate server nonce")
+	}
+	if haveDHParams {
+		serverNonce = dhParams.DH.ServerNonce
+	}
+
+SendResPQ:
+	if !haveDHParams {
+		pq, err := s.rng.PQ()
+		if err != nil {
+			return exchange.ServerExchangeResult{}, gofaster.Wrap(err, "generate pq")
+		}
+		s.log.Debug("Sending ResPQ", zap.String("pq", pq.String()))
+		if err := s.writeUnencrypted(ctx, b, &mt.ResPQ{
+			Pq:          pq.Bytes(),
+			Nonce:       req.Nonce,
+			ServerNonce: serverNonce,
+			ServerPublicKeyFingerprints: []int64{
+				s.key.Fingerprint(),
+			},
+		}); err != nil {
+			return exchange.ServerExchangeResult{}, err
+		}
+
+		if err := s.readUnencrypted(ctx, b, &dhParams); err != nil {
+			return exchange.ServerExchangeResult{}, err
+		}
+		switch dhParams.Type {
+		case mt.ReqPqRequestTypeID, mt.ReqPqMultiRequestTypeID:
+			s.log.Debug("Received ReqPQ again")
+			req = dhParams.Req
+			goto SendResPQ
+		default:
+			s.log.Debug("Received client ReqDHParamsRequest")
+		}
 	}
 
 	var innerData mt.PQInnerData
@@ -110,7 +125,7 @@ SendResPQ:
 		}
 		b.ResetTo(r)
 
-		d, err := mt.DecodePQInnerData(b)
+		d, err := decodeCompatPQInnerData(b)
 		if err != nil {
 			return exchange.ServerExchangeResult{}, err
 		}
@@ -119,12 +134,12 @@ SendResPQ:
 		}
 
 		innerData = mt.PQInnerData{
-			Pq:          d.GetPq(),
-			P:           d.GetP(),
-			Q:           d.GetQ(),
-			Nonce:       d.GetNonce(),
-			ServerNonce: d.GetServerNonce(),
-			NewNonce:    d.GetNewNonce(),
+			Pq:          d.Pq,
+			P:           d.P,
+			Q:           d.Q,
+			Nonce:       d.Nonce,
+			ServerNonce: d.ServerNonce,
+			NewNonce:    d.NewNonce,
 		}
 	}
 
@@ -209,22 +224,104 @@ SendResPQ:
 	}, nil
 }
 
-func (s serverExchangeCompat) validatePQInnerDataDC(d mt.PQInnerDataClass) error {
+const pqInnerDataTempTypeID = 0x3c6a84d4
+
+type compatPQInnerData struct {
+	Pq          []byte
+	P           []byte
+	Q           []byte
+	Nonce       bin.Int128
+	ServerNonce bin.Int128
+	NewNonce    bin.Int256
+	DC          int
+	HasDC       bool
+	IsTemp      bool
+	ExpiresIn   int
+}
+
+func decodeCompatPQInnerData(b *bin.Buffer) (compatPQInnerData, error) {
+	id, err := b.PeekID()
+	if err != nil {
+		return compatPQInnerData{}, err
+	}
+	if id == pqInnerDataTempTypeID {
+		return decodePQInnerDataTemp(b)
+	}
+
+	d, err := mt.DecodePQInnerData(b)
+	if err != nil {
+		return compatPQInnerData{}, err
+	}
+
+	result := compatPQInnerData{
+		Pq:          d.GetPq(),
+		P:           d.GetP(),
+		Q:           d.GetQ(),
+		Nonce:       d.GetNonce(),
+		ServerNonce: d.GetServerNonce(),
+		NewNonce:    d.GetNewNonce(),
+	}
 	switch innerDataDC := d.(type) {
 	case *mt.PQInnerDataDC:
-		if innerDataDC.DC != s.dc {
-			return wrongDCError(s.dc, innerDataDC.DC)
-		}
+		result.DC = innerDataDC.DC
+		result.HasDC = true
 	case *mt.PQInnerDataTempDC:
-		if !sameDCByAbs(innerDataDC.DC, s.dc) {
-			return wrongDCError(s.dc, innerDataDC.DC)
+		result.DC = innerDataDC.DC
+		result.HasDC = true
+		result.IsTemp = true
+		result.ExpiresIn = innerDataDC.ExpiresIn
+	}
+	return result, nil
+}
+
+func decodePQInnerDataTemp(b *bin.Buffer) (compatPQInnerData, error) {
+	if err := b.ConsumeID(pqInnerDataTempTypeID); err != nil {
+		return compatPQInnerData{}, gofaster.Wrap(err, "decode p_q_inner_data_temp id")
+	}
+	result := compatPQInnerData{IsTemp: true}
+	var err error
+	if result.Pq, err = b.Bytes(); err != nil {
+		return compatPQInnerData{}, gofaster.Wrap(err, "decode p_q_inner_data_temp pq")
+	}
+	if result.P, err = b.Bytes(); err != nil {
+		return compatPQInnerData{}, gofaster.Wrap(err, "decode p_q_inner_data_temp p")
+	}
+	if result.Q, err = b.Bytes(); err != nil {
+		return compatPQInnerData{}, gofaster.Wrap(err, "decode p_q_inner_data_temp q")
+	}
+	if result.Nonce, err = b.Int128(); err != nil {
+		return compatPQInnerData{}, gofaster.Wrap(err, "decode p_q_inner_data_temp nonce")
+	}
+	if result.ServerNonce, err = b.Int128(); err != nil {
+		return compatPQInnerData{}, gofaster.Wrap(err, "decode p_q_inner_data_temp server nonce")
+	}
+	if result.NewNonce, err = b.Int256(); err != nil {
+		return compatPQInnerData{}, gofaster.Wrap(err, "decode p_q_inner_data_temp new nonce")
+	}
+	if result.ExpiresIn, err = b.Int(); err != nil {
+		return compatPQInnerData{}, gofaster.Wrap(err, "decode p_q_inner_data_temp expires_in")
+	}
+	return result, nil
+}
+
+func (s serverExchangeCompat) validatePQInnerDataDC(d compatPQInnerData) error {
+	if !d.HasDC {
+		return nil
+	}
+	if d.IsTemp {
+		if !sameDCByAbs(d.DC, s.dc) {
+			return wrongDCError(s.dc, d.DC)
 		}
-		if innerDataDC.DC < 0 {
+		if d.DC < 0 {
 			s.log.Warn("Accepted Android media temp auth key negative DC",
 				zap.Int("server_dc", s.dc),
-				zap.Int("client_dc", innerDataDC.DC),
-				zap.Int("expires_in", innerDataDC.ExpiresIn))
+				zap.Int("client_dc", d.DC),
+				zap.Int("expires_in", d.ExpiresIn))
 		}
+		return nil
+	}
+	if d.DC != s.dc {
+		return wrongDCError(s.dc, d.DC)
 	}
 	return nil
 }

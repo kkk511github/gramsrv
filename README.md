@@ -98,6 +98,10 @@ workers in the same process.
 
 Useful local environment variables:
 
+Production `.env` files may still contain legacy `SLERV_*` aliases. When both
+forms are present for the same setting, the `SLERV_*` value wins, so update both
+forms or remove the legacy alias.
+
 | Variable | Default | Meaning |
 |---|---:|---|
 | `TELESRV_LISTEN` | `0.0.0.0:2398` | MTProto listen address |
@@ -107,6 +111,7 @@ Useful local environment variables:
 | `TELESRV_AUTH_CODE_MAX_ATTEMPTS` | `5` | wrong-code attempts before the code hash is deleted |
 | `TELESRV_LOGIN_EMAIL_ENABLE` | `false` | send login codes to confirmed login email addresses through SMTP |
 | `TELESRV_LOGIN_EMAIL_REQUIRE_SETUP` | `false` | force phone login/registration to set a login email first |
+| `TELESRV_LOGIN_EMAIL_CODE_LENGTH` | `5` | digits in each email login/setup verification code |
 | `TELESRV_SMTP_HOST` | empty | SMTP host used when login email verification is enabled |
 | `TELESRV_PUBLIC_BASE_URL` | `https://safelink.chat` | canonical base URL for public links |
 | `TELESRV_POSTGRES_DSN` | local Compose DSN | PostgreSQL connection string |

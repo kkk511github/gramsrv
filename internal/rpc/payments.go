@@ -27,6 +27,7 @@ func (r *Router) registerPayments(d *tg.ServerDispatcher) {
 	})
 	d.OnPaymentsGetStarsStatus(r.onPaymentsGetStarsStatus)
 	d.OnPaymentsGetStarsTransactions(r.onPaymentsGetStarsTransactions)
+	d.OnPaymentsGetStarsSubscriptions(r.onPaymentsGetStarsSubscriptions)
 	d.OnPaymentsGetStarGiftActiveAuctions(func(ctx context.Context, hash int64) (tg.PaymentsStarGiftActiveAuctionsClass, error) {
 		return tdesktop.StarGiftActiveAuctions(), nil
 	})
@@ -133,6 +134,24 @@ func (r *Router) onPaymentsGetStarsTransactions(ctx context.Context, req *tg.Pay
 	if ids := starsTransactionUserIDs(page.Transactions); len(ids) > 0 {
 		out.Users = tgUsersForViewer(userID, r.domainUsersForIDs(ctx, userID, ids))
 	}
+	return out, nil
+}
+
+// onPaymentsGetStarsSubscriptions returns an empty but valid subscription page.
+// SafeLink does not model Telegram Stars subscriptions yet; returning a valid
+// empty envelope prevents clients from retrying a non-critical background query.
+func (r *Router) onPaymentsGetStarsSubscriptions(ctx context.Context, req *tg.PaymentsGetStarsSubscriptionsRequest) (*tg.PaymentsStarsStatus, error) {
+	if req != nil {
+		userID, _, err := r.currentUserID(ctx)
+		if err != nil {
+			return nil, internalErr()
+		}
+		if _, err := r.checkedDomainPeerFromInputPeer(ctx, userID, req.Peer); err != nil {
+			return nil, err
+		}
+	}
+	out := emptyStarsStatus(&tg.StarsAmount{})
+	out.SetSubscriptions([]tg.StarsSubscription{})
 	return out, nil
 }
 

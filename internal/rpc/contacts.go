@@ -411,13 +411,20 @@ func (r *Router) onContactsGetBlocked(ctx context.Context, req *tg.ContactsGetBl
 	if err != nil {
 		return nil, internalErr()
 	}
-	if req.Limit > 100 || req.Offset < 0 {
+	if req.Offset < 0 {
 		return nil, limitInvalidErr()
+	}
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 100 {
+		limit = 100
 	}
 	if r.deps.Contacts == nil {
 		return tdesktop.BlockedContacts(), nil
 	}
-	list, err := r.deps.Contacts.GetBlocked(ctx, userID, req.Offset, req.Limit)
+	list, err := r.deps.Contacts.GetBlocked(ctx, userID, req.Offset, limit)
 	if err != nil {
 		return nil, internalErr()
 	}

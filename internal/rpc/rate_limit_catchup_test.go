@@ -32,6 +32,18 @@ func TestCheckCatchupRateLimit(t *testing.T) {
 		}
 	})
 
+	t.Run("telegram swift peer dialogs exempt", func(t *testing.T) {
+		lim := &captureRateLimiter{block: true, retryAfter: 7}
+		r := New(Config{CatchupRateLimit: 5}, Deps{Limiter: lim}, zaptest.NewLogger(t), clock.System)
+		ctx := WithClientInfo(context.Background(), ClientInfo{APIID: 9})
+		if err := r.checkCatchupRateLimit(ctx, userID, peerDialogsRateLimitKeyPrefix); err != nil {
+			t.Fatalf("telegram swift peer dialogs should allow: %v", err)
+		}
+		if len(lim.calls) != 0 {
+			t.Fatalf("telegram swift peer dialogs should skip limiter, calls=%v", lim.calls)
+		}
+	})
+
 	t.Run("allowed under budget", func(t *testing.T) {
 		lim := &captureRateLimiter{}
 		r := New(Config{CatchupRateLimit: 5, CatchupRateWindow: time.Minute}, Deps{Limiter: lim}, zaptest.NewLogger(t), clock.System)

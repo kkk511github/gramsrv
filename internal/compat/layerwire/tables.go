@@ -39,12 +39,49 @@ type layerTables struct {
 
 // tables holds the runtime model per supported layer, built lazily.
 var tables = func() map[int]*layerTables {
-	out := make(map[int]*layerTables, len(generatedTables))
+	out := make(map[int]*layerTables, len(generatedTables)+len(handwrittenTables))
 	for layer, raw := range generatedTables {
+		out[layer] = buildLayerTables(raw)
+	}
+	for layer, raw := range handwrittenTables {
+		if layer < SupportedFloor {
+			if floor, ok := generatedTables[SupportedFloor]; ok {
+				raw = mergeLayerRaw(floor, raw)
+			}
+		}
 		out[layer] = buildLayerTables(raw)
 	}
 	return out
 }()
+
+func mergeLayerRaw(base, overlay layerRaw) layerRaw {
+	rules := make(map[uint32]ruleRaw, len(base.rules)+len(overlay.rules))
+	for crc, rule := range base.rules {
+		rules[crc] = rule
+	}
+	for crc, rule := range overlay.rules {
+		rules[crc] = rule
+	}
+
+	seen := make(map[uint32]bool, len(base.newTypes)+len(overlay.newTypes))
+	newTypes := make([]uint32, 0, len(base.newTypes)+len(overlay.newTypes))
+	for _, crc := range base.newTypes {
+		if seen[crc] {
+			continue
+		}
+		seen[crc] = true
+		newTypes = append(newTypes, crc)
+	}
+	for _, crc := range overlay.newTypes {
+		if seen[crc] {
+			continue
+		}
+		seen[crc] = true
+		newTypes = append(newTypes, crc)
+	}
+
+	return layerRaw{rules: rules, newTypes: newTypes}
+}
 
 func buildLayerTables(raw layerRaw) *layerTables {
 	lt := &layerTables{
@@ -156,16 +193,22 @@ var (
 )
 
 // Transcode downgrades a single canonical (Layer 227) boxed object to the wire
-// shape of layer. layer >= CanonicalLayer (or unsupported) returns in verbatim.
+// shape of layer. layer >= CanonicalLayer returns in verbatim. Clients older
+// than SupportedFloor are clamped to the floor unless a handwritten table exists
+// for their exact layer (e.g. TelegramSwift 11.15 reports Layer 211 but carries
+// a few client-private constructor ids).
 // On any transform gap it returns an error so the edge can fall back to sending
 // the canonical bytes rather than corrupting the stream.
 func Transcode(canonicalBytes []byte, layer int) ([]byte, error) {
 	if layer >= CanonicalLayer {
 		return canonicalBytes, nil
 	}
+	if _, ok := tables[layer]; !ok && layer < SupportedFloor {
+		layer = SupportedFloor
+	}
 	lt := tables[layer]
 	if lt == nil {
-		return canonicalBytes, nil // unsupported floor: best-effort passthrough
+		return canonicalBytes, nil
 	}
 	// Top-level constructors that are not in the canonical tg schema are MTProto
 	// control/error objects (mt.*, e.g. rpc_error) — layer-invariant, so pass

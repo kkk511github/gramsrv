@@ -25,10 +25,11 @@ var androidSDKVersionRE = regexp.MustCompile(`\bsdk\s+\d+\b`)
 type ClientType string
 
 const (
-	ClientTypeUnknown  ClientType = "unknown"
-	ClientTypeTDesktop ClientType = "tdesktop"
-	ClientTypeAndroid  ClientType = "android"
-	ClientTypeIOS      ClientType = "ios"
+	ClientTypeUnknown       ClientType = "unknown"
+	ClientTypeTDesktop      ClientType = "tdesktop"
+	ClientTypeAndroid       ClientType = "android"
+	ClientTypeIOS           ClientType = "ios"
+	ClientTypeTelegramSwift ClientType = "telegramswift"
 )
 
 // ClientInfo 是 initConnection 携带的客户端信息。
@@ -91,7 +92,7 @@ func (info ClientInfo) ClientType() ClientType {
 
 func knownClientType(t ClientType) bool {
 	switch t {
-	case ClientTypeTDesktop, ClientTypeAndroid, ClientTypeIOS:
+	case ClientTypeTDesktop, ClientTypeAndroid, ClientTypeIOS, ClientTypeTelegramSwift:
 		return true
 	default:
 		return false
@@ -104,6 +105,8 @@ func clientTypeFromAPIID(apiID int) ClientType {
 	// classifier also recognizes the official Android ids below.
 	case 4, 5, 6, 24, 1026, 1083, 2458, 2521, 21724:
 		return ClientTypeAndroid
+	case 9:
+		return ClientTypeTelegramSwift
 	case 2040, 17349, 611335:
 		return ClientTypeTDesktop
 	default:

@@ -41,6 +41,7 @@ const (
 	codeChannelPhone              = "phone"
 	codeChannelEmailLogin         = "email_login"
 	codeChannelEmailSetupRequired = "email_setup_required"
+	defaultLoginEmailCodeLength   = 5
 )
 
 // validPhone 校验规范化后的手机号：5-32 位纯数字（上限对齐 users.phone 列宽）。
@@ -163,7 +164,7 @@ func WithLoginEmail(opts LoginEmailOptions) Option {
 		s.loginEmailRequireSetup = opts.RequireSetup
 		s.loginEmailCodeLength = opts.CodeLength
 		if s.loginEmailCodeLength <= 0 {
-			s.loginEmailCodeLength = 6
+			s.loginEmailCodeLength = defaultLoginEmailCodeLength
 		}
 		s.loginEmails = opts.Store
 		s.loginEmailSender = opts.Sender
@@ -172,7 +173,7 @@ func WithLoginEmail(opts LoginEmailOptions) Option {
 
 // NewService 创建登录服务。fixedCode 为开发固定验证码。
 func NewService(users store.UserStore, auths store.AuthorizationStore, codes store.CodeStore, authKeys store.AuthKeyStore, tempKeys store.TempAuthKeyBindingStore, fixedCode string, opts ...Option) *Service {
-	s := &Service{users: users, auths: auths, codes: codes, authKeys: authKeys, tempKeys: tempKeys, fixedCode: fixedCode, codeTTL: 5 * time.Minute, codeMaxAttempts: 5, loginEmailCodeLength: 6}
+	s := &Service{users: users, auths: auths, codes: codes, authKeys: authKeys, tempKeys: tempKeys, fixedCode: fixedCode, codeTTL: 5 * time.Minute, codeMaxAttempts: 5, loginEmailCodeLength: defaultLoginEmailCodeLength}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -436,7 +437,7 @@ func (s *Service) SignIn(ctx context.Context, auth domain.Authorization, phone, 
 		return domain.User{}, domain.Message{}, false, ErrCodeInvalid
 	}
 	if rec.Channel == codeChannelEmailLogin {
-		return domain.User{}, domain.Message{}, false, ErrCodeInvalid
+		return s.signInWithEmailRecord(ctx, auth, phone, phoneCodeHash, rec, code)
 	}
 	if rec.Code != code {
 		return domain.User{}, domain.Message{}, false, s.rejectCode(ctx, phoneCodeHash, rec, ErrCodeInvalid)
@@ -472,6 +473,10 @@ func (s *Service) SignInWithEmail(ctx context.Context, auth domain.Authorization
 	if rec.Phone != phone {
 		return domain.User{}, domain.Message{}, false, ErrCodeInvalid
 	}
+	return s.signInWithEmailRecord(ctx, auth, phone, phoneCodeHash, rec, code)
+}
+
+func (s *Service) signInWithEmailRecord(ctx context.Context, auth domain.Authorization, phone, phoneCodeHash string, rec store.PhoneCode, code string) (domain.User, domain.Message, bool, error) {
 	if rec.Channel != codeChannelEmailLogin {
 		if s.loginEmailEnabled {
 			return domain.User{}, domain.Message{}, false, ErrCodeInvalid
@@ -1001,7 +1006,7 @@ func randomHex(n int) (string, error) {
 
 func randomDigits(n int) (string, error) {
 	if n <= 0 {
-		n = 6
+		n = defaultLoginEmailCodeLength
 	}
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {

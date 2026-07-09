@@ -78,7 +78,7 @@ func TestLoadLoginEmailDefaultsDisabled(t *testing.T) {
 	if cfg.LoginEmailRequireSetup {
 		t.Fatal("LoginEmailRequireSetup = true, want false")
 	}
-	if cfg.AuthCodeTTL != 5*time.Minute || cfg.AuthCodeMaxAttempts != 5 || cfg.LoginEmailCodeLength != 6 {
+	if cfg.AuthCodeTTL != 5*time.Minute || cfg.AuthCodeMaxAttempts != 5 || cfg.LoginEmailCodeLength != 5 {
 		t.Fatalf("auth/login email defaults = %v/%d/%d", cfg.AuthCodeTTL, cfg.AuthCodeMaxAttempts, cfg.LoginEmailCodeLength)
 	}
 }

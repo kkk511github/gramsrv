@@ -31,3 +31,7 @@ langpack.getLanguages#800fd57d = Vector<LangPackLanguage>;
 // that flow with messages.editChatCreator(peer:InputPeer,...). Keep the old
 // constructor id here but target the canonical method name for generic upgrade.
 messages.editChatCreator#8f38cd1f channel:InputChannel user_id:InputUser password:InputCheckPasswordSRP = Updates;
+// TelegramSwift 11.15 still emits channels.getForumTopicsByID#b0831eb9 with
+// channel:InputChannel; canonical 227 exposes the same method as
+// messages.getForumTopicsByID(peer:InputPeer,...).
+messages.getForumTopicsByID#b0831eb9 channel:InputChannel topics:Vector<int> = messages.ForumTopics;

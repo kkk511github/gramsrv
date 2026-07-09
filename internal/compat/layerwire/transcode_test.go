@@ -89,6 +89,323 @@ func TestTranscodeMessageGolden(t *testing.T) {
 	}
 }
 
+func TestTranscodeBelowSupportedFloorClampsToFloor(t *testing.T) {
+	raw := mustEncode(t, &tg.AuthAuthorization{
+		User: &tg.User{
+			Self:       true,
+			ID:         1780243200,
+			AccessHash: 42,
+			FirstName:  "Safe",
+			Phone:      "8618052866760",
+		},
+	})
+	out210, err := Transcode(raw, 210)
+	if err != nil {
+		t.Fatalf("transcode auth.authorization->210: %v", err)
+	}
+	out220, err := Transcode(raw, SupportedFloor)
+	if err != nil {
+		t.Fatalf("transcode auth.authorization->floor: %v", err)
+	}
+	if !bytes.Equal(out210, out220) {
+		t.Fatalf("layer below floor should clamp to %d output", SupportedFloor)
+	}
+	model := loadLayerModel(t, SupportedFloor)
+	b := &bin.Buffer{Buf: append([]byte(nil), out210...)}
+	if err := model.skipObject(b); err != nil || b.Len() != 0 {
+		t.Fatalf("clamped auth.authorization invalid at floor (err=%v left=%d)", err, b.Len())
+	}
+}
+
+func TestTranscodeTelegramSwift211AuthorizationUsesLegacyUser(t *testing.T) {
+	const (
+		canonicalUserCRC     = 0x31774388
+		telegramSwiftUserCRC = 0x020b1422
+	)
+	raw := mustEncode(t, &tg.AuthAuthorization{
+		User: &tg.User{
+			Self:       true,
+			ID:         1780243200,
+			AccessHash: 42,
+			FirstName:  "Safe",
+			Phone:      "8618052866760",
+		},
+	})
+	out, err := Transcode(raw, 211)
+	if err != nil {
+		t.Fatalf("transcode auth.authorization->TelegramSwift 211: %v", err)
+	}
+	if bytes.Contains(out, crcLE(canonicalUserCRC)) {
+		t.Fatalf("TelegramSwift 211 output leaked canonical user constructor")
+	}
+	if !bytes.Contains(out, crcLE(telegramSwiftUserCRC)) {
+		t.Fatalf("TelegramSwift 211 output missing legacy user constructor")
+	}
+	if bytes.Equal(out, raw) {
+		t.Fatalf("TelegramSwift 211 output unexpectedly unchanged")
+	}
+}
+
+func TestTranscodeTelegramSwift211DialogsUsesLegacyCoreConstructors(t *testing.T) {
+	const (
+		canonicalUserCRC        = 0x31774388
+		telegramSwiftUserCRC    = 0x020b1422
+		canonicalMessageCRC     = 0x7600b9d3
+		telegramSwiftMessageCRC = 0x9815cec8
+	)
+	raw := mustEncode(t, canonicalCorpus()[11]) // messages.dialogs with a simple Message + User.
+	out, err := Transcode(raw, 211)
+	if err != nil {
+		t.Fatalf("transcode messages.dialogs->TelegramSwift 211: %v", err)
+	}
+	for _, crc := range []uint32{canonicalUserCRC, canonicalMessageCRC} {
+		if bytes.Contains(out, crcLE(crc)) {
+			t.Fatalf("TelegramSwift 211 dialogs output leaked canonical constructor %#08x", crc)
+		}
+	}
+	for _, crc := range []uint32{telegramSwiftUserCRC, telegramSwiftMessageCRC} {
+		if !bytes.Contains(out, crcLE(crc)) {
+			t.Fatalf("TelegramSwift 211 dialogs output missing legacy constructor %#08x", crc)
+		}
+	}
+}
+
+func TestTranscodeTelegramSwift211ProfileUsesLegacyCoreConstructors(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		raw       []byte
+		canonical uint32
+		legacy    uint32
+	}{
+		{name: "userFull", raw: mustEncode(t, canonicalCorpus()[5]), canonical: 0x06cbe645, legacy: 0x7e63ce1f},
+		{name: "channel", raw: mustEncode(t, canonicalCorpus()[6]), canonical: 0x1c32b11c, legacy: 0xfe685355},
+	} {
+		out, err := Transcode(tc.raw, 211)
+		if err != nil {
+			t.Fatalf("%s: transcode->TelegramSwift 211: %v", tc.name, err)
+		}
+		if bytes.Contains(out, crcLE(tc.canonical)) {
+			t.Fatalf("%s: TelegramSwift 211 output leaked canonical constructor %#08x", tc.name, tc.canonical)
+		}
+		if !bytes.Contains(out, crcLE(tc.legacy)) {
+			t.Fatalf("%s: TelegramSwift 211 output missing legacy constructor %#08x", tc.name, tc.legacy)
+		}
+	}
+}
+
+func TestTranscodeTelegramSwift211InheritsFloorRules(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		raw       []byte
+		canonical uint32
+		legacy    uint32
+	}{
+		{
+			name:      "dialog",
+			raw:       mustEncode(t, canonicalCorpus()[8]),
+			canonical: 0xfc89f7f3,
+			legacy:    0xd58a08c6,
+		},
+		{
+			name: "reactionsNotifySettings",
+			raw: mustEncode(t, &tg.ReactionsNotifySettings{
+				Sound:        &tg.NotificationSoundDefault{},
+				ShowPreviews: true,
+			}),
+			canonical: 0x71e4ea58,
+			legacy:    0x56e34970,
+		},
+	} {
+		out, err := Transcode(tc.raw, 211)
+		if err != nil {
+			t.Fatalf("%s: transcode->TelegramSwift 211: %v", tc.name, err)
+		}
+		if bytes.Contains(out, crcLE(tc.canonical)) {
+			t.Fatalf("%s: TelegramSwift 211 output leaked canonical constructor %#08x", tc.name, tc.canonical)
+		}
+		if !bytes.Contains(out, crcLE(tc.legacy)) {
+			t.Fatalf("%s: TelegramSwift 211 output missing floor legacy constructor %#08x", tc.name, tc.legacy)
+		}
+	}
+}
+
+func TestTranscodeTelegramSwift211MessagesUsesLegacyShape(t *testing.T) {
+	const (
+		canonicalMessagesCRC     = 0x1d73e7ea
+		telegramSwiftMessagesCRC = 0x8c718e87
+		canonicalMessageCRC      = 0x7600b9d3
+		telegramSwiftMessageCRC  = 0x9815cec8
+	)
+	raw := mustEncode(t, canonicalCorpus()[12]) // messages.messages with topics vector in canonical.
+	out, err := Transcode(raw, 211)
+	if err != nil {
+		t.Fatalf("transcode messages.messages->TelegramSwift 211: %v", err)
+	}
+	for _, crc := range []uint32{canonicalMessagesCRC, canonicalMessageCRC} {
+		if bytes.Contains(out, crcLE(crc)) {
+			t.Fatalf("TelegramSwift 211 messages output leaked canonical constructor %#08x", crc)
+		}
+	}
+	for _, crc := range []uint32{telegramSwiftMessagesCRC, telegramSwiftMessageCRC} {
+		if !bytes.Contains(out, crcLE(crc)) {
+			t.Fatalf("TelegramSwift 211 messages output missing legacy constructor %#08x", crc)
+		}
+	}
+	if len(out) >= len(raw) {
+		t.Fatalf("TelegramSwift 211 messages output did not drop canonical topics vector")
+	}
+}
+
+func TestTranscodeTelegramSwift211StarGiftUsesLegacyConstructor(t *testing.T) {
+	const (
+		canonicalStarGiftCRC     = 0x313a9547
+		telegramSwiftStarGiftCRC = 0x00bcff5b
+	)
+	raw := mustEncode(t, &tg.StarGift{
+		Limited:             true,
+		LimitedPerUser:      true,
+		ID:                  1,
+		Sticker:             &tg.DocumentEmpty{ID: 2},
+		Stars:               10,
+		AvailabilityRemains: 5,
+		AvailabilityTotal:   10,
+		ConvertStars:        10,
+		Title:               "SafeLink",
+		PerUserTotal:        1,
+		PerUserRemains:      1,
+		LockedUntilDate:     123,
+	})
+	out, err := Transcode(raw, 211)
+	if err != nil {
+		t.Fatalf("transcode starGift->TelegramSwift 211: %v", err)
+	}
+	if bytes.Contains(out, crcLE(canonicalStarGiftCRC)) {
+		t.Fatalf("TelegramSwift 211 starGift output leaked canonical constructor")
+	}
+	if !bytes.Contains(out, crcLE(telegramSwiftStarGiftCRC)) {
+		t.Fatalf("TelegramSwift 211 starGift output missing legacy constructor")
+	}
+	b := &bin.Buffer{Buf: append([]byte(nil), out...)}
+	if err := b.ConsumeID(telegramSwiftStarGiftCRC); err != nil {
+		t.Fatalf("consume legacy starGift id: %v", err)
+	}
+	flags, err := b.Uint32()
+	if err != nil {
+		t.Fatalf("read legacy starGift flags: %v", err)
+	}
+	if flags&(1<<9) != 0 {
+		t.Fatalf("TelegramSwift 211 starGift flags leaked dropped locked_until_date bit: %#x", flags)
+	}
+}
+
+func TestTranscodeTelegramSwift211ReadHistoryInboxUsesLegacyConstructor(t *testing.T) {
+	const (
+		canonicalReadHistoryInboxCRC     = 0x9e84bc99
+		telegramSwiftReadHistoryInboxCRC = 0x9c974fdf
+	)
+	raw := mustEncode(t, &tg.UpdateReadHistoryInbox{
+		FolderID:         1,
+		Peer:             &tg.PeerUser{UserID: 1780243204},
+		TopMsgID:         88,
+		MaxID:            77,
+		StillUnreadCount: 0,
+		Pts:              12,
+		PtsCount:         1,
+	})
+	out, err := Transcode(raw, 211)
+	if err != nil {
+		t.Fatalf("transcode updateReadHistoryInbox->TelegramSwift 211: %v", err)
+	}
+	if bytes.Contains(out, crcLE(canonicalReadHistoryInboxCRC)) {
+		t.Fatalf("TelegramSwift 211 readHistoryInbox output leaked canonical constructor")
+	}
+	if !bytes.Contains(out, crcLE(telegramSwiftReadHistoryInboxCRC)) {
+		t.Fatalf("TelegramSwift 211 readHistoryInbox output missing legacy constructor")
+	}
+	b := &bin.Buffer{Buf: append([]byte(nil), out...)}
+	if err := b.ConsumeID(telegramSwiftReadHistoryInboxCRC); err != nil {
+		t.Fatalf("consume legacy readHistoryInbox id: %v", err)
+	}
+	flags, err := b.Uint32()
+	if err != nil {
+		t.Fatalf("read legacy readHistoryInbox flags: %v", err)
+	}
+	if flags&(1<<1) != 0 {
+		t.Fatalf("TelegramSwift 211 readHistoryInbox flags leaked dropped top_msg_id bit: %#x", flags)
+	}
+	if flags&(1<<0) == 0 {
+		t.Fatalf("TelegramSwift 211 readHistoryInbox flags dropped folder_id bit: %#x", flags)
+	}
+	if len(out) >= len(raw) {
+		t.Fatalf("TelegramSwift 211 readHistoryInbox output did not drop top_msg_id")
+	}
+}
+
+func TestTranscodeTelegramSwift211StarGiftActionUsesLegacyConstructor(t *testing.T) {
+	const (
+		canonicalStarGiftActionCRC     = 0xea2c31d3
+		telegramSwiftStarGiftActionCRC = 0x4717e8a4
+		telegramSwiftStarGiftCRC       = 0x00bcff5b
+	)
+	raw := mustEncode(t, &tg.MessageActionStarGift{
+		NameHidden:         true,
+		Saved:              true,
+		Converted:          true,
+		CanUpgrade:         true,
+		PrepaidUpgrade:     true,
+		UpgradeSeparate:    true,
+		AuctionAcquired:    true,
+		Gift:               &tg.StarGift{ID: 1, Sticker: &tg.DocumentEmpty{ID: 2}, Stars: 10, ConvertStars: 10, Title: "SafeLink"},
+		Message:            tg.TextWithEntities{Text: "gift"},
+		ConvertStars:       10,
+		FromID:             &tg.PeerUser{UserID: 1780243204},
+		Peer:               &tg.PeerUser{UserID: 1780243200},
+		SavedID:            33,
+		PrepaidUpgradeHash: "hash",
+		GiftMsgID:          44,
+		ToID:               &tg.PeerUser{UserID: 1780243201},
+		GiftNum:            55,
+	})
+	out, err := Transcode(raw, 211)
+	if err != nil {
+		t.Fatalf("transcode messageActionStarGift->TelegramSwift 211: %v", err)
+	}
+	if bytes.Contains(out, crcLE(canonicalStarGiftActionCRC)) {
+		t.Fatalf("TelegramSwift 211 starGift action output leaked canonical constructor")
+	}
+	if !bytes.Contains(out, crcLE(telegramSwiftStarGiftActionCRC)) {
+		t.Fatalf("TelegramSwift 211 starGift action output missing legacy constructor")
+	}
+	if !bytes.Contains(out, crcLE(telegramSwiftStarGiftCRC)) {
+		t.Fatalf("TelegramSwift 211 starGift action output missing legacy nested starGift constructor")
+	}
+	b := &bin.Buffer{Buf: append([]byte(nil), out...)}
+	if err := b.ConsumeID(telegramSwiftStarGiftActionCRC); err != nil {
+		t.Fatalf("consume legacy starGift action id: %v", err)
+	}
+	flags, err := b.Uint32()
+	if err != nil {
+		t.Fatalf("read legacy starGift action flags: %v", err)
+	}
+	for _, bit := range []uint{13, 14, 15, 16, 17, 18, 19} {
+		if flags&(1<<bit) != 0 {
+			t.Fatalf("TelegramSwift 211 starGift action flags leaked dropped bit %d: %#x", bit, flags)
+		}
+	}
+	for _, bit := range []uint{0, 1, 2, 3, 4, 10, 11, 12} {
+		if flags&(1<<bit) == 0 {
+			t.Fatalf("TelegramSwift 211 starGift action flags dropped retained bit %d: %#x", bit, flags)
+		}
+	}
+	if len(out) >= len(raw) {
+		t.Fatalf("TelegramSwift 211 starGift action output did not drop new fields")
+	}
+}
+
+func crcLE(crc uint32) []byte {
+	return []byte{byte(crc), byte(crc >> 8), byte(crc >> 16), byte(crc >> 24)}
+}
+
 func TestTranscodeFormattedDateEntityLayerBoundary(t *testing.T) {
 	const formattedDateEntityCRC = 0x904ac7c7
 	entityCRC := func(crc uint32) []byte {

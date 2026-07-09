@@ -132,3 +132,36 @@ func TestConfiguredEmailLoginAcceptsCorrectCode(t *testing.T) {
 		t.Fatalf("SignInWithEmail got user=%d needSignUp=%v, want %d/false", got.ID, needSignUp, u.ID)
 	}
 }
+
+func TestConfiguredEmailLoginAcceptsLegacyPhoneCodeField(t *testing.T) {
+	ctx := context.Background()
+	users := memory.NewUserStore()
+	authz := memory.NewAuthorizationStore()
+	u, err := users.Create(ctx, domain.User{Phone: "15550009103", FirstName: "Email"})
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	emails := &testLoginEmailStore{emails: map[string]string{"15550009103": "carol@example.test"}}
+	sender := &testMailSender{}
+	var key [8]byte
+	key[0] = 0x92
+	svc := NewService(users, authz, memory.NewCodeStore(), nil, nil, "12345",
+		WithLoginEmail(LoginEmailOptions{
+			Enabled:    true,
+			CodeLength: 5,
+			Store:      emails,
+			Sender:     sender,
+		}))
+
+	hash, err := svc.SendCode(ctx, "+15550009103")
+	if err != nil {
+		t.Fatalf("SendCode: %v", err)
+	}
+	got, _, needSignUp, err := svc.SignIn(ctx, domain.Authorization{AuthKeyID: key}, "+15550009103", hash, sender.code)
+	if err != nil {
+		t.Fatalf("SignIn legacy phone_code: %v", err)
+	}
+	if needSignUp || got.ID != u.ID {
+		t.Fatalf("SignIn legacy phone_code got user=%d needSignUp=%v, want %d/false", got.ID, needSignUp, u.ID)
+	}
+}
