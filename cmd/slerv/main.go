@@ -316,6 +316,7 @@ func run(logger *zap.Logger) error {
 	adminStore := postgres.NewAdminStore(pool)
 	updateStateStore := postgres.NewUpdateStateStore(pool)
 	updateEventStore := postgres.NewUpdateEventStore(pool, postgres.WithUpdateEventLogger(logger.Named("store").Named("updates")))
+	phoneChangeStore := postgres.NewPhoneChangeStore(pool)
 	readModelVersionStore := storepkg.NewCachedReadModelVersionStore(postgres.NewReadModelVersionStore(pool), 0, 0)
 	dispatchOutboxStore := postgres.NewDispatchOutboxStore(pool, postgres.WithLeaseTimeout(cfg.OutboxLeaseTimeout))
 	bootstrapUpdateStore := postgres.NewBootstrapUpdateJobStore(pool)
@@ -394,7 +395,7 @@ func run(logger *zap.Logger) error {
 		return fmt.Errorf("seed appearance: %w", err)
 	} else if !stats.Skipped {
 		logger.Info("外观种子导入完成",
-			zap.String("source", "default-seed"),
+			zap.String("source", "orange-live"),
 			zap.Int("wallpapers", stats.Wallpapers),
 			zap.Int("documents", stats.Documents),
 			zap.Int("blobs", stats.Blobs),
@@ -478,6 +479,7 @@ func run(logger *zap.Logger) error {
 		account.WithSavedMusic(passwordStore),
 		account.WithBusinessAutomation(passwordStore),
 		account.WithUsers(userStore),
+		account.WithPhoneChange(phoneChangeStore, authzStore, codeStore, userCache, cfg.DevAuthCode, cfg.AuthCodeTTL, cfg.AuthCodeMaxAttempts),
 		account.WithPublicBaseURL(cfg.PublicBaseURL),
 	}
 	var loginEmailSender mailpkg.Sender
@@ -768,6 +770,9 @@ func run(logger *zap.Logger) error {
 		PublicBaseURL: cfg.PublicBaseURL,
 		AppScheme:     cfg.PublicLinkAppScheme,
 		Users:         userStore,
+		Channels:      channelStore,
+		Privacy:       privacyService,
+		Photos:        filesService,
 	}, filesService, logger.Named("stickerlinks")); err != nil {
 		return fmt.Errorf("start sticker links: %w", err)
 	}

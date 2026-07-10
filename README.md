@@ -10,7 +10,7 @@ If you are looking for a **Telegram server**, **MTProto server**,
 Telegram-like chat server**, this repository is the server-side implementation
 to study, run, and improve.
 
-[Website](https://telesrv.net) · [Discussion group](https://t.me/telesrv_chat) · [Channel](https://t.me/telesrv) · [中文 README](README.zh-CN.md)
+[SafeLink Website](https://safelink.chat) · [Web App](https://web.safelink.chat) · [中文 README](README.zh-CN.md)
 
 `gramsrv` is independent and unofficial. It is not affiliated with, endorsed by,
 or sponsored by Telegram or the official Telegram team.
@@ -44,7 +44,7 @@ codebase.
 | ✅ | Login and accounts | Development login code, sign-in, sign-up, log-out, authorizations, account settings, SRP/password state, email/passkey-oriented paths. |
 | ✅ | Users and contacts | User profiles, usernames, profile photos, contact import/search, blocked/privacy state, presence, and last-seen style status. |
 | ✅ | Dialogs and sync | Dialog list, pinned dialogs, manual unread, folders/filters, drafts, read boundaries, durable updates, online fan-out, and offline difference recovery. |
-| ✅ | Chatlists and public links | Chat folder sharing, exported chatlist invite links, join/import flows, revoked invite handling, and shared public link landing pages. |
+| ✅ | Chatlists and public links | Chat folder sharing, exported chatlist invite links, join/import flows, revoked invite handling, public username landing pages, and shared public link landing pages. |
 | ✅ | Private chats | Send, history, read receipts, edit, delete, forward, reply, rich entities, grouped/media messages, reactions, scheduled/TTL-oriented paths. |
 | ✅ | Rich messages | Telegram Desktop rich text messages, rich content conversion, send/edit/scheduled flows, dialog/history projections, and memory/PostgreSQL persistence. |
 | ✅ | AI compose and ChatBot | Input-box rewrite/polish, default and custom tones, addstyle previews, local and external provider chains, streamed `@ChatBot` draft replies, and Business AI reply hooks. |
@@ -113,7 +113,7 @@ forms or remove the legacy alias.
 | `TELESRV_LOGIN_EMAIL_REQUIRE_SETUP` | `false` | force phone login/registration to set a login email first |
 | `TELESRV_LOGIN_EMAIL_CODE_LENGTH` | `5` | digits in each email login/setup verification code |
 | `TELESRV_SMTP_HOST` | empty | SMTP host used when login email verification is enabled |
-| `TELESRV_PUBLIC_BASE_URL` | `https://safelink.chat` | canonical base URL for public links |
+| `TELESRV_PUBLIC_BASE_URL` | `https://safelink.chat` | canonical external base URL for username, sticker, emoji, and chatlist links |
 | `TELESRV_POSTGRES_DSN` | local Compose DSN | PostgreSQL connection string |
 | `TELESRV_REDIS_ADDR` | `127.0.0.1:6399` | Redis address |
 | `TELESRV_LANGPACK_SEED_DIR` | `data/langpack` | bundled language pack seed directory |
@@ -302,7 +302,7 @@ to the features you enable.
 | 12400 | UDP | TURN/STUN server | P2P/call relay |
 | 12500-12999 | UDP | TURN relay port range | TURN relay |
 | configurable | TCP | Bot API | When `TELESRV_BOT_API_ADDR` is set |
-| configurable | TCP | Public link deep-link landing | When `TELESRV_PUBLIC_LINK_WEB_ADDR` is set |
+| 2401 example | TCP | Public username/sticker/chatlist landing pages | When `TELESRV_PUBLIC_LINK_WEB_ADDR=127.0.0.1:2401` is set |
 
 ### Internal/debug ports (do not expose publicly)
 
@@ -315,11 +315,32 @@ to the features you enable.
 Make sure `TELESRV_LISTEN=0.0.0.0:2398` is set, and `TELESRV_ADVERTISE_IP`
 points to your public IP so clients can connect.
 
+## Public Link Landing Pages
+
+`gramsrv` can serve public landing pages for `/<username>`, profile avatars,
+`/addstickers/<shortName>`, `/addemoji/<shortName>`, and `/addlist/<slug>`.
+
+Use `TELESRV_PUBLIC_LINK_WEB_ADDR` as the local HTTP bind address:
+
+```env
+TELESRV_PUBLIC_LINK_WEB_ADDR=127.0.0.1:2401
+```
+
+Use `TELESRV_PUBLIC_BASE_URL` as the external canonical URL shown in generated
+links:
+
+```env
+TELESRV_PUBLIC_BASE_URL=https://your-domain.example
+```
+
+In production, keep `TELESRV_PUBLIC_LINK_WEB_ADDR` on loopback and reverse-proxy
+the public routes to it with HTTPS.
+
 ## Client Compatibility
 
 Stock Telegram clients will not connect to `gramsrv` because they trust
 Telegram's production DC list and RSA keys. Use a patched experience client from
-the [official website](https://telesrv.net), or build your own client with a
+the [SafeLink website](https://safelink.chat), or build your own client with a
 minimal protocol patch.
 
 Current Telegram Desktop baseline:

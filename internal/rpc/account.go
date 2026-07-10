@@ -23,6 +23,8 @@ func (r *Router) registerAccount(d *tg.ServerDispatcher) {
 	d.OnAccountUpdateDeviceLocked(func(ctx context.Context, period int) (bool, error) {
 		return true, nil
 	})
+	d.OnAccountSendChangePhoneCode(r.onAccountSendChangePhoneCode)
+	d.OnAccountChangePhone(r.onAccountChangePhone)
 	d.OnAccountCheckUsername(r.onAccountCheckUsername)
 	d.OnAccountUpdateProfile(r.onAccountUpdateProfile)
 	d.OnAccountUpdateUsername(r.onAccountUpdateUsername)

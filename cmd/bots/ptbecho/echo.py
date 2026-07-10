@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""python-telegram-bot echo demo for telesrv Bot API.
+"""python-telegram-bot echo demo for SafeLink Bot API.
 
 This is a normal python-telegram-bot program. The only telesrv-specific part is
 the custom base_url/base_file_url pair.

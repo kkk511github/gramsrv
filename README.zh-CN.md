@@ -8,7 +8,7 @@
 **Telegram 后端**、**Telegram clone server**、**自建 Telegram-like 聊天服务器**，
 这个仓库就是可以运行、研究和共同优化的 server 侧实现。
 
-[English README](README.md) · [官网](https://telesrv.net) · [讨论群](https://t.me/telesrv_chat) · [频道](https://t.me/telesrv)
+[English README](README.md) · [SafeLink 官网](https://safelink.chat) · [SafeLink Web](https://web.safelink.chat)
 
 `gramsrv` 是独立的非官方项目，与 Telegram 官方及其团队没有关联，也未获得其背书或赞助。
 
@@ -41,7 +41,7 @@ https://github.com/user-attachments/assets/25e651dc-a022-4d60-8b9b-ca3e8bfe216c
 | ✅ | 登录与账号 | 开发验证码登录、sign-in、sign-up、log-out、授权设备、账号设置、SRP/password 状态、email/passkey 相关路径。 |
 | ✅ | 用户与联系人 | 用户资料、username、头像、联系人导入/搜索、block/privacy 状态、presence、last seen。 |
 | ✅ | 会话与同步 | dialog list、置顶、手动未读、folders/filters、草稿、read boundary、durable updates、在线 fan-out、离线 difference 恢复。 |
-| ✅ | Chatlists 与公开链接 | 聊天文件夹分享、chatlist invite links、加入/导入流程、撤销邀请处理，以及统一公开链接落地页。 |
+| ✅ | Chatlists 与公开链接 | 聊天文件夹分享、chatlist invite links、加入/导入流程、撤销邀请处理、公开 username 落地页，以及统一公开链接落地页。 |
 | ✅ | 私聊消息 | send、history、read receipts、edit、delete、forward、reply、富文本实体、媒体/相册消息、reactions、scheduled/TTL 相关路径。 |
 | ✅ | 富文本消息 | Telegram Desktop rich text message、富文本内容转换、send/edit/scheduled 流程、dialog/history 投影，以及 memory/PostgreSQL 持久化。 |
 | ✅ | AI 输入框与 ChatBot | 输入框改写/润色、默认和自定义 tone、addstyle 预览、本地与外部 provider 链、流式 `@ChatBot` 草稿回复、Business AI 回复钩子。 |
@@ -104,7 +104,7 @@ go build -o bin/gramsrv ./cmd/telesrv
 | `TELESRV_LOGIN_EMAIL_REQUIRE_SETUP` | `false` | 登录/注册时强制先设置登录邮箱 |
 | `TELESRV_LOGIN_EMAIL_CODE_LENGTH` | `5` | 邮箱登录/设置验证码的数字位数 |
 | `TELESRV_SMTP_HOST` | 空 | 开启登录邮箱验证时使用的 SMTP host |
-| `TELESRV_PUBLIC_BASE_URL` | `https://safelink.chat` | 公开链接的 canonical base URL |
+| `TELESRV_PUBLIC_BASE_URL` | `https://safelink.chat` | username、sticker、emoji、chatlist 公开链接使用的外部 canonical base URL |
 | `TELESRV_POSTGRES_DSN` | local Compose DSN | PostgreSQL 连接串 |
 | `TELESRV_REDIS_ADDR` | `127.0.0.1:6399` | Redis 地址 |
 | `TELESRV_LANGPACK_SEED_DIR` | `data/langpack` | 内置语言包种子目录 |
@@ -274,7 +274,7 @@ curl -sS https://safelink.chat/+example_hash | grep 'safelink://join?invite='
 | 12400 | UDP | TURN/STUN 服务器 | 启用 P2P/通话 relay |
 | 12500-12999 | UDP | TURN relay 端口段 | 启用 TURN relay |
 | 可配置 | TCP | Bot API | 设置 `TELESRV_BOT_API_ADDR` 时 |
-| 可配置 | TCP | 公开链接深链落地页 | 设置 `TELESRV_PUBLIC_LINK_WEB_ADDR` 时 |
+| 2401 示例 | TCP | username/sticker/chatlist 公开链接落地页 | 设置 `TELESRV_PUBLIC_LINK_WEB_ADDR=127.0.0.1:2401` 时 |
 
 ### 内部/调试端口（不要暴露到公网）
 
@@ -286,9 +286,29 @@ curl -sS https://safelink.chat/+example_hash | grep 'safelink://join?invite='
 
 确保设置 `TELESRV_LISTEN=0.0.0.0:2398`，且 `TELESRV_ADVERTISE_IP` 指向公网 IP，客户端才能正确连接。
 
+## 公开链接落地页
+
+`gramsrv` 可以提供 `/<username>`、头像、`/addstickers/<shortName>`、
+`/addemoji/<shortName>`、`/addlist/<slug>` 这些公开落地页。
+
+`TELESRV_PUBLIC_LINK_WEB_ADDR` 是本机 HTTP 监听地址：
+
+```env
+TELESRV_PUBLIC_LINK_WEB_ADDR=127.0.0.1:2401
+```
+
+`TELESRV_PUBLIC_BASE_URL` 是生成公开链接时展示给用户的外部 canonical URL：
+
+```env
+TELESRV_PUBLIC_BASE_URL=https://your-domain.example
+```
+
+生产环境建议让 `TELESRV_PUBLIC_LINK_WEB_ADDR` 只监听 loopback，再用 HTTPS
+反向代理把公开路由转发到这个本地端口。
+
 ## 客户端兼容
 
-官方 Telegram 客户端不能直接连接 `gramsrv`，因为它们信任的是 Telegram 官方 DC 列表和 RSA keys。你可以使用 [官网](https://telesrv.net) 提供的体验客户端，也可以自己做最小协议 patch。
+官方 Telegram 客户端不能直接连接 `gramsrv`，因为它们信任的是 Telegram 官方 DC 列表和 RSA keys。你可以使用 [SafeLink 官网](https://safelink.chat) 提供的客户端，也可以自己做最小协议 patch。
 
 当前 Telegram Desktop 基线：
 

@@ -43,7 +43,7 @@ python .\cmd\bots\ptbecho\echo.py `
 本地超级群 chat id 使用 Bot API 形式 `-100<channel_id>`；例如 channel id 为
 `2` 时是 `-1000000000002`。
 
-Implemented telesrv Bot API surface for this demo: `getMe`, `getUpdates`,
+Implemented SafeLink Bot API surface for this demo: `getMe`, `getUpdates`,
 `deleteWebhook`, `sendMessage`, and file URL configuration. The wider gateway
 also has basic `sendPhoto`, `sendDocument`, `editMessageText`, `deleteMessage`,
 `answerCallbackQuery`, `getFile`, and `/file/bot...` support.

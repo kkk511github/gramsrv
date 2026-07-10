@@ -317,9 +317,13 @@ func Load() (Config, error) {
 	envIntOr := fileEnv.envIntOr
 	envInt64Or := fileEnv.envInt64Or
 	envDurationOr := fileEnv.envDurationOr
+	envAllowEmptyOr := fileEnv.envAllowEmptyOr
 
-	publicBaseURL := links.NormalizeBaseURL(envOr("TELESRV_PUBLIC_BASE_URL", envOr("TELESRV_STICKER_WEB_PUBLIC_URL", brand.DefaultPublicBaseURL)))
-	publicLinkWebAddr := envOr("TELESRV_PUBLIC_LINK_WEB_ADDR", envOr("TELESRV_STICKER_WEB_ADDR", ""))
+	publicBaseURL, err := links.ValidateBaseURL(envOr("TELESRV_PUBLIC_BASE_URL", envOr("TELESRV_STICKER_WEB_PUBLIC_URL", brand.DefaultPublicBaseURL)))
+	if err != nil {
+		return Config{}, fmt.Errorf("TELESRV_PUBLIC_BASE_URL: %w", err)
+	}
+	publicLinkWebAddr := envAllowEmptyOr("TELESRV_PUBLIC_LINK_WEB_ADDR", envOr("TELESRV_STICKER_WEB_ADDR", ""))
 	publicLinkAppScheme := envOr("TELESRV_PUBLIC_LINK_APP_SCHEME", envOr("TELESRV_STICKER_WEB_APP_SCHEME", brand.DefaultAppScheme))
 
 	cfg := Config{
@@ -335,9 +339,9 @@ func Load() (Config, error) {
 		AdvertiseIP:         envOr("TELESRV_ADVERTISE_IP", "127.0.0.1"),
 		RSAKeyPath:          envOr("TELESRV_RSA_KEY", "data/server_rsa.pem"),
 		DC:                  envIntOr("TELESRV_DC", 2),
-		DebugAddr:           envOr("TELESRV_DEBUG_ADDR", "127.0.0.1:6060"),
-		BotAPIAddr:          envOr("TELESRV_BOT_API_ADDR", ""),
-		AdminAPIAddr:        envOr("TELESRV_ADMIN_API_ADDR", ""),
+		DebugAddr:           envAllowEmptyOr("TELESRV_DEBUG_ADDR", "127.0.0.1:6060"),
+		BotAPIAddr:          envAllowEmptyOr("TELESRV_BOT_API_ADDR", ""),
+		AdminAPIAddr:        envAllowEmptyOr("TELESRV_ADMIN_API_ADDR", ""),
 		AdminAPIToken:       envOr("TELESRV_ADMIN_API_TOKEN", ""),
 		PublicBaseURL:       publicBaseURL,
 		PublicLinkWebAddr:   publicLinkWebAddr,
@@ -704,6 +708,26 @@ func slervEnvAlias(key string) string {
 		return "SLERV_" + strings.TrimPrefix(key, "TELESRV_")
 	}
 	return ""
+}
+
+// envAllowEmptyOr is for nullable settings where an explicitly empty process
+// environment value must override a non-empty config-file value or default.
+func (e envSource) envAllowEmptyOr(key, def string) string {
+	if alias := slervEnvAlias(key); alias != "" {
+		if v, ok := os.LookupEnv(alias); ok {
+			return v
+		}
+		if v, ok := e[alias]; ok {
+			return v
+		}
+	}
+	if v, ok := os.LookupEnv(key); ok {
+		return v
+	}
+	if v, ok := e[key]; ok {
+		return v
+	}
+	return def
 }
 
 func (e envSource) envListOr(key string, def []string) []string {
