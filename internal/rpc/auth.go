@@ -243,7 +243,7 @@ func (r *Router) pushLoginTokenAccepted(ctx context.Context, target loginTokenTa
 // （客户端据此进入"输入邮箱验证码"界面，随后用 auth.signIn 的 email_verification 完成登录）。
 func (r *Router) onAuthSendCode(ctx context.Context, req *tg.AuthSendCodeRequest) (tg.AuthSentCodeClass, error) {
 	r.rememberClientAPIID(ctx, req.APIID)
-	hash, err := r.deps.Auth.SendCode(ctx, req.PhoneNumber)
+	sent, err := r.issueLoginCode(ctx, req.PhoneNumber)
 	if err != nil {
 		if errors.Is(err, auth.ErrPhoneNumberInvalid) ||
 			errors.Is(err, auth.ErrSystemUserLoginForbidden) {
@@ -251,7 +251,39 @@ func (r *Router) onAuthSendCode(ctx context.Context, req *tg.AuthSendCodeRequest
 		}
 		return nil, internalErr()
 	}
+	return sent, nil
+}
+
+type authCodeIssuer interface {
+	IssueCode(ctx context.Context, phone string) (domain.AuthCodeIssue, error)
+	ResendCodeIssueForAuthKey(ctx context.Context, authKeyID [8]byte, phone, phoneCodeHash string) (domain.AuthCodeIssue, error)
+}
+
+func (r *Router) issueLoginCode(ctx context.Context, phone string) (tg.AuthSentCodeClass, error) {
+	if issuer, ok := r.deps.Auth.(authCodeIssuer); ok {
+		issue, err := issuer.IssueCode(ctx, phone)
+		if err != nil {
+			return nil, err
+		}
+		return r.publishAuthCodeIssue(ctx, issue)
+	}
+	hash, err := r.deps.Auth.SendCode(ctx, phone)
+	if err != nil {
+		return nil, err
+	}
 	return r.tgSentCodeForHash(ctx, hash)
+}
+
+func (r *Router) publishAuthCodeIssue(ctx context.Context, issue domain.AuthCodeIssue) (tg.AuthSentCodeClass, error) {
+	if issue.AppMessage.ID != 0 {
+		if r.deps.Updates == nil {
+			return nil, fmt.Errorf("publish app login code: updates service is nil")
+		}
+		if _, _, err := r.deps.Updates.PublishNewMessage(ctx, issue.AppMessage.OwnerUserID, issue.AppMessage); err != nil {
+			return nil, fmt.Errorf("publish app login code: %w", err)
+		}
+	}
+	return tgSentCodeForDelivery(issue.PhoneCodeHash, issue.Delivery), nil
 }
 
 func tgSentCode(hash string) tg.AuthSentCodeClass {
@@ -313,15 +345,19 @@ func (r *Router) tgSentCodeForHash(ctx context.Context, hash string) (tg.AuthSen
 	if !found {
 		return nil, signInErr(auth.ErrCodeExpired)
 	}
+	return tgSentCodeForDelivery(hash, delivery), nil
+}
+
+func tgSentCodeForDelivery(hash string, delivery domain.AuthCodeDelivery) tg.AuthSentCodeClass {
 	switch delivery.Kind {
 	case domain.AuthCodeDeliverySMS:
-		return tgSMSSentCode(hash, delivery.Length), nil
+		return tgSMSSentCode(hash, delivery.Length)
 	case domain.AuthCodeDeliveryEmail:
-		return tgEmailSentCode(hash, delivery.EmailPattern, delivery.Length), nil
+		return tgEmailSentCode(hash, delivery.EmailPattern, delivery.Length)
 	case domain.AuthCodeDeliveryEmailSetupRequired:
-		return tgEmailSetupRequiredSentCode(hash), nil
+		return tgEmailSetupRequiredSentCode(hash)
 	default:
-		return tgSentCodeWithLength(hash, delivery.Length), nil
+		return tgSentCodeWithLength(hash, delivery.Length)
 	}
 }
 
@@ -374,6 +410,18 @@ func (r *Router) finishAuthSignIn(ctx context.Context, u domain.User, loginMessa
 }
 
 func (r *Router) onAuthResendCode(ctx context.Context, req *tg.AuthResendCodeRequest) (tg.AuthSentCodeClass, error) {
+	if issuer, ok := r.deps.Auth.(authCodeIssuer); ok {
+		authKeyID, _ := AuthKeyIDFrom(ctx)
+		issue, err := issuer.ResendCodeIssueForAuthKey(ctx, authKeyID, req.PhoneNumber, req.PhoneCodeHash)
+		if err != nil {
+			return nil, signInErr(err)
+		}
+		sent, err := r.publishAuthCodeIssue(ctx, issue)
+		if err != nil {
+			return nil, internalErr()
+		}
+		return sent, nil
+	}
 	var hash string
 	var err error
 	if scoped, ok := r.deps.Auth.(interface {
@@ -449,6 +497,9 @@ func (r *Router) onAuthCheckPassword(ctx context.Context, password tg.InputCheck
 	u, err := r.deps.Users.Self(ctx, userID)
 	if err != nil {
 		return nil, internalErr()
+	}
+	if pending {
+		r.pushSignInServiceNotificationToOthers(ctx, u)
 	}
 	return &tg.AuthAuthorization{User: r.tgSelfUser(u)}, nil
 }
@@ -553,7 +604,7 @@ func (r *Router) onAuthResetLoginEmail(ctx context.Context, req *tg.AuthResetLog
 	if err := r.deps.Account.ClearLoginEmailByPhone(ctx, req.PhoneNumber); err != nil {
 		return nil, internalErr()
 	}
-	hash, err := r.deps.Auth.SendCode(ctx, req.PhoneNumber)
+	sent, err := r.issueLoginCode(ctx, req.PhoneNumber)
 	if err != nil {
 		if errors.Is(err, auth.ErrPhoneNumberInvalid) ||
 			errors.Is(err, auth.ErrSystemUserLoginForbidden) {
@@ -561,7 +612,7 @@ func (r *Router) onAuthResetLoginEmail(ctx context.Context, req *tg.AuthResetLog
 		}
 		return nil, internalErr()
 	}
-	return r.tgSentCodeForHash(ctx, hash)
+	return sent, nil
 }
 
 // emailVerificationCode 从 emailVerification 取出可校验的字符串（验证码 / Google·Apple

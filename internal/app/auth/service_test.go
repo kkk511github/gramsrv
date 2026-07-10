@@ -431,6 +431,72 @@ func TestSignUpWritesOfficialLoginMessage(t *testing.T) {
 	}
 }
 
+func TestIssueCodeDeliversToExistingAuthorizedDevicesBeforeSignIn(t *testing.T) {
+	ctx := context.Background()
+	users := memory.NewUserStore()
+	authz := memory.NewAuthorizationStore()
+	codes := memory.NewCodeStore()
+	dialogs := memory.NewDialogStore()
+	messages := memory.NewMessageStore(dialogs)
+	phone := "+15550004313"
+	u, err := users.Create(ctx, domain.User{Phone: "15550004313", FirstName: "Existing"})
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	oldAuthKeyID := [8]byte{1, 2, 3}
+	if err := authz.Bind(ctx, domain.Authorization{AuthKeyID: oldAuthKeyID, UserID: u.ID}); err != nil {
+		t.Fatalf("bind existing authorization: %v", err)
+	}
+	svc := NewService(users, authz, codes, nil, nil, "12345",
+		WithLoginMessages(messages, dialogs),
+		WithLoginEmail(LoginEmailOptions{
+			Enabled:      true,
+			RequireSetup: true,
+			CodeLength:   5,
+			Store:        &testLoginEmailStore{emails: map[string]string{}},
+			Sender:       &testMailSender{},
+		}),
+	)
+
+	issue, err := svc.IssueCode(ctx, phone)
+	if err != nil {
+		t.Fatalf("IssueCode: %v", err)
+	}
+	if issue.Delivery.Kind != domain.AuthCodeDeliveryApp || issue.Delivery.Length != 5 {
+		t.Fatalf("delivery = %+v, want five-digit app code", issue.Delivery)
+	}
+	if issue.AppMessage.ID == 0 || issue.AppMessage.OwnerUserID != u.ID {
+		t.Fatalf("app message = %+v, want official message for user %d", issue.AppMessage, u.ID)
+	}
+	rec, found, err := codes.Get(ctx, issue.PhoneCodeHash)
+	if err != nil || !found {
+		t.Fatalf("stored code found=%v err=%v", found, err)
+	}
+	if len(rec.Code) != 5 || !strings.Contains(issue.AppMessage.Body, "Login code: "+rec.Code) {
+		t.Fatalf("stored/app code = %q / %q", rec.Code, issue.AppMessage.Body)
+	}
+	delivery, found, err := svc.CodeDelivery(ctx, issue.PhoneCodeHash)
+	if err != nil || !found || delivery.Kind != domain.AuthCodeDeliveryApp {
+		t.Fatalf("CodeDelivery = %+v found=%v err=%v", delivery, found, err)
+	}
+
+	newAuthKeyID := [8]byte{4, 5, 6}
+	_, loginMessage, needSignUp, err := svc.SignIn(ctx, domain.Authorization{AuthKeyID: newAuthKeyID}, phone, issue.PhoneCodeHash, rec.Code)
+	if err != nil || needSignUp {
+		t.Fatalf("SignIn needSignUp=%v err=%v", needSignUp, err)
+	}
+	if loginMessage.ID != 0 {
+		t.Fatalf("SignIn created duplicate login message: %+v", loginMessage)
+	}
+	list, err := dialogs.ListByUser(ctx, u.ID, domain.DialogFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListByUser: %v", err)
+	}
+	if len(list.Messages) != 1 || list.Messages[0].ID != issue.AppMessage.ID {
+		t.Fatalf("messages = %+v, want only pre-login app code message", list.Messages)
+	}
+}
+
 func TestSignInLoginMessagePreservesOfficialDialogReadWatermark(t *testing.T) {
 	ctx := context.Background()
 	dialogs := memory.NewDialogStore()

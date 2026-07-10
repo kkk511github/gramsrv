@@ -29,6 +29,7 @@ var (
 type AuthCodeDeliveryKind string
 
 const (
+	AuthCodeDeliveryApp                AuthCodeDeliveryKind = "app"
 	AuthCodeDeliveryPhone              AuthCodeDeliveryKind = "phone"
 	AuthCodeDeliverySMS                AuthCodeDeliveryKind = "sms"
 	AuthCodeDeliveryEmail              AuthCodeDeliveryKind = "email"
@@ -39,6 +40,15 @@ type AuthCodeDelivery struct {
 	Kind         AuthCodeDeliveryKind
 	EmailPattern string
 	Length       int
+}
+
+// AuthCodeIssue is one login-code issuance result. AppMessage is populated
+// only when the code was written to the official SafeLink dialog for existing
+// authorized devices.
+type AuthCodeIssue struct {
+	PhoneCodeHash string
+	Delivery      AuthCodeDelivery
+	AppMessage    Message
 }
 
 // PasswordKDFAlgo 是业务层的 SRP KDF 算法描述，不依赖 tg.*。

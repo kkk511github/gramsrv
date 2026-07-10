@@ -38,6 +38,7 @@ var (
 )
 
 const (
+	codeChannelApp                = "app"
 	codeChannelPhone              = "phone"
 	codeChannelEmailLogin         = "email_login"
 	codeChannelEmailSetupRequired = "email_setup_required"
@@ -288,6 +289,107 @@ func (s *Service) SendCode(ctx context.Context, phone string) (string, error) {
 	return s.createPhoneCode(ctx, phone)
 }
 
+// IssueCode implements Telegram-style app delivery for registered accounts:
+// when at least one fully authorized device exists, the code is written to the
+// official SafeLink dialog and returned as app delivery. Otherwise the existing
+// email/setup/phone fallback remains unchanged.
+func (s *Service) IssueCode(ctx context.Context, phone string) (domain.AuthCodeIssue, error) {
+	phone = normalizePhone(phone)
+	if !validPhone(phone) {
+		return domain.AuthCodeIssue{}, ErrPhoneNumberInvalid
+	}
+	if systemLoginPhoneForbidden(phone) {
+		return domain.AuthCodeIssue{}, ErrSystemUserLoginForbidden
+	}
+	if _, found, err := s.appCodeTarget(ctx, phone); err != nil {
+		return domain.AuthCodeIssue{}, err
+	} else if found {
+		hash, err := s.createAppCode(ctx, phone)
+		if err != nil {
+			return domain.AuthCodeIssue{}, err
+		}
+		return s.issueForHash(ctx, hash)
+	}
+	hash, err := s.SendCode(ctx, phone)
+	if err != nil {
+		return domain.AuthCodeIssue{}, err
+	}
+	return s.issueForHash(ctx, hash)
+}
+
+func (s *Service) createAppCode(ctx context.Context, phone string) (string, error) {
+	hash, err := randomHex(8)
+	if err != nil {
+		return "", err
+	}
+	length := s.loginEmailCodeLength
+	if length <= 0 {
+		length = defaultLoginEmailCodeLength
+	}
+	code, err := randomDigits(length)
+	if err != nil {
+		return "", err
+	}
+	if err := s.codes.Set(ctx, hash, store.PhoneCode{
+		Phone:       phone,
+		Code:        code,
+		Channel:     codeChannelApp,
+		MaxAttempts: s.codeMaxAttempts,
+	}, s.codeTTL); err != nil {
+		return "", fmt.Errorf("store app login code: %w", err)
+	}
+	return hash, nil
+}
+
+func (s *Service) appCodeTarget(ctx context.Context, phone string) (domain.User, bool, error) {
+	if s == nil || s.users == nil || s.auths == nil || s.messages == nil || s.dialogs == nil {
+		return domain.User{}, false, nil
+	}
+	u, found, err := s.users.ByPhone(ctx, phone)
+	if err != nil || !found || u.ID == 0 || systemUserLoginForbidden(u) {
+		return domain.User{}, false, err
+	}
+	authorizations, err := s.auths.ListByUser(ctx, u.ID)
+	if err != nil {
+		return domain.User{}, false, err
+	}
+	for _, authorization := range authorizations {
+		if authorization.AuthKeyID != ([8]byte{}) && !authorization.PasswordPending {
+			return u, true, nil
+		}
+	}
+	return domain.User{}, false, nil
+}
+
+func (s *Service) issueForHash(ctx context.Context, hash string) (domain.AuthCodeIssue, error) {
+	rec, found, err := s.codes.Get(ctx, hash)
+	if err != nil {
+		return domain.AuthCodeIssue{}, err
+	}
+	if !found {
+		return domain.AuthCodeIssue{}, ErrCodeExpired
+	}
+	issue := domain.AuthCodeIssue{PhoneCodeHash: hash, Delivery: codeDelivery(rec)}
+	if rec.Channel != codeChannelApp {
+		return issue, nil
+	}
+	u, found, err := s.appCodeTarget(ctx, rec.Phone)
+	if err != nil {
+		return domain.AuthCodeIssue{}, err
+	}
+	if !found {
+		_ = s.codes.Del(ctx, hash)
+		return s.IssueCode(ctx, rec.Phone)
+	}
+	msg, err := s.recordLoginMessage(ctx, u.ID, rec.Code)
+	if err != nil {
+		_ = s.codes.Del(ctx, hash)
+		return domain.AuthCodeIssue{}, err
+	}
+	issue.AppMessage = msg
+	return issue, nil
+}
+
 func (s *Service) createPhoneCode(ctx context.Context, phone string) (string, error) {
 	hash, err := randomHex(8)
 	if err != nil {
@@ -362,6 +464,8 @@ func codeDelivery(rec store.PhoneCode) domain.AuthCodeDelivery {
 		return domain.AuthCodeDelivery{Kind: domain.AuthCodeDeliverySMS, Length: len(rec.Code)}
 	}
 	switch rec.Channel {
+	case codeChannelApp:
+		return domain.AuthCodeDelivery{Kind: domain.AuthCodeDeliveryApp, Length: len(rec.Code)}
 	case codeChannelEmailLogin:
 		return domain.AuthCodeDelivery{
 			Kind:         domain.AuthCodeDeliveryEmail,
@@ -378,6 +482,22 @@ func codeDelivery(rec store.PhoneCode) domain.AuthCodeDelivery {
 // ResendCode invalidates an existing code hash and sends a fresh code to the same phone.
 func (s *Service) ResendCode(ctx context.Context, phone, phoneCodeHash string) (string, error) {
 	return s.resendCode(ctx, [8]byte{}, phone, phoneCodeHash)
+}
+
+// ResendCodeIssue resends a login code and includes any app-delivery message.
+func (s *Service) ResendCodeIssue(ctx context.Context, phone, phoneCodeHash string) (domain.AuthCodeIssue, error) {
+	return s.ResendCodeIssueForAuthKey(ctx, [8]byte{}, phone, phoneCodeHash)
+}
+
+// ResendCodeIssueForAuthKey preserves the auth-key scope required by sensitive
+// operations such as account phone changes while still returning app delivery
+// metadata for ordinary login codes.
+func (s *Service) ResendCodeIssueForAuthKey(ctx context.Context, authKeyID [8]byte, phone, phoneCodeHash string) (domain.AuthCodeIssue, error) {
+	hash, err := s.resendCode(ctx, authKeyID, phone, phoneCodeHash)
+	if err != nil {
+		return domain.AuthCodeIssue{}, err
+	}
+	return s.issueForHash(ctx, hash)
 }
 
 // ResendCodeForAuthKey 对已登录敏感操作额外校验发起 auth key；普通登录码
@@ -404,6 +524,9 @@ func (s *Service) resendCode(ctx context.Context, authKeyID [8]byte, phone, phon
 	_ = s.codes.Del(ctx, phoneCodeHash)
 	if rec.Purpose == store.PhoneCodePurposeChangePhone {
 		return s.recreateChangePhoneCode(ctx, rec)
+	}
+	if rec.Channel == codeChannelApp {
+		return s.createAppCode(ctx, phone)
 	}
 	if rec.Channel == codeChannelEmailLogin && strings.TrimSpace(rec.Email) != "" {
 		return s.createEmailLoginCode(ctx, phone, rec.Email)
@@ -490,7 +613,7 @@ func (s *Service) SignIn(ctx context.Context, auth domain.Authorization, phone, 
 	if !found {
 		return domain.User{}, domain.Message{}, true, nil // 验证码对、但需注册
 	}
-	return s.finishSignIn(ctx, auth, existing, phoneCodeHash, rec.Code)
+	return s.finishSignIn(ctx, auth, existing, phoneCodeHash, rec)
 }
 
 // SignInWithEmail 处理带 email_verification 的 auth.signIn：账号设置了登录邮箱后，新设备
@@ -534,12 +657,12 @@ func (s *Service) signInWithEmailRecord(ctx context.Context, auth domain.Authori
 	if !found {
 		return domain.User{}, domain.Message{}, true, nil
 	}
-	return s.finishSignIn(ctx, auth, existing, phoneCodeHash, rec.Code)
+	return s.finishSignIn(ctx, auth, existing, phoneCodeHash, rec)
 }
 
 // finishSignIn 是短信/邮箱两条登录路径在「验证码已通过、用户已存在」之后的共用收尾：
 // 处理 2FA password_pending 绑定、写登录消息、消费验证码。
-func (s *Service) finishSignIn(ctx context.Context, auth domain.Authorization, existing domain.User, phoneCodeHash, loginCode string) (domain.User, domain.Message, bool, error) {
+func (s *Service) finishSignIn(ctx context.Context, auth domain.Authorization, existing domain.User, phoneCodeHash string, rec store.PhoneCode) (domain.User, domain.Message, bool, error) {
 	if systemUserLoginForbidden(existing) {
 		_ = s.codes.Del(ctx, phoneCodeHash)
 		return domain.User{}, domain.Message{}, false, ErrSystemUserLoginForbidden
@@ -556,7 +679,11 @@ func (s *Service) finishSignIn(ctx context.Context, auth domain.Authorization, e
 		_ = s.codes.Del(ctx, phoneCodeHash)
 		return existing, domain.Message{}, false, domain.ErrSessionPasswordNeeded
 	}
-	loginMessage, err := s.recordLoginMessage(ctx, existing.ID, loginCode)
+	if rec.Channel == codeChannelApp {
+		_ = s.codes.Del(ctx, phoneCodeHash)
+		return existing, domain.Message{}, false, nil
+	}
+	loginMessage, err := s.recordLoginMessage(ctx, existing.ID, rec.Code)
 	if err != nil {
 		return domain.User{}, domain.Message{}, false, err
 	}
