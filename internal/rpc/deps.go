@@ -748,6 +748,7 @@ type Deps struct {
 	Updates          UpdatesService
 	BootstrapUpdates store.BootstrapUpdateJobStore
 	BotAPIUpdates    store.BotAPIUpdateStore
+	PushDevices      store.PushStore
 	Contacts         ContactsService
 	Dialogs          DialogsService
 	Chatlists        ChatlistsService

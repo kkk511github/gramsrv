@@ -609,3 +609,24 @@ curl -i -N \
 - Redis/PostgreSQL 如果放到 `/www`，同时检查 systemd 沙箱写路径，不只看 Linux 文件权限。
 - 品牌名统一从服务端配置和 seed 入口维护，不要三端、Web、服务端到处手改字符串。
 - 新机器部署完必须跑一次真实 Web 登录链路，而不是只看首页能打开。
+
+## 消息推送部署不可遗漏
+
+SafeLink 的 `account.registerDevice` 会把 iOS APNs / Android FCM token 持久化到
+`push_devices`，离线私聊消息则先写入 `push_notification_outbox` 再由 worker
+发送。部署时必须同时完成 migration、密钥和环境变量三部分。
+
+- iOS 生产包 topic 必须与实际 Bundle ID 一致，当前为 `com.hsgram.app`。
+- `.p8` 和 FCM service-account JSON 只放服务器密钥目录/运行环境，永远不进 Git。
+- 启用 `TELESRV_PUSH_ENABLE=true` 后，启动时会严格校验已配置的 provider；密钥错误会直接阻止服务带病启动。
+- 通知默认只带 SafeLink 品牌和通用“新消息”文案，不向 Apple/Google 泄露聊天正文。
+
+部署后先确认 token 已登记，再用两台真机做离线收发验证：
+
+```sql
+SELECT token_type, app_sandbox, count(*)
+FROM push_devices
+GROUP BY token_type, app_sandbox;
+```
+
+查询只看类型和数量，不要把 token 打到日志或排障截图里。

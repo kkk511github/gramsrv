@@ -108,6 +108,10 @@ go build -o bin/gramsrv ./cmd/slerv
 | `TELESRV_LOGIN_EMAIL_REQUIRE_SETUP` | `false` | 登录/注册时强制先设置登录邮箱 |
 | `TELESRV_LOGIN_EMAIL_CODE_LENGTH` | `5` | 邮箱登录/设置验证码的数字位数 |
 | `TELESRV_SMTP_HOST` | 空 | 开启登录邮箱验证时使用的 SMTP host |
+| `TELESRV_PUSH_ENABLE` | `false` | 启用 APNs/FCM 离线私聊消息推送 |
+| `TELESRV_APNS_TOPIC` | 空 | iOS Bundle ID，SafeLink 生产包为 `com.hsgram.app` |
+| `TELESRV_APNS_PRIVATE_KEY_PATH` | 空 | 仓库外的 APNs `.p8` 私钥路径 |
+| `TELESRV_FCM_PROJECT_ID` | 空 | Firebase project ID |
 | `TELESRV_PUBLIC_BASE_URL` | `https://safelink.chat` | username、sticker、emoji、chatlist 公开链接使用的外部 canonical base URL |
 | `TELESRV_PUBLIC_APP_SCHEME` | `safelink` | 公开落地页唤起客户端使用的自定义 URL scheme |
 | `TELESRV_PUBLIC_WEB_BASE_URL` | `https://web.safelink.chat` | 公开落地页展示的 Web 客户端根地址 |

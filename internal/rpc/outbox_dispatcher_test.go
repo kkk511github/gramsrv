@@ -74,6 +74,69 @@ func TestOutboxDispatcherPushesNewMessageAndMarksDelivered(t *testing.T) {
 	}
 }
 
+func TestOutboxDispatcherEnqueuesPushForOfflineIncomingMessage(t *testing.T) {
+	msg := domain.Message{
+		ID:          10,
+		OwnerUserID: 1000000002,
+		Peer:        domain.Peer{Type: domain.PeerTypeUser, ID: 1000000001},
+		From:        domain.Peer{Type: domain.PeerTypeUser, ID: 1000000001},
+		Date:        1700000300,
+		Body:        "private message body must not enter the push payload",
+		Pts:         7,
+	}
+	outbox := &captureDispatchOutbox{items: []store.DispatchOutboxItem{{
+		ID: 55, TargetUserID: msg.OwnerUserID, Pts: msg.Pts, EventType: domain.UpdateEventNewMessage,
+	}}}
+	events := &captureUpdateEventStore{events: []domain.UpdateEvent{{
+		UserID: msg.OwnerUserID, Type: domain.UpdateEventNewMessage, Pts: msg.Pts,
+		PtsCount: 1, Date: msg.Date, Message: msg,
+	}}}
+	pushes := &capturePushStore{}
+	dispatcher := NewOutboxDispatcher(events, outbox, &offlineOutboxSessions{}, zaptest.NewLogger(t), WithOfflinePushStore(pushes))
+	dispatcher.DispatchOnce(context.Background())
+
+	if len(pushes.notifications) != 1 {
+		t.Fatalf("push notifications = %d, want 1", len(pushes.notifications))
+	}
+	got := pushes.notifications[0]
+	if got.TargetUserID != msg.OwnerUserID || got.Pts != msg.Pts || got.Title != "SafeLink" {
+		t.Fatalf("push notification = %+v, want SafeLink notification for target/pts", got)
+	}
+	if got.Body == msg.Body {
+		t.Fatalf("push payload leaked private message body")
+	}
+}
+
+type offlineOutboxSessions struct{ captureSessions }
+
+func (s *offlineOutboxSessions) PushToUserExceptSession(ctx context.Context, userID, excludeSessionID int64, typ proto.MessageType, msg bin.Encoder) (int, error) {
+	_, err := s.captureSessions.PushToUserExceptSession(ctx, userID, excludeSessionID, typ, msg)
+	return 0, err
+}
+
+type capturePushStore struct {
+	notifications []domain.PushNotificationJob
+}
+
+func (s *capturePushStore) UpsertPushDevice(context.Context, domain.PushDevice) error  { return nil }
+func (s *capturePushStore) DeletePushDevice(context.Context, int64, int, string) error { return nil }
+func (s *capturePushStore) DeletePushDeviceByID(context.Context, int64) error          { return nil }
+func (s *capturePushStore) ListPushDevices(context.Context, int64) ([]domain.PushDevice, error) {
+	return nil, nil
+}
+func (s *capturePushStore) EnqueuePushNotification(_ context.Context, job domain.PushNotificationJob) error {
+	s.notifications = append(s.notifications, job)
+	return nil
+}
+func (s *capturePushStore) ClaimPushNotifications(context.Context, int) ([]domain.PushNotificationJob, error) {
+	return nil, nil
+}
+func (s *capturePushStore) MarkPushDeviceDelivered(context.Context, int64, int64) error { return nil }
+func (s *capturePushStore) MarkPushNotificationDelivered(context.Context, int64) error  { return nil }
+func (s *capturePushStore) MarkPushNotificationFailed(context.Context, int64, string) error {
+	return nil
+}
+
 func TestOutboxDispatcherUsesScopedAuthKeyExclusion(t *testing.T) {
 	var excludeAuthKeyID [8]byte
 	excludeAuthKeyID[0] = 7

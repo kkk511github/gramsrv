@@ -57,6 +57,7 @@ import (
 	"telesrv/internal/ipgeo"
 	mailpkg "telesrv/internal/mail"
 	"telesrv/internal/mtprotoedge"
+	pushpkg "telesrv/internal/push"
 	"telesrv/internal/rpc"
 	"telesrv/internal/seed/catalog"
 	"telesrv/internal/sfu"
@@ -319,6 +320,7 @@ func run(logger *zap.Logger) error {
 	phoneChangeStore := postgres.NewPhoneChangeStore(pool)
 	readModelVersionStore := storepkg.NewCachedReadModelVersionStore(postgres.NewReadModelVersionStore(pool), 0, 0)
 	dispatchOutboxStore := postgres.NewDispatchOutboxStore(pool, postgres.WithLeaseTimeout(cfg.OutboxLeaseTimeout))
+	pushStore := postgres.NewPushStore(pool)
 	bootstrapUpdateStore := postgres.NewBootstrapUpdateJobStore(pool)
 	botAPIUpdateStore := postgres.NewBotAPIUpdateStore(pool)
 	boxIDAllocator := redisstore.NewBoxIDAllocator(rdb, postgres.NewMessageBoxCounterSource(pool))
@@ -657,6 +659,22 @@ func run(logger *zap.Logger) error {
 			Sender:       loginEmailSender,
 		}))
 	updatesService := updates.NewService(updateStateStore, updateEventStore, updates.WithLogger(logger.Named("app").Named("updates")))
+	pushService, err := pushpkg.New(pushpkg.Config{
+		Enabled:               cfg.PushEnable,
+		APNSTopic:             cfg.APNSTopic,
+		APNSTeamID:            cfg.APNSTeamID,
+		APNSKeyID:             cfg.APNSKeyID,
+		APNSPrivateKeyPath:    cfg.APNSPrivateKeyPath,
+		FCMProjectID:          cfg.FCMProjectID,
+		FCMServiceAccountJSON: cfg.FCMServiceAccountJSON,
+		Workers:               cfg.PushWorkers,
+		Batch:                 cfg.PushBatch,
+		Interval:              cfg.PushInterval,
+		SendTimeout:           cfg.PushSendTimeout,
+	}, pushStore, logger.Named("push"))
+	if err != nil {
+		return fmt.Errorf("init push notifications: %w", err)
+	}
 	ipGeoResolver := ipgeo.NewResolver(ipgeo.Options{})
 	router := rpc.New(rpc.Config{
 		DC:                       cfg.DC,
@@ -691,6 +709,7 @@ func run(logger *zap.Logger) error {
 		Updates:          updatesService,
 		BootstrapUpdates: bootstrapUpdateStore,
 		BotAPIUpdates:    botAPIUpdateStore,
+		PushDevices:      pushStore,
 		Contacts:         contactsService,
 		Dialogs:          dialogsService,
 		Chatlists:        chatlistsService,
@@ -751,13 +770,18 @@ func run(logger *zap.Logger) error {
 	// router 创建后注入。
 	botsService.SetRouterHooks(router)
 	botsService.SetTextDraftPusher(router)
-	go rpc.NewOutboxDispatcher(updateEventStore, dispatchOutboxStore, activeSessions, logger.Named("rpc").Named("outbox"),
+	outboxOptions := []rpc.OutboxOption{
 		rpc.WithOutboxWorkers(cfg.OutboxWorkers),
 		rpc.WithOutboxBatch(cfg.OutboxBatch),
 		rpc.WithOutboxInterval(cfg.OutboxInterval),
 		rpc.WithOutboxPushTimeout(cfg.OutboundPushTimeout),
 		rpc.WithOutboxUpdateBuilder(router.BuildOutboxUpdates),
-	).Run(ctx)
+	}
+	if pushService != nil {
+		outboxOptions = append(outboxOptions, rpc.WithOfflinePushStore(pushStore))
+		go pushService.Run(ctx)
+	}
+	go rpc.NewOutboxDispatcher(updateEventStore, dispatchOutboxStore, activeSessions, logger.Named("rpc").Named("outbox"), outboxOptions...).Run(ctx)
 	go rpc.NewBootstrapUpdateDispatcher(router, logger.Named("rpc").Named("bootstrap")).Run(ctx)
 	go rpc.NewScheduledDispatcher(router, logger.Named("rpc").Named("scheduled")).Run(ctx)
 	go rpc.NewExpiryDispatcher(router, logger.Named("rpc").Named("expiry")).Run(ctx)

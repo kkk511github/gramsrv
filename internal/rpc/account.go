@@ -14,12 +14,8 @@ import (
 
 // registerAccount 注册 account.* RPC handler。
 func (r *Router) registerAccount(d *tg.ServerDispatcher) {
-	d.OnAccountRegisterDevice(func(ctx context.Context, req *tg.AccountRegisterDeviceRequest) (bool, error) {
-		return true, nil
-	})
-	d.OnAccountUnregisterDevice(func(ctx context.Context, req *tg.AccountUnregisterDeviceRequest) (bool, error) {
-		return true, nil
-	})
+	d.OnAccountRegisterDevice(r.onAccountRegisterDevice)
+	d.OnAccountUnregisterDevice(r.onAccountUnregisterDevice)
 	d.OnAccountUpdateDeviceLocked(func(ctx context.Context, period int) (bool, error) {
 		return true, nil
 	})

@@ -165,6 +165,17 @@
 | `TELESRV_OUTBOX_POISON_RETENTION` | duration / `1m` | terminal failed 投递头的排障保留窗口；durable update 仍可经 difference 恢复。 |
 | `TELESRV_OUTBOX_POISON_CLEANUP_INTERVAL` | duration / `15s` | terminal failed head 清理周期，独立于大表 retention。 |
 | `TELESRV_OUTBOUND_PUSH_TIMEOUT` | duration / `200ms` | best-effort 在线 update 入队最长等待。 |
+| `TELESRV_PUSH_ENABLE` | bool / `false` | 启用离线私聊消息 APNs/FCM 推送；设备 token 仍可在关闭时登记，便于后续启用。 |
+| `TELESRV_APNS_TOPIC` | string / 空 | iOS App Bundle ID，SafeLink 生产包为 `com.hsgram.app`。 |
+| `TELESRV_APNS_TEAM_ID` | sensitive string / 空 | Apple Developer Team ID。 |
+| `TELESRV_APNS_KEY_ID` | sensitive string / 空 | APNs Auth Key ID。 |
+| `TELESRV_APNS_PRIVATE_KEY_PATH` | secret file path / 空 | APNs `.p8` 私钥路径；私钥必须位于 Git 仓库外。 |
+| `TELESRV_FCM_PROJECT_ID` | string / 空 | Firebase project ID。 |
+| `TELESRV_FCM_SERVICE_ACCOUNT_JSON` | secret JSON/Base64 / 空 | FCM HTTP v1 service-account JSON，也接受其 Base64 编码；不得提交到 Git。 |
+| `TELESRV_PUSH_WORKERS` | int / `4` | 并发推送 worker 数。 |
+| `TELESRV_PUSH_BATCH` | int / `50` | 每次从持久化推送队列 claim 的最大任务数。 |
+| `TELESRV_PUSH_INTERVAL` | duration / `500ms` | 队列空闲时的 poll 周期。 |
+| `TELESRV_PUSH_SEND_TIMEOUT` | duration / `10s` | 单个 APNs/FCM 请求超时。 |
 | `TELESRV_SEND_RATE_LIMIT` | int / `30` | 单账号每发送窗口允许的消息数；`<=0` 关闭。 |
 | `TELESRV_SEND_RATE_WINDOW` | duration / `1m` | 发送限流窗口。 |
 | `TELESRV_CATCHUP_RATE_LIMIT` | int / `0` | 单用户每窗口 difference/catch-up RPC 数；`<=0` 关闭。 |

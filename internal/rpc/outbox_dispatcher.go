@@ -11,6 +11,7 @@ import (
 	"github.com/gotd/td/tg"
 	"go.uber.org/zap"
 
+	"telesrv/internal/brand"
 	"telesrv/internal/domain"
 	"telesrv/internal/store"
 )
@@ -40,6 +41,7 @@ type OutboxDispatcher struct {
 	log             *zap.Logger
 	metrics         Metrics
 	updateBuilder   OutboxUpdateBuilder
+	pushStore       store.PushStore
 	batch           int
 	interval        time.Duration
 	maxIdleInterval time.Duration
@@ -63,6 +65,14 @@ type OutboxUpdateBuilder func(ctx context.Context, requests []OutboxUpdateReques
 func WithOutboxUpdateBuilder(builder OutboxUpdateBuilder) OutboxOption {
 	return func(d *OutboxDispatcher) {
 		d.updateBuilder = builder
+	}
+}
+
+// WithOfflinePushStore enables durable mobile notifications for new messages
+// that could not be delivered to any online session.
+func WithOfflinePushStore(pushStore store.PushStore) OutboxOption {
+	return func(d *OutboxDispatcher) {
+		d.pushStore = pushStore
 	}
 }
 
@@ -310,7 +320,7 @@ func (d *OutboxDispatcher) dispatchBatch(ctx context.Context, items []store.Disp
 			blockedUsers[item.TargetUserID] = struct{}{}
 			continue
 		}
-		ready = append(ready, outboxDispatchReady{item: item})
+		ready = append(ready, outboxDispatchReady{item: item, event: event})
 		requests = append(requests, OutboxUpdateRequest{TargetUserID: item.TargetUserID, Event: event})
 	}
 	builtUpdates := d.buildOutboxUpdates(ctx, requests)
@@ -326,13 +336,19 @@ func (d *OutboxDispatcher) dispatchBatch(ctx context.Context, items []store.Disp
 			delivered = append(delivered, item)
 			continue
 		}
-		if _, retriable, err := d.pushOutboxUpdate(ctx, item, update); err != nil {
+		sent, retriable, err := d.pushOutboxUpdate(ctx, item, update)
+		if err != nil {
 			blockedUsers[item.TargetUserID] = struct{}{}
 			if retriable {
 				// 出站队列拥塞：留 dispatching 行靠租约过期重投，不计入 attempts 升级。
 				// 不加入 delivered，故不会被 MarkDeliveredBatch 删除。
 				continue
 			}
+			d.markDispatchFailed(ctx, item, err)
+			continue
+		}
+		if err := d.enqueueOfflinePush(ctx, item, entry.event, sent); err != nil {
+			blockedUsers[item.TargetUserID] = struct{}{}
 			d.markDispatchFailed(ctx, item, err)
 			continue
 		}
@@ -357,7 +373,8 @@ func (d *OutboxDispatcher) dispatchBatch(ctx context.Context, items []store.Disp
 }
 
 type outboxDispatchReady struct {
-	item store.DispatchOutboxItem
+	item  store.DispatchOutboxItem
+	event domain.UpdateEvent
 }
 
 func (d *OutboxDispatcher) dispatchItem(ctx context.Context, item store.DispatchOutboxItem) bool {
@@ -395,6 +412,10 @@ func (d *OutboxDispatcher) dispatchItem(ctx context.Context, item store.Dispatch
 		d.markDispatchFailed(ctx, item, err)
 		return false
 	}
+	if err := d.enqueueOfflinePush(ctx, item, events[0], sent); err != nil {
+		d.markDispatchFailed(ctx, item, err)
+		return false
+	}
 	if err := d.outbox.MarkDelivered(ctx, item); err != nil {
 		d.log.Warn("mark dispatch delivered", zap.Int64("target_user_id", item.TargetUserID), zap.Int64("outbox_id", item.ID), zap.Error(err))
 		return false
@@ -407,6 +428,18 @@ func (d *OutboxDispatcher) dispatchItem(ctx context.Context, item store.Dispatch
 		zap.Int("sessions", sent),
 	)
 	return true
+}
+
+func (d *OutboxDispatcher) enqueueOfflinePush(ctx context.Context, item store.DispatchOutboxItem, event domain.UpdateEvent, onlineSessions int) error {
+	if d.pushStore == nil || onlineSessions > 0 || event.Type != domain.UpdateEventNewMessage || event.Message.Out || event.Message.Silent {
+		return nil
+	}
+	return d.pushStore.EnqueuePushNotification(ctx, domain.PushNotificationJob{
+		TargetUserID: item.TargetUserID,
+		Pts:          item.Pts,
+		Title:        brand.DefaultAppName,
+		Body:         "You have a new message",
+	})
 }
 
 func (d *OutboxDispatcher) buildOutboxUpdate(ctx context.Context, item store.DispatchOutboxItem, event domain.UpdateEvent) *tg.Updates {

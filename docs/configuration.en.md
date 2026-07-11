@@ -165,6 +165,17 @@ The following fallback keys are accepted from the **process environment only**. 
 | `TELESRV_OUTBOX_POISON_RETENTION` | duration / `1m` | Diagnostic retention for terminal failed delivery heads; durable update events remain recoverable through difference. |
 | `TELESRV_OUTBOX_POISON_CLEANUP_INTERVAL` | duration / `15s` | Cleanup interval for terminal failed heads, independent of large-table retention. |
 | `TELESRV_OUTBOUND_PUSH_TIMEOUT` | duration / `200ms` | Maximum wait for best-effort online update enqueue. |
+| `TELESRV_PUSH_ENABLE` | bool / `false` | Enables durable APNs/FCM notifications for offline private messages. Device tokens can still be registered while disabled. |
+| `TELESRV_APNS_TOPIC` | string / empty | iOS app bundle ID. The SafeLink production package uses `com.hsgram.app`. |
+| `TELESRV_APNS_TEAM_ID` | sensitive string / empty | Apple Developer Team ID. |
+| `TELESRV_APNS_KEY_ID` | sensitive string / empty | APNs authentication key ID. |
+| `TELESRV_APNS_PRIVATE_KEY_PATH` | secret file path / empty | Path to the APNs `.p8` private key. Keep it outside Git. |
+| `TELESRV_FCM_PROJECT_ID` | string / empty | Firebase project ID. |
+| `TELESRV_FCM_SERVICE_ACCOUNT_JSON` | secret JSON/Base64 / empty | FCM HTTP v1 service-account JSON or its Base64 encoding. Never commit it. |
+| `TELESRV_PUSH_WORKERS` | int / `4` | Concurrent push delivery workers. |
+| `TELESRV_PUSH_BATCH` | int / `50` | Maximum durable notification jobs claimed per poll. |
+| `TELESRV_PUSH_INTERVAL` | duration / `500ms` | Poll interval while the notification queue is idle. |
+| `TELESRV_PUSH_SEND_TIMEOUT` | duration / `10s` | Timeout for one APNs/FCM request. |
 | `TELESRV_SEND_RATE_LIMIT` | int / `30` | Per-account messages per send window; `<=0` disables send limiting. |
 | `TELESRV_SEND_RATE_WINDOW` | duration / `1m` | Send-rate window. |
 | `TELESRV_CATCHUP_RATE_LIMIT` | int / `0` | Per-user difference/catch-up RPCs per window; `<=0` disables the gate. |

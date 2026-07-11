@@ -135,6 +135,19 @@ type Config struct {
 	SMTPFromName string
 	SMTPTLSMode  string
 	SMTPTimeout  time.Duration
+	// Push* configures offline APNs/FCM message notifications. Provider
+	// credentials are runtime secrets and must never be committed.
+	PushEnable            bool
+	APNSTopic             string
+	APNSTeamID            string
+	APNSKeyID             string
+	APNSPrivateKeyPath    string
+	FCMProjectID          string
+	FCMServiceAccountJSON string
+	PushWorkers           int
+	PushBatch             int
+	PushInterval          time.Duration
+	PushSendTimeout       time.Duration
 	// MapboxToken 是服务端代理地图缩略图（upload.getWebFile）请求 Mapbox Static Images API
 	// 的 access token；为空则关闭代理、回退确定性占位图。客户端选点器 token 经 appConfig
 	// `tdesktop_config_map` 下发（同源运行时配置）。
@@ -465,6 +478,17 @@ func Load() (Config, error) {
 		SMTPFromName:                  envOr("TELESRV_SMTP_FROM_NAME", brand.DefaultAppName),
 		SMTPTLSMode:                   strings.ToLower(strings.TrimSpace(envOr("TELESRV_SMTP_TLS", "starttls"))),
 		SMTPTimeout:                   envDurationOr("TELESRV_SMTP_TIMEOUT", 10*time.Second),
+		PushEnable:                    envBoolOr("TELESRV_PUSH_ENABLE", false),
+		APNSTopic:                     envOr("TELESRV_APNS_TOPIC", ""),
+		APNSTeamID:                    envOr("TELESRV_APNS_TEAM_ID", ""),
+		APNSKeyID:                     envOr("TELESRV_APNS_KEY_ID", ""),
+		APNSPrivateKeyPath:            envOr("TELESRV_APNS_PRIVATE_KEY_PATH", ""),
+		FCMProjectID:                  envOr("TELESRV_FCM_PROJECT_ID", ""),
+		FCMServiceAccountJSON:         envOr("TELESRV_FCM_SERVICE_ACCOUNT_JSON", ""),
+		PushWorkers:                   envIntOr("TELESRV_PUSH_WORKERS", 4),
+		PushBatch:                     envIntOr("TELESRV_PUSH_BATCH", 50),
+		PushInterval:                  envDurationOr("TELESRV_PUSH_INTERVAL", 500*time.Millisecond),
+		PushSendTimeout:               envDurationOr("TELESRV_PUSH_SEND_TIMEOUT", 10*time.Second),
 		LangPackSeedDir:               envOr("TELESRV_LANGPACK_SEED_DIR", "data/langpack"),
 		AppName:                       envOr("TELESRV_APP_NAME", brand.DefaultAppName),
 		BlobDir:                       envOr("TELESRV_BLOB_DIR", "data/blobs"),
