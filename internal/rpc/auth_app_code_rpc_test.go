@@ -11,56 +11,6 @@ import (
 	"telesrv/internal/domain"
 )
 
-type appCodeIssueAuthService struct {
-	*captureAuthService
-	issue domain.AuthCodeIssue
-}
-
-func (s *appCodeIssueAuthService) IssueCode(context.Context, string) (domain.AuthCodeIssue, error) {
-	return s.issue, nil
-}
-
-func (s *appCodeIssueAuthService) ResendCodeIssueForAuthKey(context.Context, [8]byte, string, string) (domain.AuthCodeIssue, error) {
-	return s.issue, nil
-}
-
-func TestAuthSendCodePublishesAppCodeBeforeReturning(t *testing.T) {
-	msg := domain.Message{
-		ID:          91,
-		OwnerUserID: 1000000001,
-		Peer:        domain.Peer{Type: domain.PeerTypeUser, ID: domain.OfficialSystemUserID},
-		From:        domain.Peer{Type: domain.PeerTypeUser, ID: domain.OfficialSystemUserID},
-		Date:        1700000000,
-		Body:        "Login code: 54321",
-	}
-	authService := &appCodeIssueAuthService{
-		captureAuthService: &captureAuthService{},
-		issue: domain.AuthCodeIssue{
-			PhoneCodeHash: "app-code-hash",
-			Delivery:      domain.AuthCodeDelivery{Kind: domain.AuthCodeDeliveryApp, Length: 5},
-			AppMessage:    msg,
-		},
-	}
-	updates := &captureUpdates{state: domain.UpdateState{Pts: 7, Date: 1700000000}}
-	r := New(Config{}, Deps{Auth: authService, Updates: updates}, zaptest.NewLogger(t), fixedClock{now: time.Unix(1700000000, 0)})
-
-	sent, err := r.onAuthSendCode(context.Background(), &tg.AuthSendCodeRequest{PhoneNumber: "+15550004313", APIID: 1, APIHash: "hash"})
-	if err != nil {
-		t.Fatalf("onAuthSendCode: %v", err)
-	}
-	code, ok := sent.(*tg.AuthSentCode)
-	if !ok {
-		t.Fatalf("sent = %T, want *tg.AuthSentCode", sent)
-	}
-	appType, ok := code.Type.(*tg.AuthSentCodeTypeApp)
-	if !ok || appType.Length != 5 || code.PhoneCodeHash != "app-code-hash" {
-		t.Fatalf("sent code = %+v type=%T", code, code.Type)
-	}
-	if len(updates.events) != 1 || updates.events[0].Type != domain.UpdateEventNewMessage || updates.events[0].Message.ID != msg.ID {
-		t.Fatalf("published events = %+v, want app login message", updates.events)
-	}
-}
-
 func TestAuthCheckPasswordNotifiesOtherDevicesAfterPendingLogin(t *testing.T) {
 	user := domain.User{ID: 1000000002, Phone: "15550004314", FirstName: "Alice"}
 	authKeyID := [8]byte{7, 8, 9}

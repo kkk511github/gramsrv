@@ -42,9 +42,9 @@ func (s *loginEmailTestSender) SendLoginCode(_ context.Context, to, code string,
 	return nil
 }
 
-// TestLoginEmailEndToEnd 端到端验证登录邮箱：设备 A 注册并设置登录邮箱（loginChange），
-// 一个全新设备 B 调 sendCode 收到 sentCodeTypeEmailCode，凭真实邮箱验证码经 signIn
-// (email_verification) 完成登录。
+// TestLoginEmailEndToEnd 端到端验证登录邮箱：设备 A 注册、设置登录邮箱并登出，
+// 没有已授权设备时，全新设备 B 调 sendCode 收到 sentCodeTypeEmailCode，凭真实
+// 邮箱验证码经 signIn (email_verification) 完成登录。
 func TestLoginEmailEndToEnd(t *testing.T) {
 	const (
 		dc        = 2
@@ -71,11 +71,16 @@ func TestLoginEmailEndToEnd(t *testing.T) {
 	passwordStore := memory.NewPasswordStore()
 	helpStore := memory.NewHelpStore()
 	codeStore := memory.NewCodeStore()
+	dialogStore := memory.NewDialogStore()
+	messageStore := memory.NewMessageStore(dialogStore)
+	updateEventStore := memory.NewUpdateEventStore()
 	emailSender := &loginEmailTestSender{}
 	accountService := account.NewService(passwordStore,
 		account.WithUsers(userStore),
 		account.WithLoginEmailVerification(codeStore, emailSender, 5*time.Minute, 5, 6))
 	authService := auth.NewService(userStore, authzStore, codeStore, authKeyStore, memory.NewTempAuthKeyBindingStore(), code,
+		auth.WithLoginMessages(messageStore, dialogStore),
+		auth.WithLoginCodeDelivery(memory.NewLoginCodeDeliveryStore(messageStore, updateEventStore)),
 		auth.WithPasswords(passwordStore),
 		auth.WithLoginEmail(auth.LoginEmailOptions{
 			Enabled:    true,
@@ -89,10 +94,10 @@ func TestLoginEmailEndToEnd(t *testing.T) {
 		Account: accountService,
 		Help:    help.NewService(helpStore, helpStore),
 		Users:   users.NewService(userStore),
-		Updates: updates.NewService(memory.NewUpdateStateStore(), memory.NewUpdateEventStore()),
+		Updates: updates.NewService(memory.NewUpdateStateStore(), updateEventStore),
 
 		Contacts: contacts.NewService(memory.NewContactStore()),
-		Dialogs:  dialogs.NewService(memory.NewDialogStore()),
+		Dialogs:  dialogs.NewService(dialogStore),
 	}
 	router := rpc.New(rpc.Config{DC: dc, IP: tcpAddr.IP.String(), Port: tcpAddr.Port}, deps, zaptest.NewLogger(t), clock.System)
 	srv := New(Options{Logger: zaptest.NewLogger(t), DC: dc, RSAKey: rsaKey, AuthKeys: authKeyStore, RPC: router})
@@ -171,6 +176,9 @@ func TestLoginEmailEndToEnd(t *testing.T) {
 		if !ok || gotMask != wantMask {
 			return fmt.Errorf("getPassword login_email_pattern = %q ok=%v, want %q", gotMask, ok, wantMask)
 		}
+		if _, err := raw.AuthLogOut(ctx); err != nil {
+			return fmt.Errorf("device A logout: %w", err)
+		}
 		return nil
 	}); err != nil {
 		t.Fatalf("device A: %v", err)
@@ -212,6 +220,9 @@ func TestLoginEmailEndToEnd(t *testing.T) {
 		self, ok := authz.User.(*tg.User)
 		if !ok || !self.Self || self.Phone != wantPhone {
 			return fmt.Errorf("signIn user = %+v, want self phone=%s", authz.User, wantPhone)
+		}
+		if _, err := raw.AuthLogOut(ctx); err != nil {
+			return fmt.Errorf("device B logout: %w", err)
 		}
 		return nil
 	}); err != nil {

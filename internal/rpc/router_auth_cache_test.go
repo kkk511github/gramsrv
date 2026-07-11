@@ -14,18 +14,21 @@ import (
 	"time"
 )
 
-type authCacheCaptureSessions struct {
+// authBindingCaptureSessions keeps session authorization state separate from the target of an
+// asynchronous presence push. The broad captureSessions fake intentionally records the latest
+// PushToUser target in userID, which is useful to most RPC tests but can race a stale-auth-key
+// assertion and make an old presence echo look like the session was rebound.
+type authBindingCaptureSessions struct {
 	*captureSessions
 }
 
-func newAuthCacheCaptureSessions() *authCacheCaptureSessions {
-	return &authCacheCaptureSessions{captureSessions: &captureSessions{}}
+func newAuthBindingCaptureSessions() *authBindingCaptureSessions {
+	return &authBindingCaptureSessions{captureSessions: &captureSessions{}}
 }
 
-func (s *authCacheCaptureSessions) PushToUserExceptSession(_ context.Context, userID, excludeSessionID int64, t proto.MessageType, msg bin.Encoder) (int, error) {
+func (s *authBindingCaptureSessions) PushToUserExceptSession(_ context.Context, userID, _ int64, t proto.MessageType, msg bin.Encoder) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.sessionID = excludeSessionID
 	s.messageType = t
 	s.message = msg
 	s.userMessage = msg
@@ -39,7 +42,7 @@ func TestDispatchPromotesNegativeSessionCacheFromPositiveAuthCache(t *testing.T)
 		sessionID = int64(300)
 		userID    = int64(1000000001)
 	)
-	sessions := newAuthCacheCaptureSessions()
+	sessions := newAuthBindingCaptureSessions()
 	sessions.BindAuthKey(sessionID, authKeyID)
 	sessions.BindUser(sessionID, 0)
 	auth := &captureAuthService{}
@@ -75,7 +78,7 @@ func TestDispatchPromotesNegativeSessionCacheFromPositiveAuthCache(t *testing.T)
 func TestBindTempAuthKeyClearsNegativeUserCache(t *testing.T) {
 	var tempAuthKeyID = [8]byte{0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55}
 	var permAuthKeyID = [8]byte{0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11}
-	sessions := newAuthCacheCaptureSessions()
+	sessions := newAuthBindingCaptureSessions()
 	auth := &captureAuthService{}
 	r := New(Config{}, Deps{
 		Auth:     auth,
@@ -109,7 +112,7 @@ func TestBindTempAuthKeyClearsNegativeUserCache(t *testing.T) {
 func TestDispatchRevalidatesCachedTempAuthKeyBinding(t *testing.T) {
 	var tempAuthKeyID = [8]byte{0x65, 0x65, 0x65, 0x65, 0x65, 0x65, 0x65, 0x65}
 	var permAuthKeyID = [8]byte{0x21, 0x21, 0x21, 0x21, 0x21, 0x21, 0x21, 0x21}
-	sessions := newAuthCacheCaptureSessions()
+	sessions := newAuthBindingCaptureSessions()
 	auth := &captureAuthService{
 		resolvedAuthKeyID: permAuthKeyID,
 		hasResolved:       true,
@@ -162,7 +165,7 @@ func TestDispatchRevalidatesCachedTempAuthKeyBinding(t *testing.T) {
 func TestDispatchUsesCachedTempAuthKeyUserUntilWriteSideInvalidation(t *testing.T) {
 	var tempAuthKeyID = [8]byte{0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66}
 	var permAuthKeyID = [8]byte{0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22}
-	sessions := newAuthCacheCaptureSessions()
+	sessions := newAuthBindingCaptureSessions()
 	auth := &captureAuthService{
 		resolvedAuthKeyID: permAuthKeyID,
 		hasResolved:       true,

@@ -100,6 +100,9 @@ func stickersetInvalidErr() error { return tgerr.New(406, "STICKERSET_INVALID") 
 // stickerInvalidErr 表示输入文档不是合法贴纸/GIF（faveSticker/saveRecentSticker/saveGif）。
 func stickerInvalidErr() error { return tgerr.New(400, "STICKER_DOCUMENT_INVALID") }
 
+// gifIDInvalidErr 表示 messages.saveGif 引用的文档不存在或不是规范 GIFv。
+func gifIDInvalidErr() error { return tgerr.New(400, "GIF_ID_INVALID") }
+
 func mediaCaptionTooLongErr() error { return tgerr.New(400, "MEDIA_CAPTION_TOO_LONG") }
 
 func replyMarkupInvalidErr() error { return tgerr.New(400, "REPLY_MARKUP_INVALID") }
@@ -271,6 +274,8 @@ func chatForwardsRestrictedErr() error { return tgerr.New(400, "CHAT_FORWARDS_RE
 
 func inputRequestInvalidErr() error { return tgerr.New(400, "INPUT_REQUEST_INVALID") }
 
+func inputRequestTooLongErr() error { return tgerr.New(400, "INPUT_REQUEST_TOO_LONG") }
+
 func persistentTimestampInvalidErr() error { return tgerr.New(400, "PERSISTENT_TIMESTAMP_INVALID") }
 
 func channelForumMissingErr() error { return tgerr.New(400, "CHANNEL_FORUM_MISSING") }
@@ -280,6 +285,10 @@ func topicIDInvalidErr() error  { return tgerr.New(400, "TOPIC_ID_INVALID") }
 
 // randomIDEmptyErr 表示发送消息缺少 random_id。
 func randomIDEmptyErr() error { return tgerr.New(400, "RANDOM_ID_EMPTY") }
+
+// randomIDDuplicateErr 表示同一发送者重复使用 random_id，但请求载荷与首次
+// 成功发送不一致。Layer 227 为该错误定义的 code 是 500。
+func randomIDDuplicateErr() error { return tgerr.New(500, "RANDOM_ID_DUPLICATE") }
 
 // scheduleDateInvalidErr 表示当前阶段不支持定时消息。
 func scheduleDateInvalidErr() error { return tgerr.New(400, "SCHEDULE_DATE_INVALID") }

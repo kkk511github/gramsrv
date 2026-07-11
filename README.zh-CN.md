@@ -45,9 +45,9 @@ https://github.com/user-attachments/assets/25e651dc-a022-4d60-8b9b-ca3e8bfe216c
 | ✅ | 私聊消息 | send、history、read receipts、edit、delete、forward、reply、富文本实体、媒体/相册消息、reactions、scheduled/TTL 相关路径。 |
 | ✅ | 富文本消息 | Telegram Desktop rich text message、富文本内容转换、send/edit/scheduled 流程、dialog/history 投影，以及 memory/PostgreSQL 持久化。 |
 | ✅ | AI 输入框与 ChatBot | 输入框改写/润色、默认和自定义 tone、addstyle 预览、本地与外部 provider 链、流式 `@ChatBot` 草稿回复、Business AI 回复钩子。 |
-| ✅ | 超级群与频道 | create、join、leave、邀请链接、成员、管理员、forum topics、history、send/edit/delete/read、reactions、公开搜索和预览。 |
-| ✅ | 媒体与文件 | upload、download、本地 blob 存储、照片、文档、缩略图、外链媒体抓取、网页预览、地图缩略图缓存、用户/频道头像。 |
-| ✅ | Stickers 与 Reactions | sticker/reaction catalog、seed 支持、recent reactions、top reactions、default reactions、reaction moderation 相关路径。 |
+| ✅ | 超级群与频道 | create、join、leave、邀请链接、成员、管理员、forum topics、关联讨论组 guest 访问、history、send/edit/delete/read、reactions、公开搜索和预览。 |
+| ✅ | 媒体与文件 | upload、download、本地 blob 存储、照片、文档、缩略图、规范 GIFv 转换、外链媒体抓取、网页预览、地图缩略图缓存、用户/频道头像。 |
+| ✅ | Stickers 与 Reactions | sticker/reaction catalog、seed 支持、saved GIFs、recent reactions、top reactions、default reactions、reaction moderation 相关路径。 |
 | ✅ | Gifts 与 Stars | star gifts、本地 stars ledger 基础，用于兼容和后续功能扩展。 |
 | ✅ | Bots 与 Mini Apps | bot 服务基础、callbacks、inline helpers、webview/mini-app 路径、适配 `python-telegram-bot` 等库的最小 Bot API gateway、持久化 `getUpdates` 投递队列和 demo 工具。 |
 | ✅ | 通话与直播 | 私聊通话信令基础、group call 状态、RTMP live stream、定时视频通话、频道 `join_as` 身份、SFU/TURN building blocks、liveness 与 expiry worker。 |
@@ -75,14 +75,14 @@ docker compose -f deploy/docker-compose.yml up -d
 Windows (PowerShell)：
 
 ```powershell
-go build -o bin/gramsrv.exe ./cmd/telesrv
+go build -o bin/gramsrv.exe ./cmd/slerv
 .\bin\gramsrv.exe
 ```
 
 Linux / macOS：
 
 ```bash
-go build -o bin/gramsrv ./cmd/telesrv
+go build -o bin/gramsrv ./cmd/slerv
 ./bin/gramsrv
 ```
 
@@ -93,10 +93,14 @@ go build -o bin/gramsrv ./cmd/telesrv
 生产 `.env` 可能仍包含历史 `SLERV_*` 别名。同一配置同时存在 `SLERV_*` 和
 `TELESRV_*` 时，`SLERV_*` 会优先生效，因此部署改参数时要同步两边或移除旧别名。
 
+完整说明见[中文配置参数手册](docs/configuration.zh-CN.md)和
+[英文配置参数手册](docs/configuration.en.md)。`.env.example` 只作为可直接复制的开发模板，
+不再承担完整参数字典的职责。
+
 | 变量 | 默认值 | 说明 |
 |---|---:|---|
 | `TELESRV_LISTEN` | `0.0.0.0:2398` | MTProto 监听地址 |
-| `TELESRV_ADVERTISE_IP` | `127.0.0.1` | 下发给兼容客户端的连接 IP |
+| `TELESRV_ADVERTISE_IP` | `127.0.0.1` | 媒体与通话使用的客户端可达回退 IP |
 | `TELESRV_DC` | `2` | 自建 DC id |
 | `TELESRV_DEV_AUTH_CODE` | `12345` | 本地开发固定登录验证码 |
 | `TELESRV_AUTH_CODE_MAX_ATTEMPTS` | `5` | 同一验证码 hash 允许的错误次数，达到后删除并要求重发 |
@@ -105,6 +109,9 @@ go build -o bin/gramsrv ./cmd/telesrv
 | `TELESRV_LOGIN_EMAIL_CODE_LENGTH` | `5` | 邮箱登录/设置验证码的数字位数 |
 | `TELESRV_SMTP_HOST` | 空 | 开启登录邮箱验证时使用的 SMTP host |
 | `TELESRV_PUBLIC_BASE_URL` | `https://safelink.chat` | username、sticker、emoji、chatlist 公开链接使用的外部 canonical base URL |
+| `TELESRV_PUBLIC_APP_SCHEME` | `safelink` | 公开落地页唤起客户端使用的自定义 URL scheme |
+| `TELESRV_PUBLIC_WEB_BASE_URL` | `https://web.safelink.chat` | 公开落地页展示的 Web 客户端根地址 |
+| `TELESRV_PUBLIC_APP_NAME` | `SafeLink` | 公开落地页展示的产品名 |
 | `TELESRV_POSTGRES_DSN` | local Compose DSN | PostgreSQL 连接串 |
 | `TELESRV_REDIS_ADDR` | `127.0.0.1:6399` | Redis 地址 |
 | `TELESRV_LANGPACK_SEED_DIR` | `data/langpack` | 内置语言包种子目录 |
@@ -198,7 +205,7 @@ journalctl -u slerv.service --since "5 minutes ago" --no-pager | grep '"phase": 
 ### 公开链接落地页
 
 `slerv` 内置了一个公开链接 landing 服务，由
-`internal/web/stickerlinks/server.go` 实现。它不只服务贴纸和表情链接，也处理和
+`internal/web/server.go` 实现。它不只服务贴纸和表情链接，也处理和
 Telegram 相同形态的公开入口，例如：
 
 - `https://safelink.chat/+<invite_hash>` 邀请链接
@@ -301,6 +308,9 @@ TELESRV_PUBLIC_LINK_WEB_ADDR=127.0.0.1:2401
 
 ```env
 TELESRV_PUBLIC_BASE_URL=https://your-domain.example
+TELESRV_PUBLIC_APP_SCHEME=yourapp
+TELESRV_PUBLIC_WEB_BASE_URL=https://web.your-domain.example
+TELESRV_PUBLIC_APP_NAME=YourApp
 ```
 
 生产环境建议让 `TELESRV_PUBLIC_LINK_WEB_ADDR` 只监听 loopback，再用 HTTPS
@@ -356,7 +366,7 @@ Start-Process $tdesktop -ArgumentList @("-workdir", "$PWD\.tdata-bob")
 ## 仓库结构
 
 ```text
-cmd/telesrv/              server 启动入口
+cmd/slerv/                server 启动入口
 cmd/telesrv-admin/        管理后台 backend 与 web UI
 deploy/                   docker-compose、migrations、部署辅助
 data/                     内置语言包与可选种子数据

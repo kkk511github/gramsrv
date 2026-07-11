@@ -3,7 +3,6 @@ package rpc
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"testing"
 	"time"
 
@@ -102,25 +101,22 @@ func TestAuthLoginTokenAcceptedByAndroidBindsTargetSession(t *testing.T) {
 	}
 
 	snap := sessions.snapshot()
+	if got := sessions.scopedAuthKey(); got != targetRawAuthKeyID {
+		t.Fatalf("scoped raw auth key = %x, want %x", got, targetRawAuthKeyID)
+	}
 	if snap.sessionID != targetSession || snap.userID != scannerUserID || !snap.userResolved {
 		t.Fatalf("target session snapshot = %+v, want session/user/resolved %d/%d/true", snap, targetSession, scannerUserID)
 	}
-	immediate := sessions.immediatePushSnapshot()
-	if !immediate.seen {
+	if !sessions.immediatePushSeen() {
 		t.Fatal("login token update was not pushed through the immediate pre-auth path")
 	}
-	if got := immediate.rawAuthKeyID; got != targetRawAuthKeyID {
-		t.Fatalf("immediate raw auth key = %x, want %x", got, targetRawAuthKeyID)
+	immediateType, immediateMessage := sessions.immediatePushSnapshot()
+	if immediateType != proto.MessageFromServer {
+		t.Fatalf("immediate push message type = %v, want MessageFromServer", immediateType)
 	}
-	if immediate.sessionID != targetSession {
-		t.Fatalf("immediate session id = %d, want %d", immediate.sessionID, targetSession)
-	}
-	if immediate.messageType != proto.MessageFromServer {
-		t.Fatalf("push message type = %v, want MessageFromServer", immediate.messageType)
-	}
-	short, ok := immediate.message.(*tg.UpdateShort)
+	short, ok := immediateMessage.(*tg.UpdateShort)
 	if !ok {
-		t.Fatalf("push message = %T, want *tg.UpdateShort", immediate.message)
+		t.Fatalf("immediate push message = %T, want *tg.UpdateShort", immediateMessage)
 	}
 	if _, ok := short.Update.(*tg.UpdateLoginToken); !ok {
 		t.Fatalf("pushed update = %T, want *tg.UpdateLoginToken", short.Update)
@@ -165,37 +161,6 @@ func TestAuthLoginTokenExpires(t *testing.T) {
 	}
 	if _, err := reg.beginAccept(now.Add(loginTokenTTL+time.Second), exported.token, 1000000001); !tgerr.Is(err, "AUTH_TOKEN_EXPIRED") {
 		t.Fatalf("expired accept err = %v, want AUTH_TOKEN_EXPIRED", err)
-	}
-}
-
-func TestLoginTokenRegistryAcceptsEncodedScannerTokens(t *testing.T) {
-	now := time.Unix(1700000000, 0)
-	reg := newLoginTokenRegistry()
-	target := loginTokenTarget{
-		rawAuthKeyID: [8]byte{1},
-		authKeyID:    [8]byte{2},
-		sessionID:    3,
-	}
-	exported, err := reg.export(now, target, domain.Authorization{AuthKeyID: target.authKeyID}, nil)
-	if err != nil {
-		t.Fatalf("export: %v", err)
-	}
-	encoded := base64.RawURLEncoding.EncodeToString(exported.token)
-
-	lookedUp, err := reg.lookup(now, []byte(encoded))
-	if err != nil {
-		t.Fatalf("lookup encoded token: %v", err)
-	}
-	if !bytes.Equal(lookedUp.token, exported.token) {
-		t.Fatal("encoded token lookup did not resolve original token")
-	}
-
-	accept, err := reg.beginAccept(now, []byte("tg://login?token="+encoded), 1000000001)
-	if err != nil {
-		t.Fatalf("begin accept full login URL token: %v", err)
-	}
-	if accept.target != target {
-		t.Fatalf("accept target = %+v, want %+v", accept.target, target)
 	}
 }
 

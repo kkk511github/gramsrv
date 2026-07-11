@@ -48,9 +48,9 @@ codebase.
 | ✅ | Private chats | Send, history, read receipts, edit, delete, forward, reply, rich entities, grouped/media messages, reactions, scheduled/TTL-oriented paths. |
 | ✅ | Rich messages | Telegram Desktop rich text messages, rich content conversion, send/edit/scheduled flows, dialog/history projections, and memory/PostgreSQL persistence. |
 | ✅ | AI compose and ChatBot | Input-box rewrite/polish, default and custom tones, addstyle previews, local and external provider chains, streamed `@ChatBot` draft replies, and Business AI reply hooks. |
-| ✅ | Supergroups and channels | Create, join, leave, invite links, participants, admins, forum topics, history, send/edit/delete/read, reactions, public search, and previews. |
-| ✅ | Media and files | Upload, download, local blob storage, photos, documents, thumbnails, external media fetch, web page previews, map tile cache hooks, profile/channel photos. |
-| ✅ | Stickers and reactions | Sticker/reaction catalog, seed support, recent reactions, top reactions, default reactions, and moderation-oriented reaction paths. |
+| ✅ | Supergroups and channels | Create, join, leave, invite links, participants, admins, forum topics, linked discussion guests, history, send/edit/delete/read, reactions, public search, and previews. |
+| ✅ | Media and files | Upload, download, local blob storage, photos, documents, thumbnails, canonical GIFv conversion, external media fetch, web page previews, map tile cache hooks, profile/channel photos. |
+| ✅ | Stickers and reactions | Sticker/reaction catalog, seed support, saved GIFs, recent reactions, top reactions, default reactions, and moderation-oriented reaction paths. |
 | ✅ | Gifts and stars | Star gifts and local stars ledger foundations for compatibility and future feature work. |
 | ✅ | Bots and mini apps | Bot service foundations, callbacks, inline helpers, webview/mini-app paths, a minimal Bot API gateway for libraries such as `python-telegram-bot`, persistent `getUpdates` delivery, and demo tools. |
 | ✅ | Calls and live streams | Private call signaling foundations, group call state, RTMP live streaming, scheduled video chats, channel `join_as`, SFU/TURN building blocks, liveness, and expiry workers. |
@@ -80,14 +80,14 @@ Build and run the single server program:
 Windows (PowerShell):
 
 ```powershell
-go build -o bin/gramsrv.exe ./cmd/telesrv
+go build -o bin/gramsrv.exe ./cmd/slerv
 .\bin\gramsrv.exe
 ```
 
 Linux / macOS:
 
 ```bash
-go build -o bin/gramsrv ./cmd/telesrv
+go build -o bin/gramsrv ./cmd/slerv
 ./bin/gramsrv
 ```
 
@@ -102,10 +102,14 @@ Production `.env` files may still contain legacy `SLERV_*` aliases. When both
 forms are present for the same setting, the `SLERV_*` value wins, so update both
 forms or remove the legacy alias.
 
+See the complete [English configuration reference](docs/configuration.en.md) or
+the [Chinese configuration reference](docs/configuration.zh-CN.md). `.env.example`
+is a copyable development template, not an exhaustive parameter dictionary.
+
 | Variable | Default | Meaning |
 |---|---:|---|
 | `TELESRV_LISTEN` | `0.0.0.0:2398` | MTProto listen address |
-| `TELESRV_ADVERTISE_IP` | `127.0.0.1` | IP advertised to compatible clients |
+| `TELESRV_ADVERTISE_IP` | `127.0.0.1` | client-reachable fallback IP for media and calls |
 | `TELESRV_DC` | `2` | self-hosted DC id |
 | `TELESRV_DEV_AUTH_CODE` | `12345` | fixed login code for local development |
 | `TELESRV_AUTH_CODE_MAX_ATTEMPTS` | `5` | wrong-code attempts before the code hash is deleted |
@@ -114,6 +118,9 @@ forms or remove the legacy alias.
 | `TELESRV_LOGIN_EMAIL_CODE_LENGTH` | `5` | digits in each email login/setup verification code |
 | `TELESRV_SMTP_HOST` | empty | SMTP host used when login email verification is enabled |
 | `TELESRV_PUBLIC_BASE_URL` | `https://safelink.chat` | canonical external base URL for username, sticker, emoji, and chatlist links |
+| `TELESRV_PUBLIC_APP_SCHEME` | `safelink` | custom URL scheme opened by public landing pages |
+| `TELESRV_PUBLIC_WEB_BASE_URL` | `https://web.safelink.chat` | Web client base URL shown on public landing pages |
+| `TELESRV_PUBLIC_APP_NAME` | `SafeLink` | display product name for public landing pages |
 | `TELESRV_POSTGRES_DSN` | local Compose DSN | PostgreSQL connection string |
 | `TELESRV_REDIS_ADDR` | `127.0.0.1:6399` | Redis address |
 | `TELESRV_LANGPACK_SEED_DIR` | `data/langpack` | bundled language pack seed directory |
@@ -223,7 +230,7 @@ variables are documented in `.env.example`.
 ### Public Link Landing Pages
 
 `slerv` includes a public-link landing service implemented in
-`internal/web/stickerlinks/server.go`. Despite the package name, it handles more
+`internal/web/server.go`. It handles more
 than sticker and emoji links. It also supports Telegram-style public entry
 points such as:
 
@@ -331,6 +338,9 @@ links:
 
 ```env
 TELESRV_PUBLIC_BASE_URL=https://your-domain.example
+TELESRV_PUBLIC_APP_SCHEME=yourapp
+TELESRV_PUBLIC_WEB_BASE_URL=https://web.your-domain.example
+TELESRV_PUBLIC_APP_NAME=YourApp
 ```
 
 In production, keep `TELESRV_PUBLIC_LINK_WEB_ADDR` on loopback and reverse-proxy
@@ -395,7 +405,7 @@ Recommended checks:
 ## Repository Layout
 
 ```text
-cmd/telesrv/              server entrypoint
+cmd/slerv/                server entrypoint
 cmd/telesrv-admin/        admin backend and web UI
 deploy/                   docker-compose, migrations, deploy helpers
 data/                     bundled language packs and optional seed data
