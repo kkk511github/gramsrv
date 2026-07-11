@@ -90,6 +90,11 @@ func New(cfg Config, pushStore store.PushStore, logger *zap.Logger) (*Service, e
 	if service.apns == nil && service.fcm == nil {
 		return nil, fmt.Errorf("push is enabled but no APNs or FCM provider is configured")
 	}
+	logger.Info("mobile push notifications enabled",
+		zap.Bool("apns", service.apns != nil),
+		zap.Bool("fcm", service.fcm != nil),
+		zap.Int("workers", service.workers),
+	)
 	return service, nil
 }
 
