@@ -27,11 +27,31 @@ df -i
 1. 配好 DNS，让 `safelink.chat` 和 `web.safelink.chat` 指到目标服务器。
 2. 准备 `/www/safelink/{slerv,web,redis,postgres,logs}`。
 3. 配 PostgreSQL、Redis，先确认它们能写入数据盘。
-4. 部署并启动 `slerv`，确认 `/apiws` 能被 Nginx 反代到 `2398`。
-5. 取当前服务端 `server_rsa.pem` 的公钥和 fingerprint，同步到 Web 端内置 RSA key。
-6. 构建并部署 Web 静态文件。
-7. 处理 service worker 旧缓存，必要时提供 `/reset-web`。
-8. 用 Web 手机号登录跑一次真实链路，最后看服务端日志。
+4. 安装 `ffmpeg/ffprobe`，确保 GIFv 转码和视频缩略图功能可用。
+5. 部署并启动 `slerv`，确认 `/apiws` 能被 Nginx 反代到 `2398`。
+6. 取当前服务端 `server_rsa.pem` 的公钥和 fingerprint，同步到 Web 端内置 RSA key。
+7. 构建并部署 Web 静态文件。
+8. 处理 service worker 旧缓存，必要时提供 `/reset-web`。
+9. 用 Web 手机号登录跑一次真实链路，最后看服务端日志。
+
+## 运行依赖：ffmpeg / ffprobe
+
+服务端的 GIFv 上传转码和视频缩略图回退需要 `ffmpeg` 和 `ffprobe`。
+Ubuntu/Debian 可用：
+
+```sh
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends ffmpeg
+ffmpeg -version | head -1
+ffprobe -version | head -1
+```
+
+安装后重启 `slerv`，并确认启动日志不再出现：
+
+```text
+ffmpeg not found; server-side video thumbnail fallback disabled
+ffmpeg/ffprobe not found; GIF uploads will be rejected
+```
 
 ## 关键环境变量
 
@@ -354,7 +374,7 @@ curl -i -N \
   -H 'Connection: Upgrade' \
   -H 'Upgrade: websocket' \
   -H 'Sec-WebSocket-Version: 13' \
-  -H 'Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==' \
+  -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
   https://web.safelink.chat/apiws
 ```
 
@@ -576,7 +596,7 @@ curl -i -N \
   -H 'Connection: Upgrade' \
   -H 'Upgrade: websocket' \
   -H 'Sec-WebSocket-Version: 13' \
-  -H 'Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==' \
+  -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
   https://web.safelink.chat/apiws
 ```
 
