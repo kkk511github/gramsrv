@@ -117,7 +117,7 @@ is a copyable development template, not an exhaustive parameter dictionary.
 | `TELESRV_LOGIN_EMAIL_REQUIRE_SETUP` | `false` | force phone login/registration to set a login email first |
 | `TELESRV_LOGIN_EMAIL_CODE_LENGTH` | `5` | digits in each email login/setup verification code |
 | `TELESRV_SMTP_HOST` | empty | SMTP host used when login email verification is enabled |
-| `TELESRV_PUSH_ENABLE` | `false` | enable APNs/FCM notifications for offline private messages |
+| `TELESRV_PUSH_ENABLE` | `false` | enable APNs/FCM notifications for incoming private messages |
 | `TELESRV_APNS_TOPIC` | empty | iOS bundle ID; the SafeLink production package uses `com.hsgram.app` |
 | `TELESRV_APNS_PRIVATE_KEY_PATH` | empty | path to an APNs `.p8` key kept outside the repository |
 | `TELESRV_FCM_PROJECT_ID` | empty | Firebase project ID |

@@ -165,7 +165,7 @@
 | `TELESRV_OUTBOX_POISON_RETENTION` | duration / `1m` | terminal failed 投递头的排障保留窗口；durable update 仍可经 difference 恢复。 |
 | `TELESRV_OUTBOX_POISON_CLEANUP_INTERVAL` | duration / `15s` | terminal failed head 清理周期，独立于大表 retention。 |
 | `TELESRV_OUTBOUND_PUSH_TIMEOUT` | duration / `200ms` | best-effort 在线 update 入队最长等待。 |
-| `TELESRV_PUSH_ENABLE` | bool / `false` | 启用离线私聊消息 APNs/FCM 推送；设备 token 仍可在关闭时登记，便于后续启用。 |
+| `TELESRV_PUSH_ENABLE` | bool / `false` | 启用入站私聊消息 APNs/FCM 推送；同账号其它在线会话不抑制手机推送，前台是否展示由客户端决定。 |
 | `TELESRV_APNS_TOPIC` | string / 空 | iOS App Bundle ID，SafeLink 生产包为 `com.hsgram.app`。 |
 | `TELESRV_APNS_TEAM_ID` | sensitive string / 空 | Apple Developer Team ID。 |
 | `TELESRV_APNS_KEY_ID` | sensitive string / 空 | APNs Auth Key ID。 |

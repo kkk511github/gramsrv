@@ -68,9 +68,9 @@ func WithOutboxUpdateBuilder(builder OutboxUpdateBuilder) OutboxOption {
 	}
 }
 
-// WithOfflinePushStore enables durable mobile notifications for new messages
-// that could not be delivered to any online session.
-func WithOfflinePushStore(pushStore store.PushStore) OutboxOption {
+// WithMessagePushStore enables durable mobile notifications for incoming
+// messages. Mobile clients suppress presentation themselves while foregrounded.
+func WithMessagePushStore(pushStore store.PushStore) OutboxOption {
 	return func(d *OutboxDispatcher) {
 		d.pushStore = pushStore
 	}
@@ -336,7 +336,7 @@ func (d *OutboxDispatcher) dispatchBatch(ctx context.Context, items []store.Disp
 			delivered = append(delivered, item)
 			continue
 		}
-		sent, retriable, err := d.pushOutboxUpdate(ctx, item, update)
+		_, retriable, err := d.pushOutboxUpdate(ctx, item, update)
 		if err != nil {
 			blockedUsers[item.TargetUserID] = struct{}{}
 			if retriable {
@@ -347,7 +347,7 @@ func (d *OutboxDispatcher) dispatchBatch(ctx context.Context, items []store.Disp
 			d.markDispatchFailed(ctx, item, err)
 			continue
 		}
-		if err := d.enqueueOfflinePush(ctx, item, entry.event, sent); err != nil {
+		if err := d.enqueueMessagePush(ctx, item, entry.event); err != nil {
 			blockedUsers[item.TargetUserID] = struct{}{}
 			d.markDispatchFailed(ctx, item, err)
 			continue
@@ -412,7 +412,7 @@ func (d *OutboxDispatcher) dispatchItem(ctx context.Context, item store.Dispatch
 		d.markDispatchFailed(ctx, item, err)
 		return false
 	}
-	if err := d.enqueueOfflinePush(ctx, item, events[0], sent); err != nil {
+	if err := d.enqueueMessagePush(ctx, item, events[0]); err != nil {
 		d.markDispatchFailed(ctx, item, err)
 		return false
 	}
@@ -430,8 +430,8 @@ func (d *OutboxDispatcher) dispatchItem(ctx context.Context, item store.Dispatch
 	return true
 }
 
-func (d *OutboxDispatcher) enqueueOfflinePush(ctx context.Context, item store.DispatchOutboxItem, event domain.UpdateEvent, onlineSessions int) error {
-	if d.pushStore == nil || onlineSessions > 0 || event.Type != domain.UpdateEventNewMessage || event.Message.Out || event.Message.Silent {
+func (d *OutboxDispatcher) enqueueMessagePush(ctx context.Context, item store.DispatchOutboxItem, event domain.UpdateEvent) error {
+	if d.pushStore == nil || event.Type != domain.UpdateEventNewMessage || event.Message.Out || event.Message.Silent {
 		return nil
 	}
 	return d.pushStore.EnqueuePushNotification(ctx, domain.PushNotificationJob{

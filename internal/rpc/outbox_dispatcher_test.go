@@ -74,7 +74,7 @@ func TestOutboxDispatcherPushesNewMessageAndMarksDelivered(t *testing.T) {
 	}
 }
 
-func TestOutboxDispatcherEnqueuesPushForOfflineIncomingMessage(t *testing.T) {
+func TestOutboxDispatcherEnqueuesPushForIncomingMessageWithOnlineSession(t *testing.T) {
 	msg := domain.Message{
 		ID:          10,
 		OwnerUserID: 1000000002,
@@ -92,7 +92,7 @@ func TestOutboxDispatcherEnqueuesPushForOfflineIncomingMessage(t *testing.T) {
 		PtsCount: 1, Date: msg.Date, Message: msg,
 	}}}
 	pushes := &capturePushStore{}
-	dispatcher := NewOutboxDispatcher(events, outbox, &offlineOutboxSessions{}, zaptest.NewLogger(t), WithOfflinePushStore(pushes))
+	dispatcher := NewOutboxDispatcher(events, outbox, &captureSessions{}, zaptest.NewLogger(t), WithMessagePushStore(pushes))
 	dispatcher.DispatchOnce(context.Background())
 
 	if len(pushes.notifications) != 1 {
@@ -105,13 +105,6 @@ func TestOutboxDispatcherEnqueuesPushForOfflineIncomingMessage(t *testing.T) {
 	if got.Body == msg.Body {
 		t.Fatalf("push payload leaked private message body")
 	}
-}
-
-type offlineOutboxSessions struct{ captureSessions }
-
-func (s *offlineOutboxSessions) PushToUserExceptSession(ctx context.Context, userID, excludeSessionID int64, typ proto.MessageType, msg bin.Encoder) (int, error) {
-	_, err := s.captureSessions.PushToUserExceptSession(ctx, userID, excludeSessionID, typ, msg)
-	return 0, err
 }
 
 type capturePushStore struct {

@@ -778,7 +778,7 @@ func run(logger *zap.Logger) error {
 		rpc.WithOutboxUpdateBuilder(router.BuildOutboxUpdates),
 	}
 	if pushService != nil {
-		outboxOptions = append(outboxOptions, rpc.WithOfflinePushStore(pushStore))
+		outboxOptions = append(outboxOptions, rpc.WithMessagePushStore(pushStore))
 		go pushService.Run(ctx)
 	}
 	go rpc.NewOutboxDispatcher(updateEventStore, dispatchOutboxStore, activeSessions, logger.Named("rpc").Named("outbox"), outboxOptions...).Run(ctx)

@@ -613,8 +613,9 @@ curl -i -N \
 ## 消息推送部署不可遗漏
 
 SafeLink 的 `account.registerDevice` 会把 iOS APNs / Android FCM token 持久化到
-`push_devices`，离线私聊消息则先写入 `push_notification_outbox` 再由 worker
+`push_devices`，入站私聊消息则先写入 `push_notification_outbox` 再由 worker
 发送。部署时必须同时完成 migration、密钥和环境变量三部分。
+不要因为同账号的 PC/安卓会话在线就跳过 APNs；iOS 前台展示抑制由客户端处理。
 
 - iOS 生产包 topic 必须与实际 Bundle ID 一致，当前为 `com.hsgram.app`。
 - `.p8` 和 FCM service-account JSON 只放服务器密钥目录/运行环境，永远不进 Git。

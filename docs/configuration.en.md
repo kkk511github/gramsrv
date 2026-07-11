@@ -165,7 +165,7 @@ The following fallback keys are accepted from the **process environment only**. 
 | `TELESRV_OUTBOX_POISON_RETENTION` | duration / `1m` | Diagnostic retention for terminal failed delivery heads; durable update events remain recoverable through difference. |
 | `TELESRV_OUTBOX_POISON_CLEANUP_INTERVAL` | duration / `15s` | Cleanup interval for terminal failed heads, independent of large-table retention. |
 | `TELESRV_OUTBOUND_PUSH_TIMEOUT` | duration / `200ms` | Maximum wait for best-effort online update enqueue. |
-| `TELESRV_PUSH_ENABLE` | bool / `false` | Enables durable APNs/FCM notifications for offline private messages. Device tokens can still be registered while disabled. |
+| `TELESRV_PUSH_ENABLE` | bool / `false` | Enables durable APNs/FCM notifications for incoming private messages. Another online session does not suppress mobile push; foreground presentation remains a client decision. |
 | `TELESRV_APNS_TOPIC` | string / empty | iOS app bundle ID. The SafeLink production package uses `com.hsgram.app`. |
 | `TELESRV_APNS_TEAM_ID` | sensitive string / empty | Apple Developer Team ID. |
 | `TELESRV_APNS_KEY_ID` | sensitive string / empty | APNs authentication key ID. |
