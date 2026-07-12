@@ -30,18 +30,16 @@ type inboundRPC struct {
 	size        int
 	run         func(context.Context) error
 	onTimeout   func()
-	budget      *inboundRPCGlobalReservation
-	ticket      *inboundRPCTicket
+	// release drops request-scoped ownership which is independent from the body
+	// budget (for example a cross-connection in-flight RPC claim). It runs once
+	// after the request has either published a terminal result or become
+	// impossible to run; callers should still make the callback idempotent.
+	release func()
+	budget  *inboundRPCGlobalReservation
+	ticket  *inboundRPCTicket
 }
 
-const (
-	inboundRPCTicketQueued int32 = iota
-	inboundRPCTicketRunning
-	inboundRPCTicketDone
-)
-
 type inboundRPCTicket struct {
-	state     atomic.Int32
 	onTimeout func()
 }
 
@@ -76,21 +74,34 @@ type inboundRPCScheduler struct {
 type inboundRPCGlobalReservation struct {
 	scheduler *inboundRPCScheduler
 	size      int64
+	released  atomic.Bool
+}
+
+// inboundRPCSpec 是 container preflight 与 RPC scheduler 之间的有界 admission 描述。
+// method 仅用于 metrics，size 是在 Copy 之前必须预留的 request body 字节数。
+type inboundRPCSpec struct {
+	method string
+	size   int
+}
+
+type inboundRPCBatchEntry struct {
+	global *inboundRPCGlobalReservation
+	method string
+	size   int
+}
+
+// inboundRPCBatchReservation 把一个 container 内的 RPC 视为一个 admission 单元。
+// reserve 一次预留整批的全局/单连接条数和字节预算；commit 一次 append
+// 全部任务；abort 一次归还全部预算。这防止 container 只执行前半批。
+type inboundRPCBatchReservation struct {
+	conn      *Conn
+	ctx       context.Context
+	entries   []inboundRPCBatchEntry
+	totalSize int64
 	once      sync.Once
 }
 
-// inboundRPCReservation 同时持有全局和单连接的“Copy 前”预算。commit/abort 只能成功一次；
-// 无论 Copy 后连接关闭、入队成功还是调用方提前返回，预算都有唯一归还路径。
-type inboundRPCReservation struct {
-	conn       *Conn
-	global     *inboundRPCGlobalReservation
-	ctx        context.Context
-	method     string
-	size       int
-	enqueuedAt time.Time
-	deadline   time.Time
-	once       sync.Once
-}
+var errInboundRPCBatchTaskCount = errors.New("inbound rpc batch task count mismatch")
 
 func newInboundRPCScheduler(workers, maxTasks int, maxBytes int64) *inboundRPCScheduler {
 	if workers <= 0 {
@@ -171,11 +182,11 @@ func (s *inboundRPCScheduler) stop(timeout time.Duration) {
 	}
 }
 
-func (s *inboundRPCScheduler) reserveGlobal(size int) (*inboundRPCGlobalReservation, string, error) {
-	if size < 0 {
-		size = 0
-	}
-	size64 := int64(size)
+// reserveGlobalBatch 在一次 budgetMu 临界区内检查并预留整批条数/字节。
+// 返回的每个 reservation 仍由对应 task 单独归还，避免一个慢 RPC 持有
+// 整个 container 已完成任务的预算。
+func (s *inboundRPCScheduler) reserveGlobalBatch(sizes []int) ([]*inboundRPCGlobalReservation, string, error) {
+	reservations := make([]*inboundRPCGlobalReservation, len(sizes))
 	s.budgetMu.Lock()
 	defer s.budgetMu.Unlock()
 
@@ -184,35 +195,76 @@ func (s *inboundRPCScheduler) reserveGlobal(size int) (*inboundRPCGlobalReservat
 		return nil, "scheduler_closed", ErrConnClosed
 	default:
 	}
-	if s.tasks >= s.maxTasks {
+	if len(sizes) > s.maxTasks-s.tasks {
 		return nil, "global_task_budget", ErrInboundRPCQueueFull
 	}
-	// 用减法比较避免 s.bytes+size64 溢出。
-	if size64 > s.maxBytes-s.bytes {
-		return nil, "global_byte_budget", ErrInboundRPCQueueFull
+	// 逐项从剩余预算中减，避免 total 和 s.bytes+total 溢出。
+	remaining := s.maxBytes - s.bytes
+	var total int64
+	for i, size := range sizes {
+		if size < 0 {
+			size = 0
+		}
+		size64 := int64(size)
+		if size64 > remaining-total {
+			return nil, "global_byte_budget", ErrInboundRPCQueueFull
+		}
+		total += size64
+		reservations[i] = &inboundRPCGlobalReservation{scheduler: s, size: size64}
 	}
-	s.tasks++
-	s.bytes += size64
-	return &inboundRPCGlobalReservation{scheduler: s, size: size64}, "", nil
+	s.tasks += len(sizes)
+	s.bytes += total
+	return reservations, "", nil
 }
 
 func (r *inboundRPCGlobalReservation) release() {
 	if r == nil || r.scheduler == nil {
 		return
 	}
-	r.once.Do(func() {
-		s := r.scheduler
-		s.budgetMu.Lock()
-		s.tasks--
-		s.bytes -= r.size
-		s.budgetMu.Unlock()
-	})
+	if !r.released.CompareAndSwap(false, true) {
+		return
+	}
+	s := r.scheduler
+	s.budgetMu.Lock()
+	s.tasks--
+	s.bytes -= r.size
+	s.budgetMu.Unlock()
 }
 
-func (s *inboundRPCScheduler) budgetSnapshot() (tasks int, bytes int64) {
-	s.budgetMu.Lock()
-	defer s.budgetMu.Unlock()
-	return s.tasks, s.bytes
+// releaseInboundRPCGlobalBatch 使 batch abort/commit-failure 在一次全局锁内
+// 归还它仍持有的全部预算。每张 ticket 的 CAS 保证与任何并发释放幂等。
+func releaseInboundRPCGlobalBatch(reservations []*inboundRPCGlobalReservation) {
+	var (
+		scheduler *inboundRPCScheduler
+		tasks     int
+		bytes     int64
+	)
+	for _, reservation := range reservations {
+		if reservation == nil || reservation.scheduler == nil || !reservation.released.CompareAndSwap(false, true) {
+			continue
+		}
+		if scheduler == nil {
+			scheduler = reservation.scheduler
+		}
+		// 一个 batch 只能由同一 scheduler 创建。若未来出现混合调用，
+		// 仍通过单张 release 正确归还，而不会扣错 scheduler。
+		if reservation.scheduler != scheduler {
+			reservation.scheduler.budgetMu.Lock()
+			reservation.scheduler.tasks--
+			reservation.scheduler.bytes -= reservation.size
+			reservation.scheduler.budgetMu.Unlock()
+			continue
+		}
+		tasks++
+		bytes += reservation.size
+	}
+	if scheduler == nil || tasks == 0 {
+		return
+	}
+	scheduler.budgetMu.Lock()
+	scheduler.tasks -= tasks
+	scheduler.bytes -= bytes
+	scheduler.budgetMu.Unlock()
 }
 
 func (s *inboundRPCScheduler) schedule(c *Conn) {
@@ -351,144 +403,185 @@ func (c *Conn) startInboundRPCScheduler(scheduler *inboundRPCScheduler, maxInfli
 	// rpcQueue 保持 nil；首个成功 commit 才由 append 分配，静默连接零队列内存。
 }
 
-// reserveInboundRPC 必须在 request body Copy 前调用。它先拿进程级条数/字节预算，
-// 再预占单连接队列槽和字节预算；commit 或 abort 负责唯一释放。
-func (c *Conn) reserveInboundRPC(ctx context.Context, method string, size int) (*inboundRPCReservation, error) {
+// reserveInboundRPCBatch 必须在 container 内任何 request body Copy 前调用。
+// 全局预算只锁一次，单连接预算也只锁一次；任一限制不满足时
+// 整批失败，不会留下部分 task/字节 reservation。
+func (c *Conn) reserveInboundRPCBatch(ctx context.Context, specs []inboundRPCSpec) (*inboundRPCBatchReservation, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	select {
 	case <-ctx.Done():
-		c.metrics.InboundRPCDropped(method, "context_done")
+		c.dropInboundRPCSpecs(specs, "context_done")
 		return nil, ctx.Err()
 	default:
 	}
-	if c.rpcScheduler == nil {
-		c.metrics.InboundRPCDropped(method, "scheduler_closed")
+	if c.isRetired() {
+		c.dropInboundRPCSpecs(specs, "scheduler_closed")
 		return nil, ErrConnClosed
 	}
-	global, reason, err := c.rpcScheduler.reserveGlobal(size)
+	if c.rpcScheduler == nil {
+		c.dropInboundRPCSpecs(specs, "scheduler_closed")
+		return nil, ErrConnClosed
+	}
+
+	normalized := make([]inboundRPCSpec, len(specs))
+	sizes := make([]int, len(specs))
+	for i, spec := range specs {
+		if spec.size < 0 {
+			spec.size = 0
+		}
+		normalized[i] = spec
+		sizes[i] = spec.size
+	}
+	globals, reason, err := c.rpcScheduler.reserveGlobalBatch(sizes)
 	if err != nil {
-		c.metrics.InboundRPCDropped(method, reason)
+		c.dropInboundRPCSpecs(normalized, reason)
 		return nil, err
 	}
 
-	now := time.Now()
-	deadline := time.Time{}
-	if c.rpcTimeout > 0 {
-		deadline = now.Add(c.rpcTimeout)
-	}
-	if ctxDeadline, ok := ctx.Deadline(); ok && (deadline.IsZero() || ctxDeadline.Before(deadline)) {
-		deadline = ctxDeadline
-	}
-	if size < 0 {
-		size = 0
+	entries := make([]inboundRPCBatchEntry, len(normalized))
+	var totalSize int64
+	for i, spec := range normalized {
+		entries[i] = inboundRPCBatchEntry{
+			global: globals[i],
+			method: spec.method,
+			size:   spec.size,
+		}
+		totalSize += int64(spec.size)
 	}
 
 	c.rpcMu.Lock()
 	if err := ctx.Err(); err != nil {
 		c.rpcMu.Unlock()
-		global.release()
-		c.metrics.InboundRPCDropped(method, "context_done")
+		releaseInboundRPCGlobalBatch(globals)
+		c.dropInboundRPCSpecs(normalized, "context_done")
 		return nil, err
 	}
-	if c.rpcClosed {
+	if c.rpcClosed || c.isRetired() {
 		c.rpcMu.Unlock()
-		global.release()
-		c.metrics.InboundRPCDropped(method, "scheduler_closed")
+		releaseInboundRPCGlobalBatch(globals)
+		c.dropInboundRPCSpecs(normalized, "scheduler_closed")
 		return nil, ErrConnClosed
 	}
-	if c.rpcReserved+len(c.rpcQueue) >= c.rpcQueueSize {
+	// 用减法比较，避免对抗性 batch 的 len 加法溢出。
+	availableSlots := c.rpcQueueSize - c.rpcReserved - len(c.rpcQueue)
+	if len(entries) > availableSlots {
 		c.rpcMu.Unlock()
-		global.release()
-		c.metrics.InboundRPCDropped(method, "queue_full")
+		releaseInboundRPCGlobalBatch(globals)
+		c.dropInboundRPCSpecs(normalized, "queue_full")
 		return nil, ErrInboundRPCQueueFull
 	}
-	if int64(size) > maxInflightRPCBytes-c.inflightRPCBytes.Load() {
+	if totalSize > maxInflightRPCBytes-c.inflightRPCBytes.Load() {
 		c.rpcMu.Unlock()
-		global.release()
-		c.metrics.InboundRPCDropped(method, "byte_budget")
+		releaseInboundRPCGlobalBatch(globals)
+		c.dropInboundRPCSpecs(normalized, "byte_budget")
 		return nil, ErrInboundRPCQueueFull
 	}
-	c.rpcReserved++
-	c.inflightRPCBytes.Add(int64(size))
+	c.rpcReserved += len(entries)
+	c.inflightRPCBytes.Add(totalSize)
 	// Add 与 close 的 Wait 由 rpcMu 排序：close 置 rpcClosed 后不会再发生 Add。
+	// 整批 reservation 只需一个 waiter；commit/abort 也只会完成一次。
 	c.rpcReservationWG.Add(1)
 	c.rpcMu.Unlock()
 
-	return &inboundRPCReservation{
-		conn:       c,
-		global:     global,
-		ctx:        ctx,
-		method:     method,
-		size:       size,
-		enqueuedAt: now,
-		deadline:   deadline,
+	return &inboundRPCBatchReservation{
+		conn:      c,
+		ctx:       ctx,
+		entries:   entries,
+		totalSize: totalSize,
 	}, nil
 }
 
-// enqueueInboundRPC 是测试和已持有独立 body 的便捷入口。生产收包路径使用
-// reserveInboundRPC -> Copy -> commit，保证真正的 Copy 前预算。
-func (c *Conn) enqueueInboundRPC(ctx context.Context, task inboundRPC) error {
-	reservation, err := c.reserveInboundRPC(ctx, task.method, task.size)
-	if err != nil {
-		return err
+func (c *Conn) dropInboundRPCSpecs(specs []inboundRPCSpec, reason string) {
+	for _, spec := range specs {
+		c.metrics.InboundRPCDropped(spec.method, reason)
 	}
-	defer reservation.abort()
-	return reservation.commit(task)
 }
 
-func (r *inboundRPCReservation) commit(task inboundRPC) error {
-	result := ErrConnClosed
+// commit 在一次 rpcMu 临界区内把整批 task append 到队列并立即发布 ready token。
+// 协议 barrier 必须在调用 commit 前完成；延迟发布 token 无法阻止已有 worker
+// 从同一连接队列取走新任务，因此不提供虚假的 deferred-schedule 模式。
+func (r *inboundRPCBatchReservation) commit(tasks []inboundRPC) (result error) {
+	if r == nil {
+		return ErrConnClosed
+	}
+	result = ErrConnClosed
 	var (
-		committed  bool
-		reschedule bool
-		queueLen   int
-		queueCap   int
+		committed     bool
+		reschedule    bool
+		firstQueueLen int
+		queueCap      int
+		globals       []*inboundRPCGlobalReservation
 	)
 	r.once.Do(func() {
 		c := r.conn
+		// A container reservation may deliberately span protocol-critical barriers
+		// (session ownership claim and new_session_created's physical write). Queue
+		// and execution latency starts only when the fully admitted batch becomes
+		// runnable, not while it is waiting behind those independent barriers.
+		enqueuedAt := time.Now()
+		deadline := time.Time{}
+		if c.rpcTimeout > 0 {
+			deadline = enqueuedAt.Add(c.rpcTimeout)
+		}
+		if ctxDeadline, ok := r.ctx.Deadline(); ok && (deadline.IsZero() || ctxDeadline.Before(deadline)) {
+			deadline = ctxDeadline
+		}
+		globals = make([]*inboundRPCGlobalReservation, len(r.entries))
+		for i := range r.entries {
+			globals[i] = r.entries[i].global
+		}
 		c.rpcMu.Lock()
-		c.rpcReserved--
-		if c.rpcClosed {
-			c.inflightRPCBytes.Add(-int64(r.size))
+		c.rpcReserved -= len(r.entries)
+		if len(tasks) != len(r.entries) {
+			c.inflightRPCBytes.Add(-r.totalSize)
+			result = errInboundRPCBatchTaskCount
+		} else if c.rpcClosed || c.isRetired() {
+			c.inflightRPCBytes.Add(-r.totalSize)
 		} else {
+			prepared := make([]inboundRPC, len(tasks))
 			// The request deadline starts when admission succeeds, not when a worker
 			// eventually dequeues the request. This bounds total queue + execution
 			// latency and lets a queued request emit its explicit timeout on time.
-			if r.deadline.IsZero() {
-				task.ctx, task.cancel = context.WithCancel(r.ctx)
-			} else {
-				task.ctx, task.cancel = context.WithDeadline(r.ctx, r.deadline)
-			}
-			task.stopRoot = context.AfterFunc(c.rpcRootCtx, task.cancel)
-			task.method = r.method
-			task.enqueuedAt = r.enqueuedAt
-			task.deadline = r.deadline
-			task.size = r.size
-			task.budget = r.global
-			ticket := &inboundRPCTicket{}
-			if task.onTimeout != nil {
-				onTimeout := task.onTimeout
-				var timeoutOnce sync.Once
-				ticket.onTimeout = func() {
-					timeoutOnce.Do(onTimeout)
+			for i := range tasks {
+				task := tasks[i]
+				entry := r.entries[i]
+				if deadline.IsZero() {
+					task.ctx, task.cancel = context.WithCancel(r.ctx)
+				} else {
+					task.ctx, task.cancel = context.WithDeadline(r.ctx, deadline)
 				}
-				task.onTimeout = ticket.onTimeout
-			}
-			task.ticket = ticket
-			if task.onTimeout != nil && !task.deadline.IsZero() {
-				taskCtx := task.ctx
-				task.stopTimeout = context.AfterFunc(taskCtx, func() {
-					if errors.Is(taskCtx.Err(), context.DeadlineExceeded) {
-						c.expireInboundRPCTicket(ticket)
+				task.stopRoot = context.AfterFunc(c.rpcRootCtx, task.cancel)
+				task.method = entry.method
+				task.enqueuedAt = enqueuedAt
+				task.deadline = deadline
+				task.size = entry.size
+				task.budget = entry.global
+				ticket := &inboundRPCTicket{}
+				if task.onTimeout != nil {
+					onTimeout := task.onTimeout
+					var timeoutOnce sync.Once
+					ticket.onTimeout = func() {
+						timeoutOnce.Do(onTimeout)
 					}
-				})
+					task.onTimeout = ticket.onTimeout
+				}
+				task.ticket = ticket
+				if task.onTimeout != nil && !task.deadline.IsZero() {
+					taskCtx := task.ctx
+					task.stopTimeout = context.AfterFunc(taskCtx, func() {
+						if errors.Is(taskCtx.Err(), context.DeadlineExceeded) {
+							c.expireInboundRPCTicket(ticket)
+						}
+					})
+				}
+				prepared[i] = task
 			}
-			c.rpcQueue = append(c.rpcQueue, task)
-			queueLen = len(c.rpcQueue)
+			firstQueueLen = len(c.rpcQueue) + 1
+			c.rpcQueue = append(c.rpcQueue, prepared...)
 			queueCap = c.rpcQueueSize
-			if c.rpcRunning < c.rpcMaxInflight && !c.rpcReady {
+			if len(prepared) > 0 && c.rpcRunning < c.rpcMaxInflight && !c.rpcReady {
 				c.rpcReady = true
 				reschedule = true
 			}
@@ -498,11 +591,13 @@ func (r *inboundRPCReservation) commit(task inboundRPC) error {
 		c.rpcMu.Unlock()
 		c.rpcReservationWG.Done()
 		if !committed {
-			r.global.release()
+			releaseInboundRPCGlobalBatch(globals)
 		}
 	})
 	if committed {
-		r.conn.metrics.InboundRPCQueued(r.method, queueLen, queueCap)
+		for i, entry := range r.entries {
+			r.conn.metrics.InboundRPCQueued(entry.method, firstQueueLen+i, queueCap)
+		}
 		if reschedule {
 			r.conn.rpcScheduler.schedule(r.conn)
 		}
@@ -510,18 +605,22 @@ func (r *inboundRPCReservation) commit(task inboundRPC) error {
 	return result
 }
 
-func (r *inboundRPCReservation) abort() {
+func (r *inboundRPCBatchReservation) abort() {
 	if r == nil {
 		return
 	}
 	r.once.Do(func() {
 		c := r.conn
 		c.rpcMu.Lock()
-		c.rpcReserved--
-		c.inflightRPCBytes.Add(-int64(r.size))
+		c.rpcReserved -= len(r.entries)
+		c.inflightRPCBytes.Add(-r.totalSize)
 		c.rpcMu.Unlock()
 		c.rpcReservationWG.Done()
-		r.global.release()
+		globals := make([]*inboundRPCGlobalReservation, len(r.entries))
+		for i := range r.entries {
+			globals[i] = r.entries[i].global
+		}
+		releaseInboundRPCGlobalBatch(globals)
 	})
 }
 
@@ -544,9 +643,6 @@ func (c *Conn) takeInboundRPC() (task inboundRPC, ok, reschedule bool) {
 		c.rpcQueue = nil
 	}
 	c.rpcRunning++
-	if task.ticket != nil {
-		task.ticket.state.Store(inboundRPCTicketRunning)
-	}
 	c.rpcWG.Add(1)
 	if len(c.rpcQueue) > 0 && c.rpcRunning < c.rpcMaxInflight {
 		c.rpcReady = true
@@ -580,9 +676,6 @@ func (c *Conn) runInboundRPC(task inboundRPC) {
 }
 
 func (c *Conn) finishInboundRPC(task inboundRPC) {
-	if task.ticket != nil {
-		task.ticket.state.Store(inboundRPCTicketDone)
-	}
 	stopInboundRPCTask(task)
 	var reschedule bool
 	c.rpcMu.Lock()
@@ -594,11 +687,15 @@ func (c *Conn) finishInboundRPC(task inboundRPC) {
 	}
 	c.rpcMu.Unlock()
 	reservation := task.budget
+	release := task.release
 	// The scheduler budget may be reused immediately after release. Clear request-owned
 	// closures/context references first so slow metrics/rescheduling cannot overlap the old body
 	// with a newly admitted body under the same byte accounting.
 	task = inboundRPC{}
 	reservation.release()
+	if release != nil {
+		release()
+	}
 	c.rpcWG.Done()
 	if reschedule {
 		c.rpcScheduler.schedule(c)
@@ -607,8 +704,8 @@ func (c *Conn) finishInboundRPC(task inboundRPC) {
 
 // expireInboundRPCTicket removes a request that is still queued and returns its
 // memory/task reservations immediately. If the worker won the dequeue race, the
-// same callback only signals the running request's response gate; its body remains
-// owned until the handler exits.
+// callback does nothing: the running handler owns the only terminal response and
+// its deadline is represented solely by context cancellation.
 func (c *Conn) expireInboundRPCTicket(ticket *inboundRPCTicket) {
 	if ticket == nil {
 		return
@@ -636,7 +733,6 @@ func (c *Conn) expireInboundRPCTicket(ticket *inboundRPCTicket) {
 			}
 		}
 		c.inflightRPCBytes.Add(-int64(task.size))
-		ticket.state.Store(inboundRPCTicketDone)
 		found = true
 		break
 	}
@@ -648,6 +744,7 @@ func (c *Conn) expireInboundRPCTicket(ticket *inboundRPCTicket) {
 	if found {
 		method := task.method
 		reservation := task.budget
+		release := task.release
 		stopInboundRPCTask(task)
 		// Drop the run/context closures before returning the byte reservation. Otherwise an
 		// onTimeout callback that blocks or performs a slow write can keep the copied request body
@@ -658,17 +755,16 @@ func (c *Conn) expireInboundRPCTicket(ticket *inboundRPCTicket) {
 		if ticket.onTimeout != nil {
 			ticket.onTimeout()
 		}
+		if release != nil {
+			release()
+		}
 		return
-	}
-	if ticket.state.Load() == inboundRPCTicketRunning && ticket.onTimeout != nil {
-		ticket.onTimeout()
 	}
 }
 
-// stopInboundRPCTask disarms callbacks before canceling the context so a normal
-// completion or connection close cannot manufacture an RPC_TIMEOUT response.
-// A deadline callback already in flight is harmless because enqueueRPC's response
-// gate makes timeout and normal rpc_result mutually exclusive.
+// stopInboundRPCTask disarms queue-expiration cleanup before canceling the
+// context. Once a worker dequeues the task, the deadline only cancels the
+// handler; it never races the handler with an early RPC_TIMEOUT response.
 func stopInboundRPCTask(task inboundRPC) {
 	if task.stopTimeout != nil {
 		task.stopTimeout()
@@ -690,8 +786,8 @@ func (c *Conn) closeInboundRPCScheduler() {
 }
 
 // beginCloseInboundRPCScheduler publishes closure, cancels running work and releases queued
-// requests without waiting for handlers. ForceClose uses this phase before transport.Close so a
-// pathological/blocking transport implementation cannot leave the RPC admission gate open.
+// requests without waiting for handlers. Shutdown publishes this phase before transport.Close so
+// a pathological/blocking transport implementation cannot leave the RPC admission gate open.
 func (c *Conn) beginCloseInboundRPCScheduler() {
 	if c.rpcScheduler == nil {
 		return
@@ -717,14 +813,15 @@ func (c *Conn) beginCloseInboundRPCScheduler() {
 		for i := range queued {
 			task := queued[i]
 			queued[i] = inboundRPC{}
-			if task.ticket != nil {
-				task.ticket.state.Store(inboundRPCTicketDone)
-			}
 			method := task.method
 			reservation := task.budget
+			release := task.release
 			stopInboundRPCTask(task)
 			task = inboundRPC{}
 			reservation.release()
+			if release != nil {
+				release()
+			}
 			c.metrics.InboundRPCDropped(method, "connection_closed")
 		}
 	})

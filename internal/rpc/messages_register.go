@@ -80,6 +80,8 @@ func (r *Router) registerMessages(d *tg.ServerDispatcher) {
 	d.OnMessagesReportSponsoredMessage(r.onMessagesReportSponsoredMessage)
 	d.OnMessagesReadMessageContents(r.onMessagesReadMessageContents)
 	d.OnMessagesReceivedMessages(r.onMessagesReceivedMessages)
+	d.OnMessagesTranslateText(r.onMessagesTranslateText)
+	d.OnMessagesTogglePeerTranslations(r.onMessagesTogglePeerTranslations)
 	d.OnMessagesGetMessagesViews(r.onMessagesGetMessagesViews)
 	d.OnMessagesGetUnreadMentions(r.onMessagesGetUnreadMentions)
 	d.OnMessagesReadMentions(r.onMessagesReadMentions)

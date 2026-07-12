@@ -48,6 +48,7 @@ import (
 	"telesrv/internal/app/stars"
 	storiesapp "telesrv/internal/app/stories"
 	themesapp "telesrv/internal/app/themes"
+	translationapp "telesrv/internal/app/translation"
 	"telesrv/internal/app/updates"
 	"telesrv/internal/app/userprojection"
 	"telesrv/internal/app/users"
@@ -170,6 +171,47 @@ func newAIComposeOptions(cfg config.Config, limiter aiapp.RateLimiter, premium a
 	return opts
 }
 
+func newTranslationOptions(cfg config.Config, limiter translationapp.RateLimiter, logger *zap.Logger) []translationapp.Option {
+	opts := []translationapp.Option{
+		translationapp.WithEnabled(cfg.TranslationEnabled),
+		translationapp.WithTimeout(cfg.TranslationTimeout),
+		translationapp.WithRateLimiter(limiter, cfg.TranslationRateLimit, cfg.TranslationRateWindow),
+	}
+	selected := make(map[string]struct{}, len(cfg.TranslationProviders))
+	for _, name := range cfg.TranslationProviders {
+		selected[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
+	}
+	providers := make([]translationapp.Provider, 0, len(cfg.AIProviders))
+	for _, pc := range cfg.AIProviders {
+		if aiapp.ProviderKind(pc.Kind) == aiapp.ProviderKindLocal {
+			continue
+		}
+		if len(selected) > 0 {
+			if _, ok := selected[strings.ToLower(pc.Name)]; !ok {
+				continue
+			}
+		}
+		provider, err := aiapp.NewProviderFromConfig(aiapp.ProviderConfig{
+			Name: pc.Name, Kind: aiapp.ProviderKind(pc.Kind), BaseURL: pc.BaseURL,
+			APIKey: pc.APIKey, Model: pc.Model, Timeout: cfg.TranslationTimeout,
+			MaxOutputTokens: max(pc.MaxOutputTokens, 8192), Temperature: pc.Temperature,
+			OmitTemperature: pc.OmitTemperature, Thinking: pc.Thinking,
+		})
+		if err != nil {
+			logger.Warn("translation provider 已跳过", zap.String("provider", pc.Name), zap.Error(err))
+			continue
+		}
+		providers = append(providers, translationapp.NewAIProvider(provider))
+		logger.Info("translation provider 已启用", zap.String("provider", provider.Name()), zap.String("kind", pc.Kind))
+	}
+	if len(providers) > 0 {
+		opts = append(opts, translationapp.WithProviders(providers...))
+	} else if cfg.TranslationEnabled {
+		logger.Warn("translation 已启用但没有远程 provider；messages.translateText 将返回 TRANSLATIONS_DISABLED")
+	}
+	return opts
+}
+
 // startDebugServer 在 addr 上挂起 net/http/pprof 调试端点（addr 为空则关闭）。
 // 用独立 mux（不污染 http.DefaultServeMux），仅注册 pprof 路由：
 //   - /debug/pprof/profile  CPU 剖析（?seconds=30）
@@ -279,7 +321,8 @@ func run(logger *zap.Logger) error {
 	// goroutine/锁竞争的定位全靠此端点。早于重负载初始化启动，连 seed/预热阶段也可剖析。
 	startDebugServer(ctx, cfg.DebugAddr, logger)
 
-	// 持久化依赖：先迁移 schema，再建立连接。auth_key 落 PostgreSQL、session 落 Redis。
+	// 持久化依赖：先迁移 schema，再建立连接。auth key 与业务事实落 PostgreSQL，
+	// Redis 只承载可重建的短 TTL 状态、缓存、计数器和限流。
 	// 依赖由 deploy/docker-compose.yml 启动；连不上则启动失败（开发期须先 docker compose up）。
 	migrationStatus, err := postgres.MigrateAndStatus(cfg.PostgresDSN)
 	if err != nil {
@@ -424,7 +467,6 @@ func run(logger *zap.Logger) error {
 	helpStore := postgres.NewHelpStore(pool)
 	aiComposeStore := postgres.NewAIComposeStore(pool)
 	tempAuthKeyStore := postgres.NewTempAuthKeyBindingStore(pool)
-	sessionStore := redisstore.NewSessionStore(rdb, redisstore.DefaultSessionTTL)
 	inlineRegistryStore := redisstore.NewInlineRegistryStore(rdb)
 	codeStore := redisstore.NewCodeStore(rdb)
 	rateLimiter := redisstore.NewRateLimiter(rdb)
@@ -643,6 +685,12 @@ func run(logger *zap.Logger) error {
 		messageapp.WithSendPermissionChecker(adminService),
 		messageapp.WithBusinessAutomation(passwordStore, businessAutomationOptions...),
 	)
+	translationService := translationapp.NewService(
+		messagesService,
+		channelsService,
+		dialogStore,
+		newTranslationOptions(cfg, rateLimiter, logger)...,
+	)
 	authService := auth.NewService(userStore, authzStore, codeStore, authKeyStore, tempAuthKeyStore, cfg.DevAuthCode,
 		auth.WithLoginMessages(messageStore, dialogStore),
 		auth.WithLoginCodeDelivery(messageStore),
@@ -714,6 +762,7 @@ func run(logger *zap.Logger) error {
 		Dialogs:          dialogsService,
 		Chatlists:        chatlistsService,
 		Messages:         messagesService,
+		Translation:      translationService,
 		Channels:         channelsService,
 		Files:            filesService,
 		Bots:             botsService,
@@ -820,7 +869,6 @@ func run(logger *zap.Logger) error {
 		RSAKey:                        rsaKey,
 		RPC:                           router,
 		AuthKeys:                      authKeyStore,
-		Sessions:                      sessionStore,
 		ActiveSessions:                activeSessions,
 		ObfuscatedTCP:                 true,
 		WebSocket:                     cfg.WebSocketEnable,

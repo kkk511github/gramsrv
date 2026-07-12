@@ -391,7 +391,7 @@ func TestInboundRPCCloseDisarmsQueuedTimeout(t *testing.T) {
 	}
 }
 
-func TestInboundRPCRunningTimeoutSignalsWithoutReleasingBodyEarly(t *testing.T) {
+func TestInboundRPCRunningDeadlineCancelsWithoutEarlyTimeout(t *testing.T) {
 	scheduler := newInboundRPCScheduler(1, 8, 1<<20)
 	scheduler.start()
 	c := newInboundTestConn(scheduler, 1, 4, 30*time.Millisecond)
@@ -418,10 +418,11 @@ func TestInboundRPCRunningTimeoutSignalsWithoutReleasingBodyEarly(t *testing.T) 
 		t.Fatalf("enqueue running task: %v", err)
 	}
 	<-started
+	time.Sleep(80 * time.Millisecond)
 	select {
 	case <-timedOut:
-	case <-time.After(time.Second):
-		t.Fatal("running task did not signal timeout while handler ignored cancellation")
+		t.Fatal("running task emitted an early timeout before handler convergence")
+	default:
 	}
 	if tasks, bytes := scheduler.budgetSnapshot(); tasks != 1 || bytes != 7 {
 		t.Fatalf("running body budget after timeout = (%d, %d), want retained (1, 7)", tasks, bytes)

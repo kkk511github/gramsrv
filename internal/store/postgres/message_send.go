@@ -302,7 +302,7 @@ func (s *MessageStore) sendPrivateTextOnce(ctx context.Context, req domain.SendP
 	if err := appendNewMessageEvent(ctx, qtx, sender); err != nil {
 		return domain.SendPrivateTextResult{}, err
 	}
-	if err := qtx.EnqueueDispatch(ctx, sqlcgen.EnqueueDispatchParams{
+	if err := enqueueDispatch(ctx, qtx, sqlcgen.EnqueueDispatchParams{
 		TargetUserID:     req.SenderUserID,
 		Pts:              int32(senderPts),
 		EventType:        string(domain.UpdateEventNewMessage),
@@ -364,7 +364,7 @@ func (s *MessageStore) sendPrivateTextOnce(ctx context.Context, req domain.SendP
 		if err := appendNewMessageEvent(ctx, qtx, recipient); err != nil {
 			return domain.SendPrivateTextResult{}, err
 		}
-		if err := qtx.EnqueueDispatch(ctx, sqlcgen.EnqueueDispatchParams{
+		if err := enqueueDispatch(ctx, qtx, sqlcgen.EnqueueDispatchParams{
 			TargetUserID:     req.RecipientUserID,
 			Pts:              int32(recipientPts),
 			EventType:        string(domain.UpdateEventNewMessage),
