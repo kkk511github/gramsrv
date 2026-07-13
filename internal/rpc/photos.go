@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/gotd/td/proto"
@@ -188,9 +189,6 @@ func parseProfilePhotoUpload(req profilePhotoUploadRequest) (profilePhotoUpload,
 	if hasMarkup && markup == nil {
 		return profilePhotoUpload{}, 0, photoInvalidErr()
 	}
-	if hasFile && (hasVideo || hasMarkup) {
-		return profilePhotoUpload{}, 0, photoInvalidErr()
-	}
 	if hasVideoStartTs && !hasVideo {
 		return profilePhotoUpload{}, 0, photoInvalidErr()
 	}
@@ -210,6 +208,33 @@ func parseProfilePhotoUpload(req profilePhotoUploadRequest) (profilePhotoUpload,
 }
 
 func (r *Router) createProfilePhoto(ctx context.Context, userID int64, upload profilePhotoUpload) (domain.Photo, error) {
+	if upload.hasFile && (upload.hasVideo || upload.hasMarkup) {
+		cover, ok := uploadedFileRef(userID, upload.file)
+		if !ok {
+			return domain.Photo{}, fileReferenceInvalidErr()
+		}
+		var video *domain.UploadedFileRef
+		if upload.hasVideo {
+			ref, ok := uploadedFileRef(userID, upload.video)
+			if !ok {
+				return domain.Photo{}, fileReferenceInvalidErr()
+			}
+			video = &ref
+		}
+		var markup *domain.PhotoSize
+		if upload.hasMarkup {
+			size, ok := domainPhotoVideoMarkup(upload.markup)
+			if !ok {
+				return domain.Photo{}, photoInvalidErr()
+			}
+			markup = &size
+		}
+		photo, err := r.deps.Files.CreateAvatarAnimatedFromUploads(ctx, cover, video, upload.videoStartTs, markup)
+		if err != nil {
+			return domain.Photo{}, photoUploadErr(err)
+		}
+		return photo, nil
+	}
 	switch {
 	case upload.hasFile:
 		ref, ok := uploadedFileRef(userID, upload.file)
@@ -549,7 +574,61 @@ func (r *Router) pushSelfPhotoUpdate(ctx context.Context, self domain.User) {
 	}
 	updates := selfPhotoUpdates(self, int(r.clock.Now().Unix()), r.tgSelfUser(self))
 	r.pushUserUpdates(ctx, self.ID, updates)
+	r.pushPhotoUpdateToViewers(ctx, self.ID)
 	r.pushSelfPhotoUpdateToCurrentSession(ctx, updates)
+}
+
+func (r *Router) pushPhotoUpdateToViewers(ctx context.Context, userID int64) {
+	if r.deps.Users == nil || userID == 0 {
+		return
+	}
+	recipientSet := make(map[int64]struct{})
+	if audience, ok := r.deps.Contacts.(contactOwnerAudience); ok {
+		recipients, err := audience.ContactOwnerIDs(ctx, userID)
+		if err != nil {
+			r.log.Debug("list profile photo contact recipients", zap.Int64("user_id", userID), zap.Error(err))
+		} else {
+			for _, recipientUserID := range recipients {
+				recipientSet[recipientUserID] = struct{}{}
+			}
+		}
+	}
+	if audience, ok := r.deps.Dialogs.(dialogPeerAudience); ok {
+		recipients, err := audience.PeerDialogOwnerIDs(ctx, domain.Peer{Type: domain.PeerTypeUser, ID: userID})
+		if err != nil {
+			r.log.Debug("list profile photo dialog recipients", zap.Int64("user_id", userID), zap.Error(err))
+		} else {
+			for _, recipientUserID := range recipients {
+				recipientSet[recipientUserID] = struct{}{}
+			}
+		}
+	}
+	recipients := make([]int64, 0, len(recipientSet))
+	for recipientUserID := range recipientSet {
+		recipients = append(recipients, recipientUserID)
+	}
+	sort.Slice(recipients, func(i, j int) bool { return recipients[i] < recipients[j] })
+	if online, ok := r.deps.Sessions.(OnlineUserProvider); ok {
+		recipients = online.OnlineUserIDsForCandidates(recipients, 0)
+	}
+	date := int(r.clock.Now().Unix())
+	for _, recipientUserID := range recipients {
+		if recipientUserID == 0 || recipientUserID == userID {
+			continue
+		}
+		projected, found, err := r.deps.Users.ByID(ctx, recipientUserID, userID)
+		if err != nil || !found {
+			if err != nil {
+				r.log.Debug("project profile photo update", zap.Int64("user_id", userID), zap.Int64("recipient_user_id", recipientUserID), zap.Error(err))
+			}
+			continue
+		}
+		r.pushUserUpdates(ctx, recipientUserID, &tg.Updates{
+			Updates: []tg.UpdateClass{&tg.UpdateUser{UserID: userID}},
+			Users:   []tg.UserClass{r.tgUser(projected)},
+			Date:    date,
+		})
+	}
 }
 
 // defaultSelfPhotoEchoPushDelay 是头像变更后向当前 session 回显 updateUser 的延迟：

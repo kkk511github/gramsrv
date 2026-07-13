@@ -10,6 +10,7 @@ import (
 type DialogStore interface {
 	ListByUser(ctx context.Context, userID int64, filter domain.DialogFilter) (domain.DialogList, error)
 	ListByPeers(ctx context.Context, userID int64, peers []domain.Peer) (domain.DialogList, error)
+	ListOwnerUserIDs(ctx context.Context, peer domain.Peer) ([]int64, error)
 	Upsert(ctx context.Context, userID int64, dialog domain.Dialog) error
 	// UpsertInbox records a newly received private message in a dialog without
 	// overwriting existing read watermarks or pinned/folder metadata.

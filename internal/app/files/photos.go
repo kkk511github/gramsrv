@@ -118,7 +118,7 @@ func (s *Service) CreateAvatarFromUpload(ctx context.Context, file domain.Upload
 
 // CreateAvatarVideoFromUpload stores an animated profile video as photo.video_sizes.
 func (s *Service) CreateAvatarVideoFromUpload(ctx context.Context, file domain.UploadedFileRef, videoStartTs float64) (domain.Photo, error) {
-	return s.createAvatarVideoFromUpload(ctx, file, videoStartTs, nil)
+	return s.createAvatarVideoFromUpload(ctx, file, videoStartTs, nil, nil)
 }
 
 // CreateAvatarVideoMarkupFromUpload stores Android-style generated avatar video plus its emoji/sticker markup.
@@ -126,10 +126,46 @@ func (s *Service) CreateAvatarVideoMarkupFromUpload(ctx context.Context, file do
 	if err := validateAvatarMarkupSize(markup); err != nil {
 		return domain.Photo{}, err
 	}
-	return s.createAvatarVideoFromUpload(ctx, file, videoStartTs, []domain.PhotoSize{markup})
+	return s.createAvatarVideoFromUpload(ctx, file, videoStartTs, []domain.PhotoSize{markup}, nil)
 }
 
-func (s *Service) createAvatarVideoFromUpload(ctx context.Context, file domain.UploadedFileRef, videoStartTs float64, extraSizes []domain.PhotoSize) (domain.Photo, error) {
+// CreateAvatarAnimatedFromUploads stores the client-selected static cover together with
+// an uploaded profile video and/or animated emoji markup.
+func (s *Service) CreateAvatarAnimatedFromUploads(ctx context.Context, cover domain.UploadedFileRef, video *domain.UploadedFileRef, videoStartTs float64, markup *domain.PhotoSize) (domain.Photo, error) {
+	coverBytes, err := s.readUploadBytes(ctx, cover.OwnerUserID, cover.FileID, cover.Parts)
+	if err != nil {
+		return domain.Photo{}, err
+	}
+	if len(coverBytes) == 0 || (video == nil && markup == nil) {
+		return domain.Photo{}, domain.ErrPhotoInvalid
+	}
+	var extraSizes []domain.PhotoSize
+	if markup != nil {
+		if err := validateAvatarMarkupSize(*markup); err != nil {
+			return domain.Photo{}, err
+		}
+		extraSizes = []domain.PhotoSize{*markup}
+	}
+	var photo domain.Photo
+	if video != nil {
+		photo, err = s.createAvatarVideoFromUpload(ctx, *video, videoStartTs, extraSizes, coverBytes)
+	} else {
+		photo, err = s.createAvatarMarkup(ctx, *markup, coverBytes)
+	}
+	if err != nil {
+		return domain.Photo{}, err
+	}
+	if err := s.cleanupUploadParts(ctx, cover.OwnerUserID, cover.FileID); err != nil {
+		s.log.Warn("cleanup animated avatar cover upload parts failed",
+			zap.Int64("owner_user_id", cover.OwnerUserID),
+			zap.Int64("file_id", cover.FileID),
+			zap.Int64("photo_id", photo.ID),
+			zap.Error(err))
+	}
+	return photo, nil
+}
+
+func (s *Service) createAvatarVideoFromUpload(ctx context.Context, file domain.UploadedFileRef, videoStartTs float64, extraSizes []domain.PhotoSize, stillBytes []byte) (domain.Photo, error) {
 	body, err := s.assembleUploadBlob(ctx, file.OwnerUserID, file.FileID, file.Parts)
 	if err != nil {
 		return domain.Photo{}, err
@@ -138,31 +174,18 @@ func (s *Service) createAvatarVideoFromUpload(ctx context.Context, file domain.U
 		return domain.Photo{}, domain.ErrPhotoInvalid
 	}
 	photoID := randomID()
-	blob := domain.FileBlob{
-		LocationKey: fmt.Sprintf("photo:%d:u", photoID),
-		Backend:     domain.MediaBackend(s.blobs.Name()),
-		ObjectKey:   body.ObjectKey,
-		Size:        body.Size,
-		SHA256:      body.SHA256,
-		MimeType:    "video/mp4",
+	if len(stillBytes) == 0 {
+		stillBytes = s.avatarVideoStill(ctx, body, extraSizes)
 	}
-	if err := s.media.PutFileBlob(ctx, blob); err != nil {
-		return domain.Photo{}, err
-	}
-	s.blobCache.put(blob.LocationKey, blob)
-	stillBytes := s.avatarVideoStill(ctx, body, extraSizes)
 	sizes, err := s.putPhotoStaticSizes(ctx, photoID, stillBytes, photoSizeSpecsForAvatar(stillBytes))
 	if err != nil {
 		return domain.Photo{}, err
 	}
-	sizes = append(sizes, domain.PhotoSize{
-		Kind:         domain.PhotoSizeKindVideo,
-		Type:         "u",
-		W:            640,
-		H:            640,
-		Size:         int(body.Size),
-		VideoStartTs: videoStartTs,
-	})
+	videoSizes, err := s.putAvatarVideoSizes(ctx, photoID, body, videoStartTs)
+	if err != nil {
+		return domain.Photo{}, err
+	}
+	sizes = append(sizes, videoSizes...)
 	sizes = append(sizes, extraSizes...)
 	photo := domain.Photo{
 		ID:            photoID,
@@ -185,13 +208,103 @@ func (s *Service) createAvatarVideoFromUpload(ctx context.Context, file domain.U
 	return photo, nil
 }
 
+func (s *Service) putAvatarVideoSizes(ctx context.Context, photoID int64, body assembledUploadBlob, videoStartTs float64) ([]domain.PhotoSize, error) {
+	if s.avatars != nil && body.Size <= avatarVideoTranscodeMaxInput {
+		data, total, err := s.blobs.GetRange(ctx, body.ObjectKey, 0, body.Size)
+		if err == nil && total == body.Size && int64(len(data)) == body.Size {
+			if video, err := s.avatars.Transcode(ctx, data); err == nil {
+				return s.putAvatarVideoVariants(ctx, photoID, video, videoStartTs)
+			} else {
+				s.log.Warn("normalize animated profile video failed; keeping original upload", zap.Int64("photo_id", photoID), zap.Error(err))
+			}
+		} else {
+			s.log.Warn("read animated profile video for normalization failed; keeping original upload", zap.Int64("photo_id", photoID), zap.Error(err))
+		}
+	}
+
+	// Keep both protocol variants available even when ffmpeg is unavailable. The production
+	// path replaces these aliases with independently scaled p/u files.
+	variants := []struct {
+		typeName string
+		w, h     int
+	}{
+		{typeName: "p", w: 160, h: 160},
+		{typeName: "u", w: 640, h: 640},
+	}
+	sizes := make([]domain.PhotoSize, 0, len(variants))
+	for _, variant := range variants {
+		blob := domain.FileBlob{
+			LocationKey: fmt.Sprintf("photo:%d:%s", photoID, variant.typeName),
+			Backend:     domain.MediaBackend(s.blobs.Name()),
+			ObjectKey:   body.ObjectKey,
+			Size:        body.Size,
+			SHA256:      body.SHA256,
+			MimeType:    "video/mp4",
+		}
+		if err := s.media.PutFileBlob(ctx, blob); err != nil {
+			return nil, err
+		}
+		s.blobCache.put(blob.LocationKey, blob)
+		sizes = append(sizes, domain.PhotoSize{Kind: domain.PhotoSizeKindVideo, Type: variant.typeName, W: variant.w, H: variant.h, Size: int(body.Size), VideoStartTs: videoStartTs})
+	}
+	return sizes, nil
+}
+
+func (s *Service) putAvatarVideoVariants(ctx context.Context, photoID int64, video AvatarVideo, videoStartTs float64) ([]domain.PhotoSize, error) {
+	variants := []struct {
+		typeName string
+		video    AvatarVideoVariant
+	}{
+		{typeName: "p", video: video.Small},
+		{typeName: "u", video: video.Large},
+	}
+	sizes := make([]domain.PhotoSize, 0, len(variants))
+	for _, variant := range variants {
+		if len(variant.video.Data) == 0 || variant.video.Width <= 0 || variant.video.Height <= 0 {
+			return nil, domain.ErrPhotoInvalid
+		}
+		objectKey, err := s.blobs.Put(ctx, variant.video.Data)
+		if err != nil {
+			return nil, err
+		}
+		sum := sha256.Sum256(variant.video.Data)
+		blob := domain.FileBlob{
+			LocationKey: fmt.Sprintf("photo:%d:%s", photoID, variant.typeName),
+			Backend:     domain.MediaBackend(s.blobs.Name()),
+			ObjectKey:   objectKey,
+			Size:        int64(len(variant.video.Data)),
+			SHA256:      sum[:],
+			MimeType:    "video/mp4",
+		}
+		if err := s.media.PutFileBlob(ctx, blob); err != nil {
+			return nil, err
+		}
+		s.blobCache.put(blob.LocationKey, blob)
+		startTs := videoStartTs
+		if startTs < 0 || (variant.video.Duration > 0 && startTs >= variant.video.Duration) {
+			startTs = 0
+		}
+		sizes = append(sizes, domain.PhotoSize{
+			Kind: domain.PhotoSizeKindVideo, Type: variant.typeName,
+			W: variant.video.Width, H: variant.video.Height, Size: len(variant.video.Data), VideoStartTs: startTs,
+		})
+	}
+	return sizes, nil
+}
+
 // CreateAvatarMarkup stores an emoji/sticker animated profile markup as photo.video_sizes.
 func (s *Service) CreateAvatarMarkup(ctx context.Context, size domain.PhotoSize) (domain.Photo, error) {
+	return s.createAvatarMarkup(ctx, size, nil)
+}
+
+func (s *Service) createAvatarMarkup(ctx context.Context, size domain.PhotoSize, stillBytes []byte) (domain.Photo, error) {
 	if err := validateAvatarMarkupSize(size); err != nil {
 		return domain.Photo{}, err
 	}
 	photoID := randomID()
-	stillBytes := s.generatedAvatarStill(ctx, size)
+	if len(stillBytes) == 0 {
+		stillBytes = s.generatedAvatarStill(ctx, size)
+	}
 	sizes, err := s.putPhotoStaticSizes(ctx, photoID, stillBytes, photoSizeSpecsForAvatar(stillBytes))
 	if err != nil {
 		return domain.Photo{}, err

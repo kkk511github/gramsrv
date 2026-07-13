@@ -446,6 +446,54 @@ func TestCreateAvatarVideoMarkupGeneratesDownloadableStaticSizes(t *testing.T) {
 	if string(chunk.Bytes) != "fake-profile-video" {
 		t.Fatalf("video avatar bytes = %q", chunk.Bytes)
 	}
+	assertDownloadableAvatarVideoSize(t, svc, photo.ID, "p")
+}
+
+func TestCreateAvatarVideoProducesTelegramSmallAndLargeVariants(t *testing.T) {
+	ctx := context.Background()
+	media := newFakeMediaStore()
+	blobs, err := NewLocalFS(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	transcoder := &fakeAvatarVideoTranscoder{result: AvatarVideo{
+		Small: AvatarVideoVariant{Data: []byte("small-mp4"), Width: 160, Height: 160, Duration: 2},
+		Large: AvatarVideoVariant{Data: []byte("large-mp4"), Width: 800, Height: 800, Duration: 2},
+	}}
+	svc := NewService(media, blobs, 2, WithAvatarVideoTranscoder(transcoder), WithVideoThumbnailer(nil))
+	if _, err := svc.SaveFilePart(ctx, 10, 401, 0, []byte("original-mp4")); err != nil {
+		t.Fatal(err)
+	}
+	photo, err := svc.CreateAvatarVideoFromUpload(ctx, domain.UploadedFileRef{OwnerUserID: 10, FileID: 401, Parts: 1}, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transcoder.calls != 1 {
+		t.Fatalf("transcoder calls = %d, want 1", transcoder.calls)
+	}
+	for _, tc := range []struct {
+		typeName string
+		want     string
+		w        int
+	}{
+		{typeName: "p", want: "small-mp4", w: 160},
+		{typeName: "u", want: "large-mp4", w: 800},
+	} {
+		chunk, found, err := svc.GetFile(ctx, domain.FileDownloadRequest{LocationKey: fmt.Sprintf("photo:%d:%s", photo.ID, tc.typeName), Limit: 1024})
+		if err != nil || !found || string(chunk.Bytes) != tc.want {
+			t.Fatalf("variant %s found=%v err=%v bytes=%q", tc.typeName, found, err, chunk.Bytes)
+		}
+		var got *domain.PhotoSize
+		for i := range photo.Sizes {
+			if photo.Sizes[i].Kind == domain.PhotoSizeKindVideo && photo.Sizes[i].Type == tc.typeName {
+				got = &photo.Sizes[i]
+				break
+			}
+		}
+		if got == nil || got.W != tc.w || got.H != tc.w || got.VideoStartTs != 0 {
+			t.Fatalf("variant %s metadata = %+v, want %dx%d with clamped start", tc.typeName, got, tc.w, tc.w)
+		}
+	}
 }
 
 // TestCreateAvatarVideoMarkupStillUsesVideoFirstFrame 守护动画头像静态尺寸优先取
@@ -494,6 +542,45 @@ func TestCreateAvatarVideoMarkupStillUsesVideoFirstFrame(t *testing.T) {
 	}
 }
 
+func TestCreateAvatarAnimatedFromUploadsUsesClientCover(t *testing.T) {
+	ctx := context.Background()
+	media := newFakeMediaStore()
+	blobs, err := NewLocalFS(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewLocalFS: %v", err)
+	}
+	thumbnailer := &fakeVideoThumbnailer{thumb: testJPEG(t, 320, 320)}
+	svc := NewService(media, blobs, 2, WithVideoThumbnailer(thumbnailer))
+	coverBytes := testJPEG(t, 640, 640)
+	if _, err := svc.SaveFilePart(ctx, 10, 600, 0, coverBytes); err != nil {
+		t.Fatalf("save cover part: %v", err)
+	}
+	if _, err := svc.SaveFilePart(ctx, 10, 601, 0, []byte("fake-profile-video")); err != nil {
+		t.Fatalf("save video part: %v", err)
+	}
+	video := domain.UploadedFileRef{OwnerUserID: 10, FileID: 601, Parts: 1, Name: "avatar.mp4"}
+	photo, err := svc.CreateAvatarAnimatedFromUploads(ctx,
+		domain.UploadedFileRef{OwnerUserID: 10, FileID: 600, Parts: 1, Name: "avatar-cover.jpg"},
+		&video, 0.5, nil)
+	if err != nil {
+		t.Fatalf("CreateAvatarAnimatedFromUploads: %v", err)
+	}
+	if thumbnailer.calls != 0 {
+		t.Fatalf("thumbnailer calls = %d, want 0 when client cover is present", thumbnailer.calls)
+	}
+	chunk, found, err := svc.GetFile(ctx, domain.FileDownloadRequest{
+		LocationKey: fmt.Sprintf("photo:%d:a", photo.ID),
+		Offset:      0,
+		Limit:       1 << 20,
+	})
+	if err != nil || !found {
+		t.Fatalf("avatar cover found=%v err=%v", found, err)
+	}
+	if !bytes.Equal(chunk.Bytes, coverBytes) {
+		t.Fatalf("avatar cover bytes differ from client-selected cover")
+	}
+}
+
 func assertDownloadableAvatarSize(t *testing.T, svc *Service, photoID int64, sizeType string) {
 	t.Helper()
 	chunk, found, err := svc.GetFile(context.Background(), domain.FileDownloadRequest{
@@ -506,6 +593,16 @@ func assertDownloadableAvatarSize(t *testing.T, svc *Service, photoID int64, siz
 	}
 	if len(chunk.Bytes) == 0 || chunk.MimeType != "image/png" {
 		t.Fatalf("avatar %s chunk mime=%q bytes=%d, want image/png bytes", sizeType, chunk.MimeType, len(chunk.Bytes))
+	}
+}
+
+func assertDownloadableAvatarVideoSize(t *testing.T, svc *Service, photoID int64, sizeType string) {
+	t.Helper()
+	chunk, found, err := svc.GetFile(context.Background(), domain.FileDownloadRequest{
+		LocationKey: fmt.Sprintf("photo:%d:%s", photoID, sizeType), Offset: 0, Limit: 1 << 20,
+	})
+	if err != nil || !found || len(chunk.Bytes) == 0 || chunk.MimeType != "video/mp4" {
+		t.Fatalf("avatar video %s found=%v err=%v mime=%q bytes=%d", sizeType, found, err, chunk.MimeType, len(chunk.Bytes))
 	}
 }
 
@@ -536,6 +633,17 @@ type fakeGIFTranscoder struct {
 	result GIFVideo
 	err    error
 	calls  int
+}
+
+type fakeAvatarVideoTranscoder struct {
+	result AvatarVideo
+	err    error
+	calls  int
+}
+
+func (f *fakeAvatarVideoTranscoder) Transcode(_ context.Context, _ []byte) (AvatarVideo, error) {
+	f.calls++
+	return f.result, f.err
 }
 
 func (f *fakeGIFTranscoder) Transcode(_ context.Context, _ []byte) (GIFVideo, error) {

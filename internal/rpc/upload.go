@@ -333,7 +333,9 @@ func storageFileType(mime string, data []byte) tg.StorageFileTypeClass {
 		return &tg.StorageFilePng{}
 	case strings.Contains(mime, "gif"):
 		return &tg.StorageFileGif{}
-	case strings.Contains(mime, "mp4"), strings.Contains(mime, "quicktime"), strings.Contains(mime, "video"):
+	case strings.Contains(mime, "mp4"):
+		return &tg.StorageFileMp4{}
+	case strings.Contains(mime, "quicktime"), strings.Contains(mime, "video"):
 		return &tg.StorageFileMov{}
 	}
 	return &tg.StorageFileUnknown{}

@@ -12,6 +12,7 @@ type ContactStore interface {
 	Get(ctx context.Context, userID, contactUserID int64) (domain.Contact, bool, error)
 	GetMany(ctx context.Context, userID int64, contactUserIDs []int64) (map[int64]domain.Contact, error)
 	GetReverseContacts(ctx context.Context, userID int64, ownerUserIDs []int64) (map[int64]domain.Contact, error)
+	ListOwnerUserIDs(ctx context.Context, contactUserID int64) ([]int64, error)
 	Upsert(ctx context.Context, userID int64, input domain.ContactInput) (domain.Contact, error)
 	UpsertMany(ctx context.Context, userID int64, inputs []domain.ContactInput) ([]domain.Contact, error)
 	UpdateNote(ctx context.Context, userID, contactUserID int64, note string, entities []domain.MessageEntity) (domain.Contact, bool, error)

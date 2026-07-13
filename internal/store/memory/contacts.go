@@ -91,6 +91,25 @@ func (s *ContactStore) GetReverseContacts(_ context.Context, userID int64, owner
 	return out, nil
 }
 
+func (s *ContactStore) ListOwnerUserIDs(_ context.Context, contactUserID int64) ([]int64, error) {
+	if contactUserID == 0 {
+		return nil, nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	ownerUserIDs := make([]int64, 0)
+	for ownerUserID, list := range s.m {
+		for _, contact := range list.Contacts {
+			if contact.User.ID == contactUserID {
+				ownerUserIDs = append(ownerUserIDs, ownerUserID)
+				break
+			}
+		}
+	}
+	sort.Slice(ownerUserIDs, func(i, j int) bool { return ownerUserIDs[i] < ownerUserIDs[j] })
+	return ownerUserIDs, nil
+}
+
 func (s *ContactStore) Upsert(_ context.Context, userID int64, input domain.ContactInput) (domain.Contact, error) {
 	contact := domain.Contact{
 		User: domain.User{

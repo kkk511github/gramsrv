@@ -23,6 +23,12 @@ func TestStorageFileTypeFallsBackToMime(t *testing.T) {
 	}
 }
 
+func TestStorageFileTypeUsesMP4ForProfileVideo(t *testing.T) {
+	if _, ok := storageFileType("video/mp4", nil).(*tg.StorageFileMp4); !ok {
+		t.Fatalf("video/mp4 should return StorageFileMp4")
+	}
+}
+
 func TestUploadGetFileRejectsInvalidRanges(t *testing.T) {
 	r := &Router{deps: Deps{Files: &fakeFiles{}}}
 	location := &tg.InputDocumentFileLocation{ID: 42}

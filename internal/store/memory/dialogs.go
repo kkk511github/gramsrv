@@ -98,6 +98,25 @@ func (s *DialogStore) ListByPeers(_ context.Context, userID int64, peers []domai
 	return out, nil
 }
 
+func (s *DialogStore) ListOwnerUserIDs(_ context.Context, peer domain.Peer) ([]int64, error) {
+	if peer.ID == 0 {
+		return nil, nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	ownerUserIDs := make([]int64, 0)
+	for ownerUserID, list := range s.m {
+		for _, dialog := range list.Dialogs {
+			if dialog.Peer == peer {
+				ownerUserIDs = append(ownerUserIDs, ownerUserID)
+				break
+			}
+		}
+	}
+	sort.Slice(ownerUserIDs, func(i, j int) bool { return ownerUserIDs[i] < ownerUserIDs[j] })
+	return ownerUserIDs, nil
+}
+
 // SaveList 保存一份用户会话列表，供测试和本地替身使用。
 func (s *DialogStore) SaveList(_ context.Context, userID int64, list domain.DialogList) error {
 	list.Dialogs = cloneDialogs(list.Dialogs)

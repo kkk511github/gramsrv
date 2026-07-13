@@ -101,6 +101,14 @@ func (s *Service) GetDialogs(ctx context.Context, userID int64, filter domain.Di
 	return s.getDialogs(ctx, userID, filter, false)
 }
 
+// PeerDialogOwnerIDs returns accounts whose dialog list contains peer.
+func (s *Service) PeerDialogOwnerIDs(ctx context.Context, peer domain.Peer) ([]int64, error) {
+	if s == nil || s.dialogs == nil || peer.ID == 0 {
+		return nil, nil
+	}
+	return s.dialogs.ListOwnerUserIDs(ctx, peer)
+}
+
 // getDialogs 是 GetDialogs 的实现。lightweight=true 跳过草稿附加、viewer 投影与
 // list-hash 写回,供 attachArchiveSummary 取归档顶部会话用:归档摘要只需 top
 // peer/message,草稿无意义;且追加进来的归档 users 会被外层 GetDialogs 的

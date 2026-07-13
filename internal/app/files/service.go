@@ -56,6 +56,8 @@ type Service struct {
 	thumbsSet   bool
 	gifs        GIFTranscoder
 	gifsSet     bool
+	avatars     AvatarVideoTranscoder
+	avatarsSet  bool
 	blobCache   *blobMetaCache
 	byteCache   *blobBytesCache
 	// blobMetaSF/blobBytesSF 合并对同一热 blob 的并发首次访问：否则每个并发 getFile 都各打
@@ -100,6 +102,14 @@ func WithGIFTranscoder(transcoder GIFTranscoder) Option {
 	return func(s *Service) {
 		s.gifs = transcoder
 		s.gifsSet = true
+	}
+}
+
+// WithAvatarVideoTranscoder overrides generation of Telegram p/u animated profile video variants.
+func WithAvatarVideoTranscoder(transcoder AvatarVideoTranscoder) Option {
+	return func(s *Service) {
+		s.avatars = transcoder
+		s.avatarsSet = true
 	}
 }
 
@@ -153,6 +163,14 @@ func NewService(media store.MediaStore, blobs BlobBackend, dc int, opts ...Optio
 			s.log.Warn("ffmpeg/ffprobe not found; GIF uploads will be rejected", zap.Error(err))
 		} else {
 			s.gifs = transcoder
+		}
+	}
+	if !s.avatarsSet {
+		transcoder, err := NewFFmpegAvatarVideoTranscoder()
+		if err != nil {
+			s.log.Warn("ffmpeg/ffprobe not found; animated profile videos will use the original upload", zap.Error(err))
+		} else {
+			s.avatars = transcoder
 		}
 	}
 	return s

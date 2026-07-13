@@ -389,6 +389,14 @@ type ContactsService interface {
 	GetBlocked(ctx context.Context, userID int64, offset, limit int) (domain.BlockedContactList, error)
 }
 
+type contactOwnerAudience interface {
+	ContactOwnerIDs(ctx context.Context, contactUserID int64) ([]int64, error)
+}
+
+type dialogPeerAudience interface {
+	PeerDialogOwnerIDs(ctx context.Context, peer domain.Peer) ([]int64, error)
+}
+
 // DialogsService 抽象会话列表查询。
 type DialogsService interface {
 	GetDialogsHash(ctx context.Context, userID int64, filter domain.DialogFilter) (domain.DialogHashCheck, error)
@@ -691,6 +699,7 @@ type FilesService interface {
 	// getWebPagePreview 已解析过，则 echo 直接带 done 卡片（与官方一致），不依赖异步换卡。
 	LookupWebPage(ctx context.Context, rawURL string) (domain.MessageWebPage, bool)
 	CreateAvatarFromUpload(ctx context.Context, file domain.UploadedFileRef) (domain.Photo, error)
+	CreateAvatarAnimatedFromUploads(ctx context.Context, cover domain.UploadedFileRef, video *domain.UploadedFileRef, videoStartTs float64, markup *domain.PhotoSize) (domain.Photo, error)
 	CreateAvatarVideoFromUpload(ctx context.Context, file domain.UploadedFileRef, videoStartTs float64) (domain.Photo, error)
 	CreateAvatarVideoMarkupFromUpload(ctx context.Context, file domain.UploadedFileRef, videoStartTs float64, markup domain.PhotoSize) (domain.Photo, error)
 	CreateAvatarMarkup(ctx context.Context, size domain.PhotoSize) (domain.Photo, error)

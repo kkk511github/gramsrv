@@ -109,6 +109,15 @@ func (s *Service) GetContacts(ctx context.Context, userID int64, hash int64) (do
 	return list, false, nil
 }
 
+// ContactOwnerIDs returns the accounts that keep contactUserID in their contacts.
+// It is used for viewer-scoped profile update fan-out.
+func (s *Service) ContactOwnerIDs(ctx context.Context, contactUserID int64) ([]int64, error) {
+	if s == nil || s.contacts == nil || contactUserID == 0 {
+		return nil, nil
+	}
+	return s.contacts.ListOwnerUserIDs(ctx, contactUserID)
+}
+
 func (s *Service) AddContact(ctx context.Context, userID int64, input domain.ContactInput) (domain.Contact, error) {
 	if s == nil || s.contacts == nil || userID == 0 || input.ContactUserID == 0 || input.ContactUserID == userID {
 		return domain.Contact{}, ErrContactIDInvalid

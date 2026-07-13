@@ -25,6 +25,34 @@ func NewDialogStore(db sqlcgen.DBTX) *DialogStore {
 	return &DialogStore{db: db, q: sqlcgen.New(db)}
 }
 
+func (s *DialogStore) ListOwnerUserIDs(ctx context.Context, peer domain.Peer) ([]int64, error) {
+	if peer.ID == 0 {
+		return nil, nil
+	}
+	rows, err := s.db.Query(ctx, `
+SELECT user_id
+FROM dialogs
+WHERE peer_type = $1 AND peer_id = $2
+ORDER BY user_id
+`, string(peer.Type), peer.ID)
+	if err != nil {
+		return nil, fmt.Errorf("list dialog owners: %w", err)
+	}
+	defer rows.Close()
+	ownerUserIDs := make([]int64, 0)
+	for rows.Next() {
+		var ownerUserID int64
+		if err := rows.Scan(&ownerUserID); err != nil {
+			return nil, fmt.Errorf("scan dialog owner: %w", err)
+		}
+		ownerUserIDs = append(ownerUserIDs, ownerUserID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list dialog owners rows: %w", err)
+	}
+	return ownerUserIDs, nil
+}
+
 func (s *DialogStore) enrichDialogTopMessages(ctx context.Context, userID int64, messages []domain.Message) error {
 	if len(messages) == 0 {
 		return nil

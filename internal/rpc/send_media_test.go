@@ -545,6 +545,17 @@ func (f *fakeFiles) CreateAvatarFromUpload(_ context.Context, _ domain.UploadedF
 	photo := domain.Photo{ID: 778, AccessHash: 7, DCID: 2, Sizes: []domain.PhotoSize{{Kind: domain.PhotoSizeKindDefault, Type: "a", W: 160, H: 160}, {Kind: domain.PhotoSizeKindDefault, Type: "c", W: 640, H: 640}}}
 	return f.putPhoto(photo), nil
 }
+func (f *fakeFiles) CreateAvatarAnimatedFromUploads(_ context.Context, _ domain.UploadedFileRef, video *domain.UploadedFileRef, videoStartTs float64, markup *domain.PhotoSize) (domain.Photo, error) {
+	sizes := fakeAvatarStaticSizes()
+	if video != nil {
+		sizes = append(sizes, domain.PhotoSize{Kind: domain.PhotoSizeKindVideo, Type: "u", W: 640, H: 640, Size: 1024, VideoStartTs: videoStartTs})
+	}
+	if markup != nil {
+		sizes = append(sizes, *markup)
+	}
+	photo := domain.Photo{ID: 782, AccessHash: 7, DCID: 2, Sizes: sizes}
+	return f.putPhoto(photo), nil
+}
 func (f *fakeFiles) CreateAvatarVideoFromUpload(_ context.Context, _ domain.UploadedFileRef, videoStartTs float64) (domain.Photo, error) {
 	photo := domain.Photo{ID: 779, AccessHash: 7, DCID: 2, Sizes: append(fakeAvatarStaticSizes(), domain.PhotoSize{Kind: domain.PhotoSizeKindVideo, Type: "u", W: 640, H: 640, Size: 1024, VideoStartTs: videoStartTs})}
 	return f.putPhoto(photo), nil

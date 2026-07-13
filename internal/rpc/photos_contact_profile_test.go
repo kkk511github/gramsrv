@@ -213,11 +213,10 @@ func TestUploadContactProfilePhotoInvalidAnimatedFlagsDoNotClear(t *testing.T) {
 		setup func(*tg.PhotosUploadContactProfilePhotoRequest)
 	}{
 		{
-			name: "file-and-video",
+			name: "nil-file",
 			setup: func(req *tg.PhotosUploadContactProfilePhotoRequest) {
 				req.SetSave(true)
-				req.SetFile(uploadedAvatarFile())
-				req.SetVideo(&tg.InputFile{ID: 44, Parts: 1, Name: "avatar.mp4"})
+				req.SetFile(nil)
 			},
 		},
 		{

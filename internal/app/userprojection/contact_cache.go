@@ -149,6 +149,10 @@ func (c *CachedContactStore) GetReverseContacts(ctx context.Context, userID int6
 	return out, nil
 }
 
+func (c *CachedContactStore) ListOwnerUserIDs(ctx context.Context, contactUserID int64) ([]int64, error) {
+	return c.inner.ListOwnerUserIDs(ctx, contactUserID)
+}
+
 func (c *CachedContactStore) Upsert(ctx context.Context, userID int64, input domain.ContactInput) (domain.Contact, error) {
 	contact, err := c.inner.Upsert(ctx, userID, input)
 	if err == nil {

@@ -160,6 +160,34 @@ WHERE c.contact_user_id = $1
 	return out, nil
 }
 
+func (s *ContactStore) ListOwnerUserIDs(ctx context.Context, contactUserID int64) ([]int64, error) {
+	if contactUserID == 0 {
+		return nil, nil
+	}
+	rows, err := s.db.Query(ctx, `
+SELECT user_id
+FROM contacts
+WHERE contact_user_id = $1
+ORDER BY user_id
+`, contactUserID)
+	if err != nil {
+		return nil, fmt.Errorf("list contact owners: %w", err)
+	}
+	defer rows.Close()
+	ownerUserIDs := make([]int64, 0)
+	for rows.Next() {
+		var ownerUserID int64
+		if err := rows.Scan(&ownerUserID); err != nil {
+			return nil, fmt.Errorf("scan contact owner: %w", err)
+		}
+		ownerUserIDs = append(ownerUserIDs, ownerUserID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list contact owners rows: %w", err)
+	}
+	return ownerUserIDs, nil
+}
+
 func (s *ContactStore) Upsert(ctx context.Context, userID int64, input domain.ContactInput) (domain.Contact, error) {
 	entities, err := encodeMessageEntities(input.NoteEntities)
 	if err != nil {

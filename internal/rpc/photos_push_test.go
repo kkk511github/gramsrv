@@ -4,11 +4,14 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gotd/td/clock"
 	"github.com/gotd/td/tg"
 	"go.uber.org/zap/zaptest"
 
+	appcontacts "telesrv/internal/app/contacts"
+	appdialogs "telesrv/internal/app/dialogs"
 	appusers "telesrv/internal/app/users"
 	"telesrv/internal/domain"
 	"telesrv/internal/store/memory"
@@ -68,6 +71,111 @@ func TestUploadProfilePhotoPushesUpdateToOtherDevices(t *testing.T) {
 	pushedPhoto, ok := pushedUser.Photo.(*tg.UserProfilePhoto)
 	if !ok || pushedPhoto.PhotoID != 778 || pushedPhoto.DCID != 2 {
 		t.Fatalf("pushed self photo = %+v, want photo_id=778 dc_id=2", pushedUser.Photo)
+	}
+}
+
+func TestUploadProfileVideoPushesViewerScopedUserToOnlineContactsAndDialogs(t *testing.T) {
+	ctx := context.Background()
+	userStore := memory.NewUserStore()
+	contactStore := memory.NewContactStore()
+	dialogStore := memory.NewDialogStore()
+	owner, _ := userStore.Create(ctx, domain.User{
+		AccessHash:   21,
+		Phone:        "15550001011",
+		FirstName:    "Owner",
+		PremiumUntil: int(clock.System.Now().Add(24 * time.Hour).Unix()),
+	})
+	viewer, _ := userStore.Create(ctx, domain.User{AccessHash: 22, Phone: "15550001012", FirstName: "Viewer"})
+	dialogViewer, _ := userStore.Create(ctx, domain.User{AccessHash: 23, Phone: "15550001013", FirstName: "Dialog Viewer"})
+	if _, err := contactStore.Upsert(ctx, viewer.ID, domain.ContactInput{
+		ContactUserID: owner.ID,
+		FirstName:     owner.FirstName,
+	}); err != nil {
+		t.Fatalf("add viewer contact: %v", err)
+	}
+	if err := dialogStore.Upsert(ctx, dialogViewer.ID, domain.Dialog{
+		Peer: domain.Peer{Type: domain.PeerTypeUser, ID: owner.ID},
+	}); err != nil {
+		t.Fatalf("add viewer dialog: %v", err)
+	}
+	files := &fakeFiles{}
+	sessions := &captureSessions{onlineUserIDs: []int64{viewer.ID, dialogViewer.ID}}
+	userService := appusers.NewService(userStore,
+		appusers.WithContactStore(contactStore),
+		appusers.WithPhotoProvider(files),
+	)
+	r := New(Config{DC: 2, IP: "127.0.0.1", Port: 2398}, Deps{
+		Users:    userService,
+		Contacts: appcontacts.NewService(contactStore, userStore),
+		Dialogs:  appdialogs.NewService(dialogStore),
+		Files:    files,
+		Sessions: sessions,
+	}, zaptest.NewLogger(t), clock.System)
+
+	req := &tg.PhotosUploadProfilePhotoRequest{}
+	req.SetVideo(&tg.InputFile{ID: 43, Parts: 1, Name: "avatar.mp4"})
+	if _, err := r.onPhotosUploadProfilePhoto(WithUserID(ctx, owner.ID), req); err != nil {
+		t.Fatalf("upload profile video: %v", err)
+	}
+
+	gotRecipients := sessions.pushedUserIDs()
+	if len(gotRecipients) != 3 || gotRecipients[0] != owner.ID || gotRecipients[1] != viewer.ID || gotRecipients[2] != dialogViewer.ID {
+		t.Fatalf("push recipients = %v, want owner, online contact %d, dialog viewer %d", gotRecipients, viewer.ID, dialogViewer.ID)
+	}
+	updates, ok := sessions.lastUserPush().(*tg.Updates)
+	if !ok || len(updates.Users) != 1 {
+		t.Fatalf("viewer push = %T %+v, want Updates with projected user", sessions.lastUserPush(), updates)
+	}
+	pushedUser, ok := updates.Users[0].(*tg.User)
+	if !ok {
+		t.Fatalf("projected user = %T, want *tg.User", updates.Users[0])
+	}
+	pushedPhoto, ok := pushedUser.Photo.(*tg.UserProfilePhoto)
+	if !ok || pushedPhoto.PhotoID != 779 || !pushedPhoto.HasVideo {
+		t.Fatalf("projected photo = %+v, want photo 779 has_video=true", pushedUser.Photo)
+	}
+	if !pushedUser.Premium {
+		t.Fatal("projected animated-avatar owner must retain premium=true")
+	}
+}
+
+func TestGetFullUserReturnsAnimatedProfilePhotoToViewer(t *testing.T) {
+	ctx := context.Background()
+	userStore := memory.NewUserStore()
+	owner, _ := userStore.Create(ctx, domain.User{
+		AccessHash:   31,
+		Phone:        "15550001021",
+		FirstName:    "Owner",
+		PremiumUntil: int(clock.System.Now().Add(24 * time.Hour).Unix()),
+	})
+	viewer, _ := userStore.Create(ctx, domain.User{AccessHash: 32, Phone: "15550001022", FirstName: "Viewer"})
+	files := &fakeFiles{}
+	userService := appusers.NewService(userStore, appusers.WithPhotoProvider(files))
+	r := New(Config{DC: 2, IP: "127.0.0.1", Port: 2398}, Deps{
+		Users: userService,
+		Files: files,
+	}, zaptest.NewLogger(t), clock.System)
+
+	req := &tg.PhotosUploadProfilePhotoRequest{}
+	req.SetVideo(&tg.InputFile{ID: 43, Parts: 1, Name: "avatar.mp4"})
+	if _, err := r.onPhotosUploadProfilePhoto(WithUserID(ctx, owner.ID), req); err != nil {
+		t.Fatalf("upload profile video: %v", err)
+	}
+	full, err := r.onUsersGetFullUser(WithUserID(ctx, viewer.ID), &tg.InputUser{UserID: owner.ID, AccessHash: owner.AccessHash})
+	if err != nil {
+		t.Fatalf("get full user: %v", err)
+	}
+	profilePhoto, ok := full.FullUser.ProfilePhoto.(*tg.Photo)
+	if !ok || profilePhoto.ID != 779 || len(profilePhoto.VideoSizes) != 1 {
+		t.Fatalf("full user profile photo = %+v, want photo 779 with video_sizes", full.FullUser.ProfilePhoto)
+	}
+	projectedUser, ok := full.Users[0].(*tg.User)
+	if !ok || !projectedUser.Premium {
+		t.Fatalf("full user envelope = %+v, want premium user", full.Users)
+	}
+	projectedPhoto, ok := projectedUser.Photo.(*tg.UserProfilePhoto)
+	if !ok || projectedPhoto.PhotoID != 779 || !projectedPhoto.HasVideo {
+		t.Fatalf("full user compact photo = %+v, want photo 779 has_video=true", projectedUser.Photo)
 	}
 }
 
@@ -295,6 +403,19 @@ func TestUploadProfilePhotoSupportsAnimatedVideoAndEmojiMarkup(t *testing.T) {
 	if _, ok := comboPhoto.VideoSizes[1].(*tg.VideoSizeEmojiMarkup); !ok {
 		t.Fatalf("combo second video size = %T, want *tg.VideoSizeEmojiMarkup", comboPhoto.VideoSizes[1])
 	}
+
+	iosReq := &tg.PhotosUploadProfilePhotoRequest{}
+	iosReq.SetFile(&tg.InputFile{ID: 46, Parts: 1, Name: "avatar-cover.jpg"})
+	iosReq.SetVideo(&tg.InputFile{ID: 47, Parts: 9, Name: "avatar.mp4"})
+	iosReq.SetVideoStartTs(0.5)
+	iosGot, err := r.onPhotosUploadProfilePhoto(WithUserID(ctx, owner.ID), iosReq)
+	if err != nil {
+		t.Fatalf("upload iOS cover+video profile photo: %v", err)
+	}
+	iosPhoto, ok := iosGot.Photo.(*tg.Photo)
+	if !ok || iosPhoto.ID != 782 || len(iosPhoto.VideoSizes) != 1 {
+		t.Fatalf("iOS profile photo = %+v, want photo 782 with video_sizes", iosGot.Photo)
+	}
 }
 
 func TestUploadProfilePhotoFallbackEmojiAndInvalidFlags(t *testing.T) {
@@ -331,10 +452,9 @@ func TestUploadProfilePhotoFallbackEmojiAndInvalidFlags(t *testing.T) {
 	}
 
 	invalidReq := &tg.PhotosUploadProfilePhotoRequest{}
-	invalidReq.SetFile(&tg.InputFile{ID: 44, Parts: 1, Name: "avatar.jpg"})
-	invalidReq.SetVideoEmojiMarkup(&tg.VideoSizeEmojiMarkup{EmojiID: 101, BackgroundColors: []int{0x445566}})
+	invalidReq.SetVideoStartTs(0.25)
 	if _, err := r.onPhotosUploadProfilePhoto(WithUserID(ctx, owner.ID), invalidReq); err == nil || !strings.Contains(err.Error(), "PHOTO_INVALID") {
-		t.Fatalf("invalid mixed profile photo error = %v, want PHOTO_INVALID", err)
+		t.Fatalf("video start timestamp without video error = %v, want PHOTO_INVALID", err)
 	}
 	if cur, ok, err := files.CurrentProfilePhotoKind(ctx, domain.PeerTypeUser, owner.ID, domain.ProfilePhotoKindProfile); err != nil || !ok || cur.ID != 778 {
 		t.Fatalf("current profile photo after invalid = %+v ok=%v err=%v, want preserved 778", cur, ok, err)
