@@ -8,6 +8,7 @@ import (
 
 	"telesrv/internal/brand"
 	androidcompat "telesrv/internal/compat/android"
+	ioscompat "telesrv/internal/compat/ios"
 	"telesrv/internal/compat/tdesktop"
 )
 
@@ -24,6 +25,12 @@ func (r *Router) registerHelp(d *tg.ServerDispatcher) {
 	})
 	d.OnHelpGetAppUpdate(func(ctx context.Context, source string) (tg.HelpAppUpdateClass, error) {
 		return &tg.HelpNoAppUpdate{}, nil
+	})
+	d.OnHelpGetAppUpdate(func(ctx context.Context, source string) (tg.HelpAppUpdateClass, error) {
+		if _, _, err := r.currentUserID(ctx); err != nil {
+			return nil, internalErr()
+		}
+		return ioscompat.NoAppUpdate(), nil
 	})
 	d.OnHelpGetAppConfig(func(ctx context.Context, hash int) (tg.HelpAppConfigClass, error) {
 		if r.deps.Help == nil {
