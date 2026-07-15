@@ -19,6 +19,70 @@ import (
 	"telesrv/internal/postresponse"
 )
 
+func TestLayerHelpTestAcrossExactProfiles(t *testing.T) {
+	r := New(Config{}, Deps{}, zaptest.NewLogger(t), clock.System)
+	for _, profile := range []tg.LayerProfile{
+		tg.LayerProfile225,
+		tg.LayerProfile226,
+		tg.LayerProfile227,
+		tg.LayerProfile228,
+	} {
+		t.Run(fmt.Sprintf("layer_%d", profile), func(t *testing.T) {
+			for _, wrapped := range []bool{false, true} {
+				name := "naked"
+				var body bin.Buffer
+				if wrapped {
+					name = "invokeWithLayer"
+					if err := (&tg.InvokeWithLayerRequest{
+						Layer: int(profile),
+						Query: &tg.HelpTestRequest{},
+					}).Encode(&body); err != nil {
+						t.Fatalf("encode %s help.test: %v", name, err)
+					}
+				} else {
+					body = encodeExactLayerRPC(t, profile, &tg.HelpTestRequest{})
+				}
+
+				t.Run(name, func(t *testing.T) {
+					var (
+						admitted tg.LayerRequest
+						err      error
+					)
+					if wrapped {
+						admitted, err = r.AdmitUnprofiled(&body, tg.LayerDecodeLimits{})
+					} else {
+						admitted, err = r.AdmitLayer(profile, &body, tg.LayerDecodeLimits{})
+					}
+					if err != nil {
+						t.Fatalf("admit %s help.test: %v", name, err)
+					}
+					if body.Len() != 0 {
+						t.Fatalf("%s help.test left %d bytes", name, body.Len())
+					}
+					call := admitted.Call()
+					if call.Profile() != profile || call.Method() != tg.LayerSemanticMethodHelpTest || call.WireID() != tg.HelpTestRequestTypeID {
+						t.Fatalf("%s help.test call = profile:%d method:%#x wire:%#x", name, call.Profile(), call.Method(), call.WireID())
+					}
+					result, method, err := r.DispatchAdmitted(context.Background(), [8]byte{}, 0, 0, 0, admitted)
+					if err != nil {
+						t.Fatalf("dispatch %s help.test: %v", name, err)
+					}
+					if method != "help.test" || result == nil {
+						t.Fatalf("%s help.test result = method:%q value:%T", name, method, result)
+					}
+					var encoded bin.Buffer
+					if err := result.Encode(&encoded); err != nil {
+						t.Fatalf("encode %s help.test result: %v", name, err)
+					}
+					if id, err := encoded.ID(); err != nil || id != tg.BoolTrueTypeID {
+						t.Fatalf("%s help.test result id = %#x, err=%v", name, id, err)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestLayerAdmissionAndroidPrivateOverlayUsesExactProfile(t *testing.T) {
 	r := New(Config{DC: 2, IP: "127.0.0.1", Port: 2398}, Deps{}, zaptest.NewLogger(t), clock.System)
 

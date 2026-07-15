@@ -105,8 +105,12 @@ func TestDispatchRejectsAuthorizedRPCBeforeLogin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("help.test should be allowed before login: %v", err)
 	}
-	if _, ok := helpTestEnc.(*tg.BoolTrue); !ok {
-		t.Fatalf("help.test result = %T, want *tg.BoolTrue", helpTestEnc)
+	var helpTestResult bin.Buffer
+	if err := helpTestEnc.Encode(&helpTestResult); err != nil {
+		t.Fatalf("encode help.test result: %v", err)
+	}
+	if id, err := helpTestResult.ID(); err != nil || id != tg.BoolTrueTypeID {
+		t.Fatalf("help.test result id = %#x, err=%v", id, err)
 	}
 
 	var sendCode bin.Buffer

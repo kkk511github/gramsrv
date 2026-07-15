@@ -14,6 +14,9 @@ import (
 
 // registerHelp 注册 help.* RPC handler（DC 配置、最近 DC）。
 func (r *Router) registerHelp(d *tg.ServerDispatcher) {
+	d.OnHelpTest(func(context.Context) (bool, error) {
+		return true, nil
+	})
 	d.OnHelpGetConfig(r.onHelpGetConfig)
 	d.OnHelpGetNearestDC(func(ctx context.Context) (*tg.NearestDC, error) {
 		return tdesktop.NearestDC(r.cfg.DC), nil

@@ -7,10 +7,9 @@ import (
 	"github.com/iamxvbaba/td/tg"
 )
 
-const helpTestID = 0xc0e202f7
+const helpTestID = tg.HelpTestRequestTypeID
 
-// tryHelpCompatRPC handles official client help methods missing from gotd's
-// current server dispatcher schema.
+// tryHelpCompatRPC retains help.test support for the legacy unprofiled router.
 func (r *Router) tryHelpCompatRPC(_ context.Context, b *bin.Buffer) (bin.Encoder, bool, error) {
 	id, err := b.PeekID()
 	if err != nil {
