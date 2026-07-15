@@ -160,13 +160,11 @@ func (s *Service) accountAppConfig(ctx context.Context, userID int64, base domai
 		}
 	}
 	if userID > 0 {
-		// DrKLO applies only keys present in the new JSON object and retains old
-		// SharedPreferences values for missing keys. Authenticated non-frozen
-		// accounts therefore need an explicit zero/empty triplet to converge after
-		// an unfreeze; merely omitting the overlay works in TDesktop but leaves
-		// Android frozen indefinitely. Unauthenticated config remains unscoped.
+		// DrKLO retains values for omitted keys, so clear freeze_since_date
+		// explicitly. Telegram iOS, however, treats any present freeze_until_date
+		// (including zero) as frozen. Omitting only that key clears iOS while the
+		// zero since value clears Android, Desktop, macOS and TDLib.
 		values["freeze_since_date"] = json.RawMessage("0")
-		values["freeze_until_date"] = json.RawMessage("0")
 		values["freeze_appeal_url"] = json.RawMessage(`""`)
 		changed = true
 		if s != nil && s.accountFreeze != nil {

@@ -199,11 +199,11 @@ func TestLoginRegisterFlow(t *testing.T) {
 		for _, item := range object.Value {
 			values[item.Key] = item.Value
 		}
-		for _, key := range []string{"freeze_since_date", "freeze_until_date"} {
-			value, ok := values[key].(*tg.JSONNumber)
-			if !ok || value.Value != 0 {
-				return fmt.Errorf("help.getAppConfig %s = %T %+v, want zero clear value", key, values[key], values[key])
-			}
+		if value, ok := values["freeze_since_date"].(*tg.JSONNumber); !ok || value.Value != 0 {
+			return fmt.Errorf("help.getAppConfig freeze_since_date = %T %+v, want zero clear value", values["freeze_since_date"], values["freeze_since_date"])
+		}
+		if value, exists := values["freeze_until_date"]; exists {
+			return fmt.Errorf("help.getAppConfig freeze_until_date = %T %+v, want absent for iOS", value, value)
 		}
 		if value, ok := values["freeze_appeal_url"].(*tg.JSONString); !ok || value.Value != "" {
 			return fmt.Errorf("help.getAppConfig freeze_appeal_url = %T %+v, want empty clear value", values["freeze_appeal_url"], values["freeze_appeal_url"])

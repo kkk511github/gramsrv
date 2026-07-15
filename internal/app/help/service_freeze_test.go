@@ -118,8 +118,11 @@ func assertClearedFreezeConfig(t *testing.T, body []byte) {
 	if err := json.Unmarshal(body, &values); err != nil {
 		t.Fatal(err)
 	}
-	if values["freeze_since_date"] != float64(0) || values["freeze_until_date"] != float64(0) || values["freeze_appeal_url"] != "" {
+	if values["freeze_since_date"] != float64(0) || values["freeze_appeal_url"] != "" {
 		t.Fatalf("freeze clear config = %#v", values)
+	}
+	if _, exists := values["freeze_until_date"]; exists {
+		t.Fatalf("freeze clear config exposes freeze_until_date to iOS: %#v", values)
 	}
 }
 
