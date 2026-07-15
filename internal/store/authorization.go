@@ -21,3 +21,12 @@ type AuthorizationStore interface {
 	// MarkPasswordPassed 清除 auth_key 的 password_pending 标记，使其转为完全授权（两步验证通过后调用）。
 	MarkPasswordPassed(ctx context.Context, authKeyID [8]byte) error
 }
+
+// AuthKeyAuthorityLinker is an optional in-process store-composition boundary.
+// Implementations whose auth_keys primary and authorization projection live in
+// separate in-memory objects can attach them here so Layer writes update both
+// under one state transition. Durable stores normally enforce this inside one
+// database transaction and do not implement the hook.
+type AuthKeyAuthorityLinker interface {
+	LinkAuthKeyAuthority(AuthKeyStore)
+}

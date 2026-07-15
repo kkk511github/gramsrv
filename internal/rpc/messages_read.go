@@ -3,7 +3,7 @@ package rpc
 import (
 	"context"
 	"errors"
-	"github.com/gotd/td/tg"
+	"github.com/iamxvbaba/td/tg"
 	"telesrv/internal/domain"
 )
 
@@ -90,21 +90,6 @@ func readMessageContentIDs(ids []int) []int {
 		out = append(out, id)
 	}
 	return out
-}
-
-// onMessagesReceivedMessages acknowledges notification delivery for clients that
-// call messages.receivedMessages after login. The server does not need to return
-// per-message notification flags for this compatibility path.
-func (r *Router) onMessagesReceivedMessages(ctx context.Context, maxID int) ([]tg.ReceivedNotifyMessage, error) {
-	if maxID < 0 {
-		return nil, messageIDInvalidErr()
-	}
-	if _, ok, err := r.currentUserID(ctx); err != nil {
-		return nil, internalErr()
-	} else if !ok {
-		return nil, authKeyUnregisteredErr()
-	}
-	return []tg.ReceivedNotifyMessage{}, nil
 }
 
 func (r *Router) onMessagesGetUnreadMentions(ctx context.Context, req *tg.MessagesGetUnreadMentionsRequest) (tg.MessagesMessagesClass, error) {

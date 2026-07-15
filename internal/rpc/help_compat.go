@@ -3,7 +3,8 @@ package rpc
 import (
 	"context"
 
-	"github.com/gotd/td/bin"
+	"github.com/iamxvbaba/td/bin"
+	"github.com/iamxvbaba/td/tg"
 )
 
 const helpTestID = 0xc0e202f7
@@ -17,7 +18,7 @@ func (r *Router) tryHelpCompatRPC(_ context.Context, b *bin.Buffer) (bin.Encoder
 	}
 	switch id {
 	case helpTestID:
-		return boolEncoder(true), true, nil
+		return &tg.BoolTrue{}, true, nil
 	default:
 		return nil, false, nil
 	}

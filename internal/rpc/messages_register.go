@@ -2,7 +2,7 @@ package rpc
 
 import (
 	"context"
-	"github.com/gotd/td/tg"
+	"github.com/iamxvbaba/td/tg"
 	"telesrv/internal/compat/tdesktop"
 	"telesrv/internal/domain"
 	"unicode/utf8"
@@ -10,6 +10,7 @@ import (
 
 // registerMessages 注册 messages.* RPC handler。
 func (r *Router) registerMessages(d *tg.ServerDispatcher) {
+	d.OnMessagesReceivedMessages(r.onMessagesReceivedMessages)
 	d.OnMessagesSetTyping(r.onMessagesSetTyping)
 	d.OnMessagesSaveDraft(r.onMessagesSaveDraft)
 	d.OnMessagesSaveDefaultSendAs(r.onMessagesSaveDefaultSendAs)
@@ -79,7 +80,6 @@ func (r *Router) registerMessages(d *tg.ServerDispatcher) {
 	d.OnMessagesReportMusicListen(r.onMessagesReportMusicListen)
 	d.OnMessagesReportSponsoredMessage(r.onMessagesReportSponsoredMessage)
 	d.OnMessagesReadMessageContents(r.onMessagesReadMessageContents)
-	d.OnMessagesReceivedMessages(r.onMessagesReceivedMessages)
 	d.OnMessagesTranslateText(r.onMessagesTranslateText)
 	d.OnMessagesTogglePeerTranslations(r.onMessagesTogglePeerTranslations)
 	d.OnMessagesGetMessagesViews(r.onMessagesGetMessagesViews)
@@ -202,13 +202,24 @@ func (r *Router) registerMessages(d *tg.ServerDispatcher) {
 		if err != nil {
 			return nil, internalErr()
 		}
-		// difference 类 catch-up FLOOD_WAIT（设计 Phase 2 / §10.3）：DrKLO 收 nudge 对未加载频道
-		// 走 loadUnknownChannel→getPeerDialogs，限速须同时覆盖它（不止 getChannelDifference）。
-		if err := r.checkCatchupRateLimit(ctx, userID, peerDialogsRateLimitKeyPrefix); err != nil {
-			return nil, err
-		}
 		domainPeers, err := r.dialogPeersFromInput(ctx, userID, peers)
 		if err != nil {
+			return nil, err
+		}
+		channelIDs := make([]int64, 0, len(domainPeers))
+		for _, peer := range domainPeers {
+			if peer.Type == domain.PeerTypeChannel {
+				channelIDs = append(channelIDs, peer.ID)
+			}
+		}
+		if err := r.checkFrozenChannelParticipants(ctx, userID, channelIDs...); err != nil {
+			return nil, err
+		}
+		// difference 类 catch-up FLOOD_WAIT（设计 Phase 2 / §10.3）：DrKLO 收 nudge 对未加载频道
+		// 走 loadUnknownChannel→getPeerDialogs，限速须同时覆盖它（不止 getChannelDifference）。
+		// 冻结账号的 guest/non-member 必须先返回 FROZEN_PARTICIPANT_MISSING，拒绝路径不能
+		// 消耗限流额度或产生其它可变状态。
+		if err := r.checkCatchupRateLimit(ctx, userID, peerDialogsRateLimitKeyPrefix); err != nil {
 			return nil, err
 		}
 		var list domain.DialogList
@@ -260,6 +271,9 @@ func (r *Router) registerMessages(d *tg.ServerDispatcher) {
 			if err := r.validateInputPeerChannelAccess(ctx, userID, req.Peer, filter.Peer.ID); err != nil {
 				return nil, err
 			}
+			if err := r.checkFrozenChannelParticipants(ctx, userID, filter.Peer.ID); err != nil {
+				return nil, err
+			}
 			if isLegacyInputPeerChat(req.Peer) {
 				return &tg.MessagesMessages{}, nil
 			}
@@ -296,7 +310,6 @@ func (r *Router) registerMessages(d *tg.ServerDispatcher) {
 		}
 		return r.tgMessagesMessages(ctx, userID, r.enrichMessageList(ctx, userID, list)), nil
 	})
-	d.OnMessagesGetRecentLocations(r.onMessagesGetRecentLocations)
 	d.OnMessagesReadHistory(func(ctx context.Context, req *tg.MessagesReadHistoryRequest) (*tg.MessagesAffectedMessages, error) {
 		id, _ := AuthKeyIDFrom(ctx)
 		userID, _, err := r.currentUserID(ctx)

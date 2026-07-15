@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gotd/td/bin"
-	"github.com/gotd/td/tg"
+	"github.com/iamxvbaba/td/bin"
+	"github.com/iamxvbaba/td/tg"
 	"go.uber.org/zap/zaptest"
 
 	appstories "telesrv/internal/app/stories"

@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gotd/td/bin"
-	"github.com/gotd/td/clock"
-	"github.com/gotd/td/proto"
-	"github.com/gotd/td/tg"
+	"github.com/iamxvbaba/td/bin"
+	"github.com/iamxvbaba/td/clock"
+	"github.com/iamxvbaba/td/proto"
+	"github.com/iamxvbaba/td/tg"
 	"go.uber.org/zap/zaptest"
 
 	"telesrv/internal/domain"
@@ -828,7 +828,7 @@ type captureBestEffortSessions struct {
 	timeout    time.Duration
 }
 
-func (s *captureBestEffortSessions) PushToUserExceptAuthKeySessionBestEffort(ctx context.Context, userID int64, excludeAuthKeyID [8]byte, excludeSessionID int64, t proto.MessageType, msg bin.Encoder, timeout time.Duration) (int, error) {
+func (s *captureBestEffortSessions) PushToUserExceptAuthKeySessionBestEffort(ctx context.Context, userID int64, excludeAuthKeyID [8]byte, excludeSessionID int64, t proto.MessageType, msg tg.UpdatesClass, timeout time.Duration) (int, error) {
 	s.bestEffort = true
 	s.timeout = timeout
 	return s.PushToUserExceptAuthKeySession(ctx, userID, excludeAuthKeyID, excludeSessionID, t, msg)
@@ -851,7 +851,7 @@ type selectiveFailOutboxSessions struct {
 	attempts   []outboxPushAttempt
 }
 
-func (s *selectiveFailOutboxSessions) PushToUserExceptAuthKeySession(_ context.Context, userID int64, excludeAuthKeyID [8]byte, excludeSessionID int64, t proto.MessageType, msg bin.Encoder) (int, error) {
+func (s *selectiveFailOutboxSessions) PushToUserExceptAuthKeySession(_ context.Context, userID int64, excludeAuthKeyID [8]byte, excludeSessionID int64, t proto.MessageType, msg tg.UpdatesClass) (int, error) {
 	pts := 0
 	if updates, ok := msg.(*tg.Updates); ok {
 		pts = firstOutboxUpdatePts(updates)
@@ -867,7 +867,7 @@ func (s *selectiveFailOutboxSessions) pushAttempts() []outboxPushAttempt {
 	return append([]outboxPushAttempt(nil), s.attempts...)
 }
 
-func (s *orderedOutboxCaptureSessions) PushToUserExceptAuthKeySession(_ context.Context, userID int64, excludeAuthKeyID [8]byte, excludeSessionID int64, t proto.MessageType, msg bin.Encoder) (int, error) {
+func (s *orderedOutboxCaptureSessions) PushToUserExceptAuthKeySession(_ context.Context, userID int64, excludeAuthKeyID [8]byte, excludeSessionID int64, t proto.MessageType, msg tg.UpdatesClass) (int, error) {
 	if updates, ok := msg.(*tg.Updates); ok {
 		s.pushed = append(s.pushed, firstOutboxUpdatePts(updates))
 	}
@@ -1079,12 +1079,12 @@ func (s *captureScopedSessions) SetReceivesUpdatesForAuthKey(rawAuthKeyID [8]byt
 	s.captureSessions.SetReceivesUpdatesForAuthKey(rawAuthKeyID, sessionID, receives)
 }
 
-func (s *captureScopedSessions) PushToSessionForAuthKey(_ context.Context, rawAuthKeyID [8]byte, sessionID int64, t proto.MessageType, msg bin.Encoder) error {
+func (s *captureScopedSessions) PushToSessionForAuthKey(_ context.Context, rawAuthKeyID [8]byte, sessionID int64, t proto.MessageType, msg tg.UpdatesClass) error {
 	s.setScopedAuthKeyID(rawAuthKeyID)
 	return s.captureSessions.PushToSessionForAuthKey(context.Background(), rawAuthKeyID, sessionID, t, msg)
 }
 
-func (s *captureScopedSessions) PushToSessionForAuthKeyImmediate(_ context.Context, rawAuthKeyID [8]byte, sessionID int64, t proto.MessageType, msg bin.Encoder) error {
+func (s *captureScopedSessions) PushToSessionForAuthKeyImmediate(_ context.Context, rawAuthKeyID [8]byte, sessionID int64, t proto.MessageType, msg tg.UpdatesClass) error {
 	s.scopedMu.Lock()
 	s.immediatePush = true
 	s.scopedAuthKeyID = rawAuthKeyID
@@ -1094,7 +1094,7 @@ func (s *captureScopedSessions) PushToSessionForAuthKeyImmediate(_ context.Conte
 	return s.captureSessions.PushToSessionForAuthKey(context.Background(), rawAuthKeyID, sessionID, t, msg)
 }
 
-func (s *captureScopedSessions) PushToUserExceptAuthKeySession(_ context.Context, userID int64, excludeAuthKeyID [8]byte, excludeSessionID int64, t proto.MessageType, msg bin.Encoder) (int, error) {
+func (s *captureScopedSessions) PushToUserExceptAuthKeySession(_ context.Context, userID int64, excludeAuthKeyID [8]byte, excludeSessionID int64, t proto.MessageType, msg tg.UpdatesClass) (int, error) {
 	s.setScopedAuthKeyID(excludeAuthKeyID)
 	return s.captureSessions.PushToUserExceptAuthKeySession(context.Background(), userID, excludeAuthKeyID, excludeSessionID, t, msg)
 }
@@ -1175,7 +1175,7 @@ type interruptedBestEffortSessions struct {
 	attempts int
 }
 
-func (s *interruptedBestEffortSessions) PushToUserExceptAuthKeySessionBestEffort(_ context.Context, _ int64, _ [8]byte, _ int64, _ proto.MessageType, _ bin.Encoder, _ time.Duration) (int, error) {
+func (s *interruptedBestEffortSessions) PushToUserExceptAuthKeySessionBestEffort(_ context.Context, _ int64, _ [8]byte, _ int64, _ proto.MessageType, _ tg.UpdatesClass, _ time.Duration) (int, error) {
 	s.attempts++
 	return 0, context.DeadlineExceeded
 }

@@ -1,4 +1,4 @@
-// Command slerv 是基于 gotd/td 的 SafeLink-compatible server（第一兼容目标：Telegram Desktop）。
+// Command slerv 是基于 iamxvbaba/td 的 SafeLink-compatible server（第一兼容目标：Telegram Desktop）。
 package main
 
 import (
@@ -18,9 +18,9 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/gotd/td/clock"
-	"github.com/gotd/td/exchange"
-	"github.com/gotd/td/tg"
+	"github.com/iamxvbaba/td/clock"
+	"github.com/iamxvbaba/td/exchange"
+	"github.com/iamxvbaba/td/tg"
 
 	adminapp "telesrv/internal/admin"
 	"telesrv/internal/adminapi"
@@ -299,7 +299,8 @@ func run(logger *zap.Logger) error {
 		return fmt.Errorf("parse listen port %q: %w", portStr, err)
 	}
 
-	// tg.Layer 来自 gotd/td v0.158.0（Layer 227），与目标 TDesktop 基线对齐。
+	// tg.Layer 由当前导入的 canonical schema 生成；纳入未来 Layer 后无需
+	// 在 slerv 另维护一份常量。
 	logger.Info("slerv 启动",
 		zap.String("listen", cfg.ListenAddr),
 		zap.Int("dc", cfg.DC),
@@ -476,6 +477,7 @@ func run(logger *zap.Logger) error {
 		cfg.RetentionBatch,
 	).WithDispatchOutboxPoisonPolicy(cfg.OutboxPoisonRetention, cfg.OutboxPoisonCleanupInterval).
 		WithBotAPIUpdateRetention(botAPIUpdateStore, cfg.BotAPIUpdateRetention).
+		WithAuthKeySessionLayerRetention(authKeyStore).
 		WithLoginCodeDeliveryRetention(messageStore).
 		WithUserUpdateRetention(updateEventStore).
 		WithChannelUpdateRetention(channelStore).
@@ -742,41 +744,43 @@ func run(logger *zap.Logger) error {
 		TempKeyResolveCacheTTL:        cfg.TempKeyResolveCacheTTL,
 		TempKeyResolveCacheMaxEntries: cfg.TempKeyResolveCacheMaxEntries,
 	}, rpc.Deps{
-		Auth:             authService,
-		IPGeo:            ipGeoResolver,
-		Account:          accountService,
-		Privacy:          privacyService,
-		Help:             help.NewService(helpStore, helpStore, help.WithMapboxToken(cfg.MapboxToken)),
-		AICompose:        aiComposeService,
-		Users:            usersService,
-		Updates:          updatesService,
-		BootstrapUpdates: bootstrapUpdateStore,
-		BotAPIUpdates:    botAPIUpdateStore,
-		PushDevices:      pushStore,
-		Contacts:         contactsService,
-		Dialogs:          dialogsService,
-		Chatlists:        chatlistsService,
-		Messages:         messagesService,
-		Translation:      translationService,
-		Channels:         channelsService,
-		Files:            filesService,
-		Bots:             botsService,
-		Polls:            pollsapp.NewService(pollStore),
-		Stories:          storiesapp.NewService(storyStore, storiesapp.WithChannelStoryAccess(channelsService)),
-		Phone:            phoneService,
-		SecretChats:      secretChatService,
-		Stars:            starsService,
-		Gifts:            giftsService,
-		Passkey:          passkeyService,
-		Themes:           themeService,
-		GroupCalls:       groupCallsService,
-		LiveStreams:      liveStreamDep(liveStreamService),
-		SFU:              sfuService,
-		TURN:             turnService,
-		LangPack:         langPackService,
-		Sessions:         activeSessions,
-		Inline:           inlineRegistryStore,
-		Limiter:          rateLimiter,
+		Auth:                 authService,
+		AuthKeySessionLayers: authKeyStore,
+		IPGeo:                ipGeoResolver,
+		Account:              accountService,
+		Privacy:              privacyService,
+		Help:                 help.NewService(helpStore, helpStore, help.WithMapboxToken(cfg.MapboxToken), help.WithAccountFreezeProvider(adminService)),
+		AccountFreeze:        adminService,
+		AICompose:            aiComposeService,
+		Users:                usersService,
+		Updates:              updatesService,
+		BootstrapUpdates:     bootstrapUpdateStore,
+		BotAPIUpdates:        botAPIUpdateStore,
+		PushDevices:          pushStore,
+		Contacts:             contactsService,
+		Dialogs:              dialogsService,
+		Chatlists:            chatlistsService,
+		Messages:             messagesService,
+		Translation:          translationService,
+		Channels:             channelsService,
+		Files:                filesService,
+		Bots:                 botsService,
+		Polls:                pollsapp.NewService(pollStore),
+		Stories:              storiesapp.NewService(storyStore, storiesapp.WithChannelStoryAccess(channelsService)),
+		Phone:                phoneService,
+		SecretChats:          secretChatService,
+		Stars:                starsService,
+		Gifts:                giftsService,
+		Passkey:              passkeyService,
+		Themes:               themeService,
+		GroupCalls:           groupCallsService,
+		LiveStreams:          liveStreamDep(liveStreamService),
+		SFU:                  sfuService,
+		TURN:                 turnService,
+		LangPack:             langPackService,
+		Sessions:             activeSessions,
+		Inline:               inlineRegistryStore,
+		Limiter:              rateLimiter,
 	}, logger.Named("rpc"), clock.System)
 	readModelListener := postgres.NewReadModelChangeListener(cfg.PostgresDSN, postgres.ReadModelCacheSet{
 		ReadModelVersions:  readModelVersionStore,
@@ -859,29 +863,36 @@ func run(logger *zap.Logger) error {
 	}
 
 	srv := mtprotoedge.New(mtprotoedge.Options{
-		Logger:                        logger.Named("mtprotoedge"),
-		DC:                            cfg.DC,
-		RSAKey:                        rsaKey,
-		RPC:                           router,
-		AuthKeys:                      authKeyStore,
-		ActiveSessions:                activeSessions,
-		ObfuscatedTCP:                 true,
-		WebSocket:                     cfg.WebSocketEnable,
-		WebSocketAllowedOrigins:       cfg.WebSocketAllowedOrigins,
-		MaxConnections:                cfg.MTProtoMaxConnections,
-		MaxConnectionsPerIP:           cfg.MTProtoMaxConnectionsPerIP,
-		MaxConcurrentHandshakes:       cfg.MTProtoMaxConcurrentHandshakes,
-		RPCMaxInflight:                cfg.MTProtoRPCMaxInflight,
-		RPCQueueSize:                  cfg.MTProtoRPCQueueSize,
-		RPCTimeout:                    cfg.MTProtoRPCTimeout,
-		RPCGlobalWorkers:              cfg.MTProtoRPCGlobalWorkers,
-		RPCGlobalMaxTasks:             cfg.MTProtoRPCGlobalMaxTasks,
-		RPCGlobalMaxBytes:             cfg.MTProtoRPCGlobalMaxBytes,
-		InboundFrameGlobalMaxBytes:    cfg.MTProtoInboundFrameGlobalMaxBytes,
-		OutboundQueueSize:             cfg.MTProtoOutboundQueueSize,
-		OutboundControlQueueSize:      cfg.MTProtoOutboundControlQueueSize,
-		OutboundTrackedGlobalMaxBytes: cfg.MTProtoOutboundTrackedGlobalMaxBytes,
-		OutboundWriteGlobalMaxBytes:   cfg.MTProtoOutboundWriteGlobalMaxBytes,
+		Logger:                          logger.Named("mtprotoedge"),
+		DC:                              cfg.DC,
+		RSAKey:                          rsaKey,
+		LayerRPC:                        router,
+		AuthKeys:                        authKeyStore,
+		ActiveSessions:                  activeSessions,
+		ObfuscatedTCP:                   true,
+		WebSocket:                       cfg.WebSocketEnable,
+		WebSocketAllowedOrigins:         cfg.WebSocketAllowedOrigins,
+		MaxConnections:                  cfg.MTProtoMaxConnections,
+		MaxConnectionsPerIP:             cfg.MTProtoMaxConnectionsPerIP,
+		MaxConcurrentHandshakes:         cfg.MTProtoMaxConcurrentHandshakes,
+		RPCMaxInflight:                  cfg.MTProtoRPCMaxInflight,
+		RPCQueueSize:                    cfg.MTProtoRPCQueueSize,
+		RPCTimeout:                      cfg.MTProtoRPCTimeout,
+		RPCGlobalWorkers:                cfg.MTProtoRPCGlobalWorkers,
+		RPCGlobalMaxTasks:               cfg.MTProtoRPCGlobalMaxTasks,
+		RPCGlobalMaxBytes:               cfg.MTProtoRPCGlobalMaxBytes,
+		RPCResultCacheMaxEntries:        cfg.MTProtoRPCResultCacheMaxEntries,
+		RPCResultCacheMaxBytes:          cfg.MTProtoRPCResultCacheMaxBytes,
+		RPCResultCacheAuthMaxEntries:    cfg.MTProtoRPCResultCacheAuthMaxEntries,
+		RPCResultCacheAuthMaxBytes:      cfg.MTProtoRPCResultCacheAuthMaxBytes,
+		RPCResultCacheSessionMaxEntries: cfg.MTProtoRPCResultCacheSessionMaxEntries,
+		RPCResultCacheSessionMaxBytes:   cfg.MTProtoRPCResultCacheSessionMaxBytes,
+		RPCResultPendingPerAuth:         cfg.MTProtoRPCResultPendingPerAuth,
+		InboundFrameGlobalMaxBytes:      cfg.MTProtoInboundFrameGlobalMaxBytes,
+		OutboundQueueSize:               cfg.MTProtoOutboundQueueSize,
+		OutboundControlQueueSize:        cfg.MTProtoOutboundControlQueueSize,
+		OutboundTrackedGlobalMaxBytes:   cfg.MTProtoOutboundTrackedGlobalMaxBytes,
+		OutboundWriteGlobalMaxBytes:     cfg.MTProtoOutboundWriteGlobalMaxBytes,
 		OnServing: func(_ net.Addr) {
 			logger.Info("slerv 服务就绪",
 				zap.String("listen", cfg.ListenAddr),

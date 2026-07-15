@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/gotd/td/tgerr"
+	"github.com/iamxvbaba/td/tgerr"
 
 	"telesrv/internal/app/auth"
 	"telesrv/internal/domain"
@@ -91,7 +91,8 @@ func documentInvalidErr() error      { return tgerr.New(400, "DOCUMENT_INVALID")
 
 func mediaEmptyErr() error { return tgerr.New(400, "MEDIA_EMPTY") }
 
-func frozenMethodInvalidErr() error { return tgerr.New(400, "FROZEN_METHOD_INVALID") }
+func frozenMethodInvalidErr() error      { return tgerr.New(420, "FROZEN_METHOD_INVALID") }
+func frozenParticipantMissingErr() error { return tgerr.New(400, "FROZEN_PARTICIPANT_MISSING") }
 
 func photoInvalidErr() error { return tgerr.New(400, "PHOTO_INVALID") }
 

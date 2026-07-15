@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/gotd/td/tg"
+	"github.com/iamxvbaba/td/tg"
 	"go.uber.org/zap"
 
 	ioscompat "telesrv/internal/compat/ios"
@@ -17,9 +17,6 @@ import (
 func (r *Router) registerAccount(d *tg.ServerDispatcher) {
 	d.OnAccountRegisterDevice(r.onAccountRegisterDevice)
 	d.OnAccountUnregisterDevice(r.onAccountUnregisterDevice)
-	d.OnAccountUpdateDeviceLocked(func(ctx context.Context, period int) (bool, error) {
-		return true, nil
-	})
 	d.OnAccountUpdateDeviceLocked(func(ctx context.Context, period int) (bool, error) {
 		if _, _, err := r.currentUserID(ctx); err != nil {
 			return false, internalErr()
@@ -1098,7 +1095,7 @@ func privacyErr(err error) error {
 }
 
 type accountReactionSettingsService interface {
-	GetReactionSettings(ctx context.Context, userID int64) (domain.AccountReactionSettings, error)
+	accountReactionSettingsReader
 	SetReactionsNotifySettings(ctx context.Context, userID int64, settings domain.ReactionsNotifySettings) (domain.AccountReactionSettings, error)
 }
 

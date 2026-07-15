@@ -7,6 +7,9 @@ import (
 )
 
 type captureAuthService struct {
+	bindTempCalls         int
+	bindTempLayer         int
+	bindTempHook          func(domain.TempAuthKeyBinding) error
 	resolvedAuthKeyID     [8]byte
 	hasResolved           bool
 	resolveCount          int
@@ -156,7 +159,12 @@ func (s *blockingUserAuthService) CompletePasswordSignIn(context.Context, [8]byt
 	return nil
 }
 
-func (s *captureAuthService) BindTempAuthKey(context.Context, int64, domain.TempAuthKeyBinding) error {
+func (s *captureAuthService) BindTempAuthKey(ctx context.Context, _ int64, binding domain.TempAuthKeyBinding) error {
+	s.bindTempCalls++
+	s.bindTempLayer = LayerFrom(ctx)
+	if s.bindTempHook != nil {
+		return s.bindTempHook(binding)
+	}
 	return nil
 }
 
@@ -306,6 +314,26 @@ func (s *captureAuthService) UpdateAuthKeyClientInfo(_ context.Context, authKeyI
 		current.AppVersion = info.AppVersion
 	}
 	s.authKeyClientInfos[authKeyID] = current
+	for i := range s.authorizations {
+		if s.authorizations[i].AuthKeyID != authKeyID {
+			continue
+		}
+		if info.DeviceModel != "" {
+			s.authorizations[i].DeviceModel = info.DeviceModel
+		}
+		if info.Platform != "" {
+			s.authorizations[i].Platform = info.Platform
+		}
+		if info.SystemVersion != "" {
+			s.authorizations[i].SystemVersion = info.SystemVersion
+		}
+		if info.APIID != 0 {
+			s.authorizations[i].APIID = info.APIID
+		}
+		if info.AppVersion != "" {
+			s.authorizations[i].AppVersion = info.AppVersion
+		}
+	}
 	return nil
 }
 

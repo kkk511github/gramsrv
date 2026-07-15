@@ -6,8 +6,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/gotd/td/proto"
-	"github.com/gotd/td/tg"
+	"github.com/iamxvbaba/td/proto"
+	"github.com/iamxvbaba/td/tg"
 	"go.uber.org/zap"
 
 	"telesrv/internal/domain"
