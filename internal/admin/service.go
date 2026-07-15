@@ -70,6 +70,10 @@ type UserNotifier interface {
 	NotifyUserChanged(ctx context.Context, u domain.User) error
 }
 
+type AccountFreezeNotifier interface {
+	NotifyAccountFreezeChanged(ctx context.Context, userID int64) error
+}
+
 type ChannelsService interface {
 	GetChannelByID(ctx context.Context, channelID int64) (domain.Channel, error)
 	SetVerified(ctx context.Context, channelID int64, verified bool) (domain.Channel, error)
@@ -95,6 +99,7 @@ type Dependencies struct {
 	Stars           StarsService
 	StarsNotifier   StarsNotifier
 	UserNotifier    UserNotifier
+	FreezeNotifier  AccountFreezeNotifier
 	Channels        ChannelsService
 	ChannelNotifier ChannelNotifier
 	Messages        MessagesService
@@ -110,6 +115,7 @@ type Service struct {
 	stars           StarsService
 	starsNotifier   StarsNotifier
 	userNotifier    UserNotifier
+	freezeNotifier  AccountFreezeNotifier
 	channels        ChannelsService
 	channelNotifier ChannelNotifier
 	messages        MessagesService
@@ -145,6 +151,9 @@ func (s *Service) Configure(deps Dependencies) *Service {
 	}
 	if deps.UserNotifier != nil {
 		s.userNotifier = deps.UserNotifier
+	}
+	if deps.FreezeNotifier != nil {
+		s.freezeNotifier = deps.FreezeNotifier
 	}
 	if deps.Channels != nil {
 		s.channels = deps.Channels
@@ -364,6 +373,11 @@ func (s *Service) SetAccountFrozen(ctx context.Context, req SetAccountFrozenRequ
 			return CommandResult{}, err
 		}
 		details["updated_at"] = updated.UpdatedAt.UTC().Format(time.RFC3339)
+		if wouldChange {
+			if err := s.notifyAccountFreezeChanged(ctx, req.UserID); err != nil {
+				details["notify_error"] = err.Error()
+			}
+		}
 		return CommandResult{Message: "account freeze updated", Details: details}, nil
 	})
 }
@@ -797,6 +811,13 @@ func (s *Service) notifyUserChanged(ctx context.Context, u domain.User) error {
 		return nil
 	}
 	return s.userNotifier.NotifyUserChanged(ctx, u)
+}
+
+func (s *Service) notifyAccountFreezeChanged(ctx context.Context, userID int64) error {
+	if s == nil || s.freezeNotifier == nil {
+		return nil
+	}
+	return s.freezeNotifier.NotifyAccountFreezeChanged(ctx, userID)
 }
 
 func (s *Service) notifyStarsBalanceChanged(ctx context.Context, balance domain.StarsBalance) error {

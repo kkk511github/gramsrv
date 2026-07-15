@@ -33,6 +33,7 @@ var frozenAllowedMutationNamedMethods = map[string]struct{}{
 	"account.unregisterDevice":            {},
 	"account.updateDeviceLocked":          {},
 	"account.updateStatus":                {},
+	"help.test":                           {},
 	"messages.readHistory":                {},
 	"messages.readMentions":               {},
 	"messages.readMessageContents":        {},

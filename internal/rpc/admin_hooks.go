@@ -46,3 +46,16 @@ func (r *Router) NotifyStarsBalanceChanged(ctx context.Context, balance domain.S
 	})
 	return nil
 }
+
+// NotifyAccountFreezeChanged asks every online client session for the account
+// to reload config, where freeze_since_date/freeze_until_date are projected.
+func (r *Router) NotifyAccountFreezeChanged(ctx context.Context, userID int64) error {
+	if r == nil || userID == 0 {
+		return nil
+	}
+	r.pushUserUpdates(ctx, userID, &tg.Updates{
+		Updates: []tg.UpdateClass{&tg.UpdateConfig{}},
+		Date:    int(r.clock.Now().Unix()),
+	})
+	return nil
+}

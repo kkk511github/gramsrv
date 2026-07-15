@@ -810,6 +810,7 @@ func run(logger *zap.Logger) error {
 		Stars:           starsService,
 		StarsNotifier:   router,
 		UserNotifier:    router,
+		FreezeNotifier:  router,
 		Channels:        channelsService,
 		ChannelNotifier: router,
 		Messages:        messagesService,

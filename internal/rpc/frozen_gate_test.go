@@ -64,6 +64,7 @@ func frozenGateActiveState(userID int64) domain.AccountFreeze {
 func TestFrozenMethodGateIsReadOnlyAndFailsClosed(t *testing.T) {
 	tests := map[string]bool{
 		"help.getAppConfig":                false,
+		"help.test":                        false,
 		"messages.getHistory":              false,
 		"messages.searchGlobal":            false,
 		"contacts.resolveUsername":         false,

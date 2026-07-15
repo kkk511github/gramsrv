@@ -15,10 +15,12 @@ func TestSetAccountFrozenDryRunExecuteAndIdempotency(t *testing.T) {
 	ctx := context.Background()
 	repo := newMemoryCommandRepo()
 	restrictions := &fakeRestrictionStore{}
+	notifier := &fakeAccountFreezeNotifier{}
 	svc := NewService(Dependencies{
-		Commands:     repo,
-		Restrictions: restrictions,
-		Now:          fixedNow,
+		Commands:       repo,
+		Restrictions:   restrictions,
+		FreezeNotifier: notifier,
+		Now:            fixedNow,
 	})
 
 	dry, err := svc.SetAccountFrozen(ctx, SetAccountFrozenRequest{
@@ -31,8 +33,8 @@ func TestSetAccountFrozenDryRunExecuteAndIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dry-run freeze: %v", err)
 	}
-	if !dry.DryRun || dry.Status != string(domain.AdminCommandCompleted) || restrictions.setCalls != 0 {
-		t.Fatalf("dry-run result=%+v setCalls=%d, want completed dry-run without mutation", dry, restrictions.setCalls)
+	if !dry.DryRun || dry.Status != string(domain.AdminCommandCompleted) || restrictions.setCalls != 0 || len(notifier.users) != 0 {
+		t.Fatalf("dry-run result=%+v setCalls=%d notified=%v, want completed dry-run without mutation", dry, restrictions.setCalls, notifier.users)
 	}
 
 	execReq := SetAccountFrozenRequest{
@@ -49,6 +51,9 @@ func TestSetAccountFrozenDryRunExecuteAndIdempotency(t *testing.T) {
 	if exec.Status != string(domain.AdminCommandCompleted) || restrictions.setCalls != 1 {
 		t.Fatalf("execute result=%+v setCalls=%d", exec, restrictions.setCalls)
 	}
+	if !reflect.DeepEqual(notifier.users, []int64{1001}) {
+		t.Fatalf("notified users = %v, want [1001]", notifier.users)
+	}
 	if err := svc.CanSendMessages(ctx, 1001); !errors.Is(err, domain.ErrUserFrozen) {
 		t.Fatalf("CanSendMessages err=%v, want ErrUserFrozen", err)
 	}
@@ -61,15 +66,16 @@ func TestSetAccountFrozenDryRunExecuteAndIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("duplicate freeze: %v", err)
 	}
-	if !again.AlreadyExecuted || restrictions.setCalls != 1 {
-		t.Fatalf("duplicate result=%+v setCalls=%d, want idempotent replay", again, restrictions.setCalls)
+	if !again.AlreadyExecuted || restrictions.setCalls != 1 || len(notifier.users) != 1 {
+		t.Fatalf("duplicate result=%+v setCalls=%d notified=%v, want idempotent replay", again, restrictions.setCalls, notifier.users)
 	}
 }
 
 func TestSetAccountFrozenRejectsIncompleteStateAndUnfreezeClearsOverlay(t *testing.T) {
 	ctx := context.Background()
 	restrictions := &fakeRestrictionStore{}
-	svc := NewService(Dependencies{Commands: newMemoryCommandRepo(), Restrictions: restrictions, Now: fixedNow})
+	notifier := &fakeAccountFreezeNotifier{}
+	svc := NewService(Dependencies{Commands: newMemoryCommandRepo(), Restrictions: restrictions, FreezeNotifier: notifier, Now: fixedNow})
 	for _, req := range []SetAccountFrozenRequest{
 		{CommandMeta: CommandMeta{CommandID: "bad-until", Actor: "ops", Reason: "test"}, UserID: 1001, Frozen: true, Until: fixedNow(), AppealURL: "https://appeals.example.test"},
 		{CommandMeta: CommandMeta{CommandID: "too-far", Actor: "ops", Reason: "test"}, UserID: 1001, Frozen: true, Until: time.Unix(1<<31, 0), AppealURL: "https://appeals.example.test"},
@@ -90,6 +96,9 @@ func TestSetAccountFrozenRejectsIncompleteStateAndUnfreezeClearsOverlay(t *testi
 	freeze, found, err := svc.AccountFreeze(ctx, 1001)
 	if err != nil || !found || freeze.Frozen || !freeze.Since.IsZero() || !freeze.Until.IsZero() || freeze.AppealURL != "" {
 		t.Fatalf("unfrozen state = %+v found=%v err=%v", freeze, found, err)
+	}
+	if !reflect.DeepEqual(notifier.users, []int64{1001, 1001}) {
+		t.Fatalf("freeze/unfreeze notifications = %v, want [1001 1001]", notifier.users)
 	}
 }
 
@@ -660,6 +669,15 @@ func (f *fakeStarsNotifier) NotifyStarsBalanceChanged(_ context.Context, balance
 
 type fakeUserNotifier struct {
 	users []int64
+}
+
+type fakeAccountFreezeNotifier struct {
+	users []int64
+}
+
+func (f *fakeAccountFreezeNotifier) NotifyAccountFreezeChanged(_ context.Context, userID int64) error {
+	f.users = append(f.users, userID)
+	return nil
 }
 
 func (f *fakeUserNotifier) NotifyUserChanged(_ context.Context, u domain.User) error {
