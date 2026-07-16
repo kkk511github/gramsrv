@@ -98,6 +98,7 @@ type MessagesService interface {
 
 type GiftsService interface {
 	PrepareAnimation(fileName string, data []byte) (domain.StarGiftAnimation, error)
+	PrepareTrustedAnimation(fileName string, data []byte) (domain.StarGiftAnimation, error)
 	CreateCatalogRevision(ctx context.Context, write domain.StarGiftCatalogWrite) (domain.StarGiftCatalogEntry, error)
 	SetCatalogEnabled(ctx context.Context, giftID int64, enabled bool) (bool, error)
 	SetCatalogSortOrder(ctx context.Context, giftID int64, sortOrder int) (bool, error)
@@ -217,15 +218,16 @@ type CommandResult struct {
 
 type ImportStarGiftRequest struct {
 	CommandMeta
-	GiftID       int64  `json:"gift_id,omitempty"`
-	Title        string `json:"title"`
-	Stars        int64  `json:"stars"`
-	ConvertStars int64  `json:"convert_stars"`
-	Enabled      bool   `json:"enabled"`
-	SortOrder    int    `json:"sort_order"`
-	FileName     string `json:"file_name"`
-	ContentSHA   string `json:"content_sha256"`
-	Data         []byte `json:"-"`
+	GiftID        int64  `json:"gift_id,omitempty"`
+	Title         string `json:"title"`
+	Stars         int64  `json:"stars"`
+	ConvertStars  int64  `json:"convert_stars"`
+	Enabled       bool   `json:"enabled"`
+	SortOrder     int    `json:"sort_order"`
+	TrustedSource bool   `json:"trusted_source,omitempty"`
+	FileName      string `json:"file_name"`
+	ContentSHA    string `json:"content_sha256"`
+	Data          []byte `json:"-"`
 }
 
 type SetStarGiftEnabledRequest struct {
@@ -803,7 +805,13 @@ func (s *Service) ImportStarGift(ctx context.Context, req ImportStarGiftRequest)
 		len([]rune(strings.TrimSpace(req.Title))) > domain.MaxStarGiftTitleRunes {
 		return CommandResult{}, domain.ErrStarGiftInvalid
 	}
-	animation, err := s.gifts.PrepareAnimation(req.FileName, req.Data)
+	var animation domain.StarGiftAnimation
+	var err error
+	if req.TrustedSource {
+		animation, err = s.gifts.PrepareTrustedAnimation(req.FileName, req.Data)
+	} else {
+		animation, err = s.gifts.PrepareAnimation(req.FileName, req.Data)
+	}
 	if err != nil {
 		return CommandResult{}, err
 	}
@@ -812,7 +820,8 @@ func (s *Service) ImportStarGift(ctx context.Context, req ImportStarGiftRequest)
 		details := map[string]any{
 			"gift_id": req.GiftID, "title": strings.TrimSpace(req.Title), "stars": req.Stars,
 			"convert_stars": req.ConvertStars, "enabled": req.Enabled, "sort_order": req.SortOrder,
-			"source_format": animation.SourceFormat, "source_name": animation.SourceName,
+			"trusted_source": req.TrustedSource,
+			"source_format":  animation.SourceFormat, "source_name": animation.SourceName,
 			"sha256": req.ContentSHA, "width": animation.Width, "height": animation.Height,
 			"frame_rate": animation.FrameRate, "compressed_bytes": len(animation.TGS), "json_bytes": len(animation.JSON),
 		}

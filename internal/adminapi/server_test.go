@@ -86,7 +86,7 @@ func TestAdminAPISetChannelVerified(t *testing.T) {
 func TestAdminAPIImportStarGiftMultipart(t *testing.T) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
-	if err := writer.WriteField("metadata", `{"command_id":"gift-1","actor":"ops","reason":"catalog","dry_run":true,"title":"Gift","stars":50,"convert_stars":25,"enabled":true,"sort_order":3}`); err != nil {
+	if err := writer.WriteField("metadata", `{"command_id":"gift-1","actor":"ops","reason":"catalog","dry_run":true,"title":"Gift","stars":50,"convert_stars":25,"enabled":true,"sort_order":3,"trusted_source":true}`); err != nil {
 		t.Fatal(err)
 	}
 	part, err := writer.CreateFormFile("file", "gift.lottie")
@@ -111,7 +111,7 @@ func TestAdminAPIImportStarGiftMultipart(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	if svc.req.CommandID != "gift-1" || svc.req.FileName != "gift.lottie" || !bytes.Equal(svc.req.Data, animation) || svc.req.Stars != 50 || svc.req.ConvertStars != 25 {
+	if svc.req.CommandID != "gift-1" || svc.req.FileName != "gift.lottie" || !bytes.Equal(svc.req.Data, animation) || svc.req.Stars != 50 || svc.req.ConvertStars != 25 || !svc.req.TrustedSource {
 		t.Fatalf("decoded gift request = %+v", svc.req)
 	}
 }

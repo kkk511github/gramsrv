@@ -1,6 +1,7 @@
 package stargifts
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -14,14 +15,14 @@ import (
 const validGiftLottie = `{"v":"5.7.4","fr":30,"ip":0,"op":60,"w":512,"h":512,"layers":[{"ty":4,"nm":"gift"}],"assets":[]}`
 
 func TestPrepareAnimationNormalizesLottieAndTGS(t *testing.T) {
-	fromJSON, err := prepareAnimation("gift.lottie", []byte(" \n"+validGiftLottie+"\n"))
+	fromJSON, err := prepareAnimation("gift.lottie", []byte(" \n"+validGiftLottie+"\n"), false)
 	if err != nil {
 		t.Fatalf("prepare lottie: %v", err)
 	}
 	if fromJSON.SourceFormat != domain.StarGiftAnimationLottie || len(fromJSON.TGS) == 0 || fromJSON.Width != 512 || fromJSON.Height != 512 {
 		t.Fatalf("prepared lottie = %+v", fromJSON)
 	}
-	fromTGS, err := prepareAnimation("gift.tgs", fromJSON.TGS)
+	fromTGS, err := prepareAnimation("gift.tgs", fromJSON.TGS, false)
 	if err != nil {
 		t.Fatalf("prepare tgs: %v", err)
 	}
@@ -39,10 +40,21 @@ func TestPrepareAnimationRejectsExternalAssetAndExpression(t *testing.T) {
 		"duration":   `{"v":"5.7","fr":30,"ip":0,"op":901,"w":512,"h":512,"layers":[{}]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := prepareAnimation("gift.json", []byte(raw)); !errors.Is(err, domain.ErrStarGiftFileInvalid) {
+			if _, err := prepareAnimation("gift.json", []byte(raw), false); !errors.Is(err, domain.ErrStarGiftFileInvalid) {
 				t.Fatalf("err=%v, want ErrStarGiftFileInvalid", err)
 			}
 		})
+	}
+}
+
+func TestPrepareTrustedAnimationPreservesExpression(t *testing.T) {
+	raw := []byte(`{"v":"5.7","fr":30,"ip":0,"op":30,"w":512,"h":512,"layers":[{"ks":{"o":{"x":"time*10"}}}]}`)
+	animation, err := prepareAnimation("official.json", raw, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(animation.JSON, []byte(`"x":"time*10"`)) {
+		t.Fatalf("trusted expression was not preserved: %s", animation.JSON)
 	}
 }
 

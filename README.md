@@ -237,6 +237,51 @@ journalctl -u slerv.service --since "5 minutes ago" --no-pager | grep '"phase": 
 The `effects` count must be greater than `0`; `effects=0` means the effect seed
 was not deployed.
 
+### Star Gift Catalog Sync
+
+`stargiftsync` uses the official `payments.getStarGifts` catalog and file APIs
+to import gift prices, conversion Stars, and TGS animations into SafeLink's
+durable gift catalog. It requires either an authorized Telegram gotd session or
+an official bot token in `TELEGRAM_BOT_TOKEN`. Phone login is also supported:
+use `TELEGRAM_PHONE` with `-send-code`, then complete authorization with
+`TELEGRAM_CODE` and, when enabled, `TELEGRAM_PASSWORD`. A one-time login QR is
+created only when `-qr-login` is explicitly provided. The SafeLink Admin
+API token is read from `TELESRV_ADMIN_API_TOKEN`. Never put either token in command-line
+arguments, Git, or logs.
+
+Validate the complete catalog first:
+
+```sh
+SESSION=/www/safelink/slerv/data/telegram-star-gifts.session \
+SAFELINK_STAR_GIFT_MANIFEST=/www/safelink/slerv/data/telegram-star-gifts-manifest.json \
+SAFELINK_STAR_GIFT_SOURCE_DIR=/www/safelink/slerv/data/telegram-star-gifts-source \
+go run ./cmd/stargiftsync
+```
+
+First-time phone authorization is a two-step operation. The verification code
+and two-step verification password are never written to files:
+
+```sh
+TELEGRAM_PHONE='+<country-code><number>' SESSION=/www/safelink/slerv/data/telegram-star-gifts.session \
+go run ./cmd/stargiftsync -send-code
+
+TELEGRAM_CODE='<code>' TELEGRAM_PASSWORD='<only-when-enabled>' \
+TELESRV_ADMIN_API_TOKEN='<admin-token>' \
+SESSION=/www/safelink/slerv/data/telegram-star-gifts.session \
+go run ./cmd/stargiftsync
+```
+
+Add `-confirm` after validation to perform the import. The manifest preserves
+the official-to-SafeLink gift ID mapping: unchanged gifts are skipped on later
+runs, while changed animations or prices create a new immutable revision rather
+than a duplicate catalog entry.
+Animations fetched through the authorized Telegram session are marked as
+trusted upstream assets so required Lottie expressions are preserved. Normal
+admin uploads continue to reject expressions.
+Run `go run ./cmd/stargiftsync -logout` after synchronization when the Telegram
+session is not needed for future incremental updates. It revokes the upstream
+session and removes the local authorization files.
+
 Optional OpenAI-compatible, Kimi/Moonshot, Gemini, and Anthropic provider
 variables are documented in `.env.example`.
 

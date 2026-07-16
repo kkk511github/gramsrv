@@ -213,6 +213,47 @@ journalctl -u slerv.service --since "5 minutes ago" --no-pager | grep '"phase": 
 
 `effects` 数量必须大于 `0`；如果是 `effects=0`，说明特效 seed 没有部署上。
 
+### 星星礼物目录同步
+
+`stargiftsync` 使用官方 `payments.getStarGifts` 目录与文件接口，把礼物
+价格、兑换 Stars 数和 TGS 动画导入 SafeLink 的持久化礼物目录。同步
+需要一个已授权的 Telegram gotd session，或由环境变量
+`TELEGRAM_BOT_TOKEN` 提供的官方 Bot Token。也可以先用
+`TELEGRAM_PHONE` 与 `-send-code` 发送手机号登录验证码，再通过
+`TELEGRAM_CODE` 完成授权；账号开启两步验证时还要提供
+`TELEGRAM_PASSWORD`。仅显式传入 `-qr-login` 时才会生成一次性登录二维码。
+SafeLink 管理 Token 由
+`TELESRV_ADMIN_API_TOKEN` 提供。两个 Token 都不要写入命令行、Git 或日志。
+
+先只验证全部礼物：
+
+```sh
+SESSION=/www/safelink/slerv/data/telegram-star-gifts.session \
+SAFELINK_STAR_GIFT_MANIFEST=/www/safelink/slerv/data/telegram-star-gifts-manifest.json \
+SAFELINK_STAR_GIFT_SOURCE_DIR=/www/safelink/slerv/data/telegram-star-gifts-source \
+go run ./cmd/stargiftsync
+```
+
+手机号首次授权分两步进行，验证码和两步验证密码不会写入文件：
+
+```sh
+TELEGRAM_PHONE='+<country-code><number>' SESSION=/www/safelink/slerv/data/telegram-star-gifts.session \
+go run ./cmd/stargiftsync -send-code
+
+TELEGRAM_CODE='<code>' TELEGRAM_PASSWORD='<only-when-enabled>' \
+TELESRV_ADMIN_API_TOKEN='<admin-token>' \
+SESSION=/www/safelink/slerv/data/telegram-star-gifts.session \
+go run ./cmd/stargiftsync
+```
+
+验证通过后加 `-confirm` 正式导入。Manifest 保存官方礼物 ID 到
+SafeLink 礼物 ID 的对应关系；以后再运行时，未变化礼物会跳过，动画或价格
+变化的礼物会创建新版本，不会重复创建目录项。
+同步器会将通过 Telegram 授权会话下载的动画标记为可信上游素材，
+以保留官方礼物中必需的 Lottie expression；普通后台上传仍禁止 expression。
+如果不需要保留 Telegram 会话用于后续增量同步，完成后运行
+`go run ./cmd/stargiftsync -logout`，它会注销官方会话并删除本地授权文件。
+
 可选的 OpenAI-compatible、Kimi/Moonshot、Gemini、Anthropic provider 变量见 `.env.example`。
 
 ### 公开链接落地页

@@ -719,11 +719,11 @@ func TestImportStarGiftDryRunThenConfirm(t *testing.T) {
 	svc := NewService(Dependencies{Commands: newMemoryCommandRepo(), Gifts: gifts, Now: fixedNow})
 	base := ImportStarGiftRequest{
 		Title: "Cake", Stars: 50, ConvertStars: 25, Enabled: true, SortOrder: 3,
-		FileName: "cake.lottie", Data: []byte(`{"v":"5.7"}`),
+		TrustedSource: true, FileName: "cake.lottie", Data: []byte(`{"v":"5.7"}`),
 	}
 	base.CommandMeta = CommandMeta{CommandID: "dry-gift", Actor: "ops", Reason: "catalog", DryRun: true}
 	preview, err := svc.ImportStarGift(context.Background(), base)
-	if err != nil || gifts.createCalls != 0 || preview.Details["source_format"] != domain.StarGiftAnimationLottie {
+	if err != nil || gifts.createCalls != 0 || gifts.trustedCalls != 1 || preview.Details["source_format"] != domain.StarGiftAnimationLottie {
 		t.Fatalf("preview=%+v err=%v create=%d", preview, err, gifts.createCalls)
 	}
 	base.CommandMeta = CommandMeta{CommandID: "exec-gift", Actor: "ops", Reason: "catalog", DryRun: false}
@@ -770,7 +770,10 @@ func TestPublishStarGiftCollectiblesDryRunThenConfirm(t *testing.T) {
 	}
 }
 
-type fakeGiftsService struct{ createCalls int }
+type fakeGiftsService struct {
+	createCalls  int
+	trustedCalls int
+}
 
 func (f *fakeGiftsService) PrepareAnimation(name string, data []byte) (domain.StarGiftAnimation, error) {
 	sum := sha256.Sum256(data)
@@ -778,6 +781,10 @@ func (f *fakeGiftsService) PrepareAnimation(name string, data []byte) (domain.St
 		SourceName: name, SourceFormat: domain.StarGiftAnimationLottie,
 		JSON: []byte(`{"v":"5.7"}`), TGS: []byte("tgs"), SHA256: sum[:], Width: 512, Height: 512, FrameRate: 30,
 	}, nil
+}
+func (f *fakeGiftsService) PrepareTrustedAnimation(name string, data []byte) (domain.StarGiftAnimation, error) {
+	f.trustedCalls++
+	return f.PrepareAnimation(name, data)
 }
 func (f *fakeGiftsService) CreateCatalogRevision(_ context.Context, write domain.StarGiftCatalogWrite) (domain.StarGiftCatalogEntry, error) {
 	f.createCalls++
