@@ -2,15 +2,13 @@ module telesrv
 
 go 1.25.0
 
-replace github.com/iamxvbaba/td => github.com/kkk511github/td v0.0.0-20260715152538-c48e1a25cc35
-
 require (
 	github.com/fxamacker/cbor/v2 v2.8.0
 	github.com/go-faster/errors v0.7.1
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/gotd/ige v0.2.2
 	github.com/gotd/log/logzap v0.1.1
-	github.com/iamxvbaba/td v1.0.0
+	github.com/iamxvbaba/td v1.1.0
 	github.com/jackc/pgerrcode v0.0.0-20220416144525-469b46aa5efa
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/pion/datachannel v1.6.2
@@ -31,6 +29,7 @@ require (
 	golang.org/x/image v0.31.0
 	golang.org/x/net v0.56.0
 	golang.org/x/sync v0.21.0
+	rsc.io/qr v0.2.0
 )
 
 require (
@@ -80,5 +79,4 @@ require (
 	golang.org/x/time v0.14.0 // indirect
 	golang.org/x/tools v0.47.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	rsc.io/qr v0.2.0 // indirect
 )

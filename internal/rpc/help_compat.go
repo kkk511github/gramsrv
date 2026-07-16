@@ -7,7 +7,7 @@ import (
 	"github.com/iamxvbaba/td/tg"
 )
 
-const helpTestID = tg.HelpTestRequestTypeID
+const helpTestID = 0xc0e202f7
 
 // tryHelpCompatRPC retains help.test support for the legacy unprofiled router.
 func (r *Router) tryHelpCompatRPC(_ context.Context, b *bin.Buffer) (bin.Encoder, bool, error) {
