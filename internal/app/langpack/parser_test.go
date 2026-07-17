@@ -177,6 +177,40 @@ func TestSeedDirectoryAppliesSafeLinkBranding(t *testing.T) {
 	}
 }
 
+func TestSeedDirectoryMigratesBrandedLegacyVersionNamespaceOnce(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	path := filepath.Join(root, "tdesktop_en_v5704848.strings")
+	if err := os.WriteFile(path, []byte(`"lng_app_name" = "Telegram";`), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	store := memory.NewLangPackStore()
+	if err := store.UpsertPack(ctx, domain.LangPack{
+		LangPack: "tdesktop",
+		LangCode: "en",
+		Version:  12000074,
+		Strings:  []domain.LangPackString{{Key: "lng_app_name", Value: "SafeLink"}},
+	}); err != nil {
+		t.Fatalf("seed legacy pack: %v", err)
+	}
+	service := NewService(store, WithBranding(Branding{AppName: "SafeLink"}))
+	if seeded, err := service.SeedDirectory(ctx, root); err != nil || seeded != 1 {
+		t.Fatalf("migration seed = %d, %v; want 1, nil", seeded, err)
+	}
+	pack, err := service.GetLangPack(ctx, "tdesktop", "en")
+	if err != nil || pack.Version != 12000075 || langPackTestValue(pack, "lng_app_name") != "SafeLink" {
+		t.Fatalf("migrated pack = %+v, err %v", pack, err)
+	}
+	if seeded, err := service.SeedDirectory(ctx, root); err != nil || seeded != 0 {
+		t.Fatalf("second seed = %d, %v; want 0, nil", seeded, err)
+	}
+	pack, err = service.GetLangPack(ctx, "tdesktop", "en")
+	if err != nil || pack.Version != 12000075 {
+		t.Fatalf("stable pack = %+v, err %v", pack, err)
+	}
+}
+
 func TestBundledLangPacksBrandingRemovesLegacyPublicValues(t *testing.T) {
 	root := filepath.Join("..", "..", "..", "data", "langpack")
 	if _, err := os.Stat(root); err != nil {

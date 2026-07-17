@@ -66,11 +66,13 @@ func (s *Service) SeedDirectory(ctx context.Context, root string) (int, error) {
 			return 0, fmt.Errorf("hash langpack source %q: %w", candidate.path, err)
 		}
 		if old, ok := previousByKey[key]; ok &&
-			old.Version == candidate.meta.Version &&
+			(old.Version == candidate.meta.Version || (s.brandReplacer != nil && old.Version > candidate.meta.Version)) &&
 			old.SourceHash == sourceHash &&
 			old.ContentHash != "" && old.StringsCount > 0 {
+			meta := candidate.meta
+			meta.Version = old.Version
 			seed.Packs = append(seed.Packs, domain.LangPackSeedEntry{
-				Pack:          candidate.meta,
+				Pack:          meta,
 				SourceHash:    sourceHash,
 				ContentHash:   old.ContentHash,
 				StringsCount:  old.StringsCount,
@@ -86,6 +88,15 @@ func (s *Service) SeedDirectory(ctx context.Context, root string) (int, error) {
 		pack, err = prepareSeedPack(pack)
 		if err != nil {
 			return 0, fmt.Errorf("prepare langpack %q: %w", candidate.path, err)
+		}
+		if s.brandReplacer != nil {
+			existing, err := s.packs.GetPack(ctx, pack.LangPack, pack.LangCode, 0)
+			if err != nil {
+				return 0, fmt.Errorf("get existing branded langpack %s/%s: %w", pack.LangPack, pack.LangCode, err)
+			}
+			if existing.Version > pack.Version {
+				pack.Version = existing.Version + 1
+			}
 		}
 		hash, err := langPackContentHash(pack)
 		if err != nil {
