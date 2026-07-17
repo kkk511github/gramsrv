@@ -143,3 +143,50 @@ func TestAccountVerifyEmailLoginSetupAndroidReturnsEmailSentCode(t *testing.T) {
 		t.Fatalf("SignInWithEmail calls = %d, want 0 for Android compat downgrade", authSvc.signInWithEmailCount)
 	}
 }
+
+func TestAccountVerifyEmailLoginSetupIOSReturnsEmailSentCode(t *testing.T) {
+	authSvc := &captureAuthService{}
+	r := New(Config{}, Deps{
+		Auth:    authSvc,
+		Account: loginEmailAccountService{verifiedEmail: "alice@example.test"},
+	}, zaptest.NewLogger(t), fixedClock{now: time.Unix(1700000000, 0)})
+
+	ctx := WithClientInfo(context.Background(), ClientInfo{
+		Type:       ClientTypeIOS,
+		AppVersion: "12.8 (33162)",
+	})
+	got, err := r.onAccountVerifyEmail(ctx, &tg.AccountVerifyEmailRequest{
+		Purpose: &tg.EmailVerifyPurposeLoginSetup{
+			PhoneNumber:   "+86 188 0000 0020",
+			PhoneCodeHash: "hash-email-setup",
+		},
+		Verification: &tg.EmailVerificationCode{Code: "654321"},
+	})
+	if err != nil {
+		t.Fatalf("onAccountVerifyEmail: %v", err)
+	}
+	verified, ok := got.(*tg.AccountEmailVerifiedLogin)
+	if !ok {
+		t.Fatalf("verified = %T, want *tg.AccountEmailVerifiedLogin", got)
+	}
+	sent, ok := verified.SentCode.(*tg.AuthSentCode)
+	if !ok {
+		t.Fatalf("sent code = %T, want *tg.AuthSentCode", verified.SentCode)
+	}
+	if sent.PhoneCodeHash != "hash-email-setup" {
+		t.Fatalf("phone_code_hash = %q", sent.PhoneCodeHash)
+	}
+	emailType, ok := sent.Type.(*tg.AuthSentCodeTypeEmailCode)
+	if !ok {
+		t.Fatalf("sent type = %T, want *tg.AuthSentCodeTypeEmailCode", sent.Type)
+	}
+	if emailType.EmailPattern != "a***e@example.test" {
+		t.Fatalf("email pattern = %q", emailType.EmailPattern)
+	}
+	if emailType.Length != 6 {
+		t.Fatalf("email code length = %d, want 6", emailType.Length)
+	}
+	if authSvc.signInWithEmailCount != 0 {
+		t.Fatalf("SignInWithEmail calls = %d, want 0 for iOS compat downgrade", authSvc.signInWithEmailCount)
+	}
+}

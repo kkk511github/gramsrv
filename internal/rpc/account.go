@@ -685,8 +685,8 @@ func (r *Router) onAccountSendVerifyEmailCode(ctx context.Context, req *tg.Accou
 // onAccountVerifyEmail 处理 account.verifyEmail：确认登录邮箱验证码。
 // loginChange（已登录）返回 emailVerified{email}；loginSetup（登录流程中）返回
 // emailVerifiedLogin{email, sent_code}。TDesktop 能消费嵌套 auth.sentCodeSuccess，
-// 直接进入注册/登录完成；DrKLO Android 12.8.1 该路径漏处理 sentCodeSuccess，
-// 临时降级为普通 emailCode sentCode，待 Android 补齐后移除。
+// 直接进入注册/登录完成；Android 12.8.1 和 iOS 12.8 该路径都不会处理
+// sentCodeSuccess，因此返回普通 emailCode sentCode，让客户端继续 auth.signIn。
 func (r *Router) onAccountVerifyEmail(ctx context.Context, req *tg.AccountVerifyEmailRequest) (tg.AccountEmailVerifiedClass, error) {
 	if r.deps.Account == nil {
 		return nil, internalErr()
@@ -714,7 +714,8 @@ func (r *Router) onAccountVerifyEmail(ctx context.Context, req *tg.AccountVerify
 		if err != nil {
 			return nil, passwordErr(err)
 		}
-		if ClientTypeFrom(ctx) == ClientTypeAndroid {
+		switch ClientTypeFrom(ctx) {
+		case ClientTypeAndroid, ClientTypeIOS:
 			return &tg.AccountEmailVerifiedLogin{
 				Email:    email,
 				SentCode: tgEmailSentCode(p.PhoneCodeHash, domain.MaskEmail(email), len(strings.TrimSpace(code))),
