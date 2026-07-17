@@ -1,16 +1,21 @@
 import {
+  Bell,
   ChevronDown,
-  Database,
+  CircleCheck,
+  Gift,
   LayoutDashboard,
   LogOut,
+  Menu,
   MessageSquareText,
-  Server,
-  Shield,
+  PanelLeftClose,
+  PanelLeftOpen,
+  RefreshCw,
   ShieldCheck,
+  UserRound,
   Users,
-	Gift
+  X
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../api";
 import { LanguageSwitch, useI18n } from "../i18n";
 import { type Navigate, type RouteState, routeSubtitle, routeTitle } from "../routing";
@@ -21,7 +26,7 @@ export function BootScreen() {
   return (
     <div className="boot-screen">
       <div className="brand compact brand-elevated">
-        <span className="brand-mark">S</span>
+        <span className="brand-mark"><ShieldCheck size={23} /></span>
         <span>
           <strong>SafeLink</strong>
           <small>{t("app.adminConsole")}</small>
@@ -45,15 +50,23 @@ export function Shell({
   onLogout: () => void;
   children: ReactNode;
 }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const messagesActive = route.path.startsWith("/messages");
   const [messagesOpen, setMessagesOpen] = useState(messagesActive);
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const loadedAt = useMemo(() => new Date(), []);
+  const refreshTime = new Intl.DateTimeFormat(lang === "zh" ? "zh-CN" : "en-US", {
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(loadedAt);
 
   useEffect(() => {
     if (messagesActive) {
       setMessagesOpen(true);
     }
-  }, [messagesActive]);
+    setMobileOpen(false);
+  }, [messagesActive, route.href]);
 
   async function logout() {
     await api.logout().catch(() => undefined);
@@ -61,29 +74,46 @@ export function Shell({
   }
 
   return (
-    <div className="shell">
+    <div className={`shell ${collapsed ? "sidebar-collapsed" : ""} ${mobileOpen ? "sidebar-mobile-open" : ""}`}>
+      <button
+        className="sidebar-scrim"
+        type="button"
+        aria-label={t("layout.closeNav")}
+        onClick={() => setMobileOpen(false)}
+      />
       <aside className="sidebar">
-        <AppLink className="brand" href="/" navigate={navigate}>
-          <span className="brand-mark">S</span>
-          <span>
-            <strong>SafeLink</strong>
-            <small>{t("app.adminConsole")}</small>
-          </span>
-        </AppLink>
-        <div className="sidebar-label">{t("layout.navigation")}</div>
+        <div className="sidebar-head">
+          <AppLink className="brand" href="/" navigate={navigate}>
+            <span className="brand-mark"><ShieldCheck size={23} /></span>
+            <span className="brand-copy">
+              <strong>SafeLink</strong>
+              <small>{t("app.adminConsole")}</small>
+            </span>
+          </AppLink>
+          <button
+            className="icon-btn sidebar-close"
+            type="button"
+            aria-label={t("layout.closeNav")}
+            title={t("layout.closeNav")}
+            onClick={() => setMobileOpen(false)}
+          >
+            <X size={18} />
+          </button>
+        </div>
         <nav className="nav-list" aria-label={t("layout.primaryNav")}>
-          <NavLink icon={<LayoutDashboard size={16} />} href="/" route={route} navigate={navigate}>{t("layout.dashboard")}</NavLink>
-          <NavLink icon={<Users size={16} />} href="/accounts" route={route} navigate={navigate}>{t("layout.accounts")}</NavLink>
-          <NavLink icon={<ShieldCheck size={16} />} href="/channels" route={route} navigate={navigate}>{t("layout.channels")}</NavLink>
-			<NavLink icon={<Gift size={16} />} href="/gifts" route={route} navigate={navigate}>{t("layout.gifts")}</NavLink>
+          <NavLink icon={<LayoutDashboard size={18} />} href="/" route={route} navigate={navigate} title={t("layout.dashboard")}>{t("layout.dashboard")}</NavLink>
+          <NavLink icon={<Users size={18} />} href="/accounts" route={route} navigate={navigate} title={t("layout.accounts")}>{t("layout.accounts")}</NavLink>
+          <NavLink icon={<ShieldCheck size={18} />} href="/channels" route={route} navigate={navigate} title={t("layout.channels")}>{t("layout.channels")}</NavLink>
+          <NavLink icon={<Gift size={18} />} href="/gifts" route={route} navigate={navigate} title={t("layout.gifts")}>{t("layout.gifts")}</NavLink>
           <div className={`nav-section ${messagesActive ? "active" : ""} ${messagesOpen ? "open" : ""}`}>
             <button
               className="nav-section-toggle"
               type="button"
               aria-expanded={messagesOpen}
+              title={t("layout.messages")}
               onClick={() => setMessagesOpen((open) => !open)}
             >
-              <MessageSquareText size={16} />
+              <MessageSquareText size={18} />
               <span>{t("layout.messages")}</span>
               <ChevronDown className="nav-section-chevron" size={15} />
             </button>
@@ -93,6 +123,7 @@ export function Shell({
                   href="/messages/private"
                   route={route}
                   navigate={navigate}
+                  title={t("layout.privateMessages")}
                   activeWhen={(path) => path === "/messages" || path === "/messages/detail" || path.startsWith("/messages/private")}
                 >
                   {t("layout.privateMessages")}
@@ -101,6 +132,7 @@ export function Shell({
                   href="/messages/groups"
                   route={route}
                   navigate={navigate}
+                  title={t("layout.groupMessages")}
                   activeWhen={(path) => path.startsWith("/messages/groups")}
                 >
                   {t("layout.groupMessages")}
@@ -109,24 +141,55 @@ export function Shell({
             )}
           </div>
         </nav>
-        <div className="sidebar-status">
-          <div className="sidebar-label">{t("layout.runtime")}</div>
-          <div className="runtime-row"><Server size={14} /><span>{t("layout.adminBackend")}</span><strong>{t("layout.ready")}</strong></div>
-          <div className="runtime-row"><Database size={14} /><span>{t("layout.pgRead")}</span><strong>{t("layout.readOnly")}</strong></div>
-          <div className="runtime-row"><Shield size={14} /><span>{t("layout.writeOps")}</span><strong>{t("layout.dryRun")}</strong></div>
+        <div className="sidebar-footer">
+          <div className="sidebar-system" title={t("layout.connected")}>
+            <CircleCheck size={17} />
+            <span>
+              <strong>{t("layout.production")}</strong>
+              <small>{t("layout.connected")}</small>
+            </span>
+          </div>
+          <button
+            className="sidebar-collapse"
+            type="button"
+            title={collapsed ? t("layout.expandNav") : t("layout.collapseNav")}
+            onClick={() => setCollapsed((value) => !value)}
+          >
+            {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+            <span>{collapsed ? t("layout.expandNav") : t("layout.collapseNav")}</span>
+          </button>
         </div>
       </aside>
       <div className="workspace">
         <header className="topbar">
-          <div>
-            <div className="eyebrow">{routeSubtitle(route.path, t)}</div>
-            <h1>{routeTitle(route.path, t)}</h1>
+          <div className="topbar-title-group">
+            <button
+              className="icon-btn topbar-menu"
+              type="button"
+              aria-label={t("layout.openNav")}
+              title={t("layout.openNav")}
+              onClick={() => setMobileOpen(true)}
+            >
+              <Menu size={19} />
+            </button>
+            <div className="topbar-title">
+              <h1>{routeTitle(route.path, t)}</h1>
+              <span>{routeSubtitle(route.path, t)}</span>
+            </div>
           </div>
           <div className="topbar-actions">
+            <span className="environment-chip"><i />{t("layout.production")}</span>
+            <span className="refresh-stamp">{t("layout.lastRefresh", { time: refreshTime })}</span>
+            <button className="icon-btn" type="button" title={t("common.refresh")} aria-label={t("common.refresh")} onClick={() => window.location.reload()}>
+              <RefreshCw size={16} />
+            </button>
             <LanguageSwitch />
-            <span className="actor-pill">{t("layout.actor", { actor })}</span>
-            <button className="btn ghost icon-text" type="button" onClick={logout} title={t("layout.logout")}>
-              <LogOut size={16} /> {t("layout.logout")}
+            <button className="icon-btn notification-button" type="button" title={t("layout.notifications")} aria-label={t("layout.notifications")}>
+              <Bell size={17} />
+            </button>
+            <span className="actor-pill"><UserRound size={16} /><span>{actor}</span><i /></span>
+            <button className="icon-btn logout-button" type="button" onClick={logout} title={t("layout.logout")} aria-label={t("layout.logout")}>
+              <LogOut size={17} />
             </button>
           </div>
         </header>
@@ -142,7 +205,8 @@ function NavLink({
   navigate,
   icon,
   children,
-  activeWhen
+  activeWhen,
+  title
 }: {
   href: string;
   route: RouteState;
@@ -150,10 +214,11 @@ function NavLink({
   icon?: ReactNode;
   children: ReactNode;
   activeWhen?: (path: string) => boolean;
+  title?: string;
 }) {
   const active = activeWhen ? activeWhen(route.path) : href === "/" ? route.path === "/" : route.path.startsWith(href);
   return (
-    <AppLink className={`nav-item ${active ? "active" : ""}`} href={href} navigate={navigate}>
+    <AppLink className={`nav-item ${active ? "active" : ""}`} href={href} navigate={navigate} title={title}>
       {icon ?? <span aria-hidden="true" className="nav-dot" />}
       <span>{children}</span>
     </AppLink>
