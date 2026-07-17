@@ -17,6 +17,7 @@ func SourceNames() []string {
 	return []string{
 		"Telegram",
 		"TELEGRAM",
+		"TElegram",
 		"telegram",
 		"Tidings",
 		"TIDINGS",
@@ -76,6 +77,8 @@ func SourceReplacements(appName string) []string {
 		"Telegram",
 		appName,
 		"TELEGRAM",
+		appName,
+		"TElegram",
 		appName,
 		"telegram",
 		lowerAppName,

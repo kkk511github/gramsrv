@@ -1229,6 +1229,7 @@ func TestTDesktopStartupRPCsEncode(t *testing.T) {
 			LastName:   "User",
 			Phone:      "15550000000",
 		}},
+		LangPack: seededLangPackService(t),
 	}, zaptest.NewLogger(t), clock.System)
 
 	tests := []struct {
