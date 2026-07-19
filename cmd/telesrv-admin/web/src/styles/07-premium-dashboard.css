@@ -173,6 +173,24 @@
   border-color: #acd6ca;
 }
 
+.health-band.degraded,
+.health-band.unavailable {
+  background: #fff9f1;
+  border-color: #e4c697;
+}
+
+.health-band.degraded .health-icon,
+.health-band.unavailable .health-icon {
+  color: #ffffff;
+  background: #b76521;
+  box-shadow: 0 0 0 9px #f4e5d4;
+}
+
+.health-band.degraded .health-summary h2,
+.health-band.unavailable .health-summary h2 {
+  color: #8f4918;
+}
+
 .health-summary {
   gap: 18px;
   padding: 20px 24px;
@@ -226,8 +244,19 @@
   background: #e0e6ea;
 }
 
+.service-status.medium .service-icon {
+  color: #ffffff;
+  background: #bd741f;
+}
+
+.service-status.high .service-icon {
+  color: #ffffff;
+  background: #bd3f3f;
+}
+
 .service-status > div {
   gap: 5px;
+  min-width: 0;
 }
 
 .service-status strong {
@@ -260,9 +289,27 @@
   background: #9aa6ae;
 }
 
+.service-status.medium span {
+  color: #9b5a17;
+}
+
+.service-status.medium span i {
+  background: #d58a2d;
+}
+
+.service-status.high span {
+  color: #a73333;
+}
+
+.service-status.high span i {
+  background: #ca4b4b;
+}
+
 .service-status small {
   color: #7a8791;
   font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .dashboard-panel-head {

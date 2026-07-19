@@ -64,13 +64,22 @@ func run() error {
 }
 
 type uiConfig struct {
-	Addr          string
-	PostgresDSN   string
-	AdminAPIURL   string
-	AdminAPIToken string
-	Password      string
-	Token         string
-	SessionKey    []byte
+	Addr                  string
+	PostgresDSN           string
+	AdminAPIURL           string
+	AdminAPIToken         string
+	Password              string
+	Token                 string
+	SessionKey            []byte
+	MTProtoAddr           string
+	PushEnabled           bool
+	APNSTopic             string
+	APNSTeamID            string
+	APNSKeyID             string
+	APNSPrivateKeyPath    string
+	FCMProjectID          string
+	FCMServiceAccountJSON string
+	BlobDir               string
 }
 
 // loadConfig 通过 internal/config.Load() 加载 .env 配置文件与环境变量，
@@ -98,13 +107,22 @@ func loadConfig() (uiConfig, error) {
 	sum := sha256.Sum256([]byte(appCfg.AdminSessionKey))
 
 	return uiConfig{
-		Addr:          appCfg.AdminUIAddr,
-		PostgresDSN:   appCfg.PostgresDSN,
-		AdminAPIURL:   adminAPIURL(adminAPIAddr),
-		AdminAPIToken: appCfg.AdminAPIToken,
-		Password:      appCfg.AdminUIPassword,
-		Token:         appCfg.AdminUIToken,
-		SessionKey:    sum[:],
+		Addr:                  appCfg.AdminUIAddr,
+		PostgresDSN:           appCfg.PostgresDSN,
+		AdminAPIURL:           adminAPIURL(adminAPIAddr),
+		AdminAPIToken:         appCfg.AdminAPIToken,
+		Password:              appCfg.AdminUIPassword,
+		Token:                 appCfg.AdminUIToken,
+		SessionKey:            sum[:],
+		MTProtoAddr:           appCfg.ListenAddr,
+		PushEnabled:           appCfg.PushEnable,
+		APNSTopic:             appCfg.APNSTopic,
+		APNSTeamID:            appCfg.APNSTeamID,
+		APNSKeyID:             appCfg.APNSKeyID,
+		APNSPrivateKeyPath:    appCfg.APNSPrivateKeyPath,
+		FCMProjectID:          appCfg.FCMProjectID,
+		FCMServiceAccountJSON: appCfg.FCMServiceAccountJSON,
+		BlobDir:               appCfg.BlobDir,
 	}, nil
 }
 

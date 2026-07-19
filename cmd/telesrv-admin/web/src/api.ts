@@ -9,6 +9,7 @@ import type {
   MessageDetail,
   MessageListResponse,
   OfficialStarGiftListResponse,
+  RuntimeStatusResponse,
   StarGiftCollectiblePreview,
   StarGiftListResponse
 } from "./types";
@@ -47,6 +48,7 @@ export function errorMessage(error: unknown): string {
 
 export const api = {
   session: () => request<{ actor: string }>("/api/session"),
+  runtimeStatus: () => request<RuntimeStatusResponse>("/api/runtime-status"),
   login: (secret: string) => request<{ actor: string }>("/api/login", {
     method: "POST",
     body: JSON.stringify({ secret })

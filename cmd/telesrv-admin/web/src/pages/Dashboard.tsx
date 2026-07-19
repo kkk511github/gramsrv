@@ -17,52 +17,78 @@ import {
   Snowflake,
   Users
 } from "lucide-react";
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { api } from "../api";
 import { AppLink } from "../components/AppLink";
-import { useI18n } from "../i18n";
+import { useI18n, type TFunction } from "../i18n";
 import type { Navigate } from "../routing";
+import type { RuntimeServiceStatus, RuntimeStatusResponse } from "../types";
 
 type Tone = "good" | "pending" | "high" | "medium";
 
 export function Dashboard({ navigate }: { navigate: Navigate }) {
   const { t, lang } = useI18n();
+  const [runtime, setRuntime] = useState<RuntimeStatusResponse | null>(null);
+  const [runtimeFailed, setRuntimeFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const next = await api.runtimeStatus();
+        if (active) {
+          setRuntime(next);
+          setRuntimeFailed(false);
+        }
+      } catch {
+        if (active) setRuntimeFailed(true);
+      }
+    };
+    void load();
+    const timer = window.setInterval(() => void load(), 15_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const status = runtime?.services;
   const services = [
     {
       icon: <Radio />,
       label: "MTProto",
-      value: t("dashboard.service.telemetryPending"),
-      detail: t("dashboard.service.metricsNotConnected"),
-      tone: "pending" as Tone
+      ...servicePresentation("mtproto", status?.mtproto, runtimeFailed, t)
     },
     {
       icon: <Server />,
       label: "Admin API",
-      value: t("dashboard.service.connected"),
-      detail: t("dashboard.service.currentSession"),
-      tone: "good" as Tone
+      ...servicePresentation("admin_api", status?.admin_api, runtimeFailed, t)
     },
     {
       icon: <Database />,
       label: "PostgreSQL",
-      value: t("dashboard.service.readAvailable"),
-      detail: t("dashboard.service.readPathReady"),
-      tone: "good" as Tone
+      ...servicePresentation("postgres", status?.postgres, runtimeFailed, t)
     },
     {
       icon: <BellRing />,
       label: t("dashboard.service.push"),
-      value: t("dashboard.service.telemetryPending"),
-      detail: t("dashboard.service.metricsNotConnected"),
-      tone: "pending" as Tone
+      ...servicePresentation("push", status?.push, runtimeFailed, t)
     },
     {
       icon: <HardDrive />,
       label: t("dashboard.service.media"),
-      value: t("dashboard.service.telemetryPending"),
-      detail: t("dashboard.service.metricsNotConnected"),
-      tone: "pending" as Tone
+      ...servicePresentation("media", status?.media, runtimeFailed, t)
     }
   ];
+  const overall = runtime?.overall ?? (runtimeFailed ? "unavailable" : "loading");
+  const checkedAt = runtime?.checked_at
+    ? new Intl.DateTimeFormat(lang === "zh" ? "zh-CN" : lang === "ru" ? "ru-RU" : "en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false
+      }).format(new Date(runtime.checked_at))
+    : "";
   const activity = useMemo(() => {
     const formatter = new Intl.DateTimeFormat(lang === "zh" ? "zh-CN" : "en-US", {
       hour: "2-digit",
@@ -81,12 +107,14 @@ export function Dashboard({ navigate }: { navigate: Navigate }) {
 
   return (
     <div className="control-dashboard">
-      <section className="health-band">
+      <section className={`health-band ${overall}`} aria-live="polite">
         <div className="health-summary">
-          <span className="health-icon"><CircleCheckBig size={31} /></span>
+          <span className="health-icon">
+            {overall === "healthy" ? <CircleCheckBig size={31} /> : overall === "loading" ? <Activity size={29} /> : <AlertTriangle size={29} />}
+          </span>
           <div>
-            <h2>{t("dashboard.healthTitle")}</h2>
-            <p>{t("dashboard.healthBody")}</p>
+            <h2>{overall === "healthy" ? t("dashboard.healthTitle") : overall === "loading" ? t("dashboard.healthChecking") : t("dashboard.healthDegraded")}</h2>
+            <p>{checkedAt ? t("dashboard.healthLiveBody", { time: checkedAt }) : runtimeFailed ? t("dashboard.healthProbeFailed") : t("dashboard.healthCheckingBody")}</p>
           </div>
         </div>
         <div className="service-grid">
@@ -211,6 +239,85 @@ export function Dashboard({ navigate }: { navigate: Navigate }) {
       </section>
     </div>
   );
+}
+
+function servicePresentation(
+  id: "mtproto" | "admin_api" | "postgres" | "push" | "media",
+  status: RuntimeServiceStatus | undefined,
+  failed: boolean,
+  t: TFunction
+): { value: string; detail: string; tone: Tone } {
+  if (!status) {
+    return {
+      value: failed ? t("dashboard.service.unavailable") : t("dashboard.service.checking"),
+      detail: failed ? t("dashboard.service.probeFailed") : t("dashboard.service.collecting"),
+      tone: failed ? "high" : "pending"
+    };
+  }
+  const value = t(`dashboard.service.state.${status.state}`);
+  const tone = status.state === "healthy" ? "good" : status.state === "degraded" ? "medium" : status.state === "unavailable" ? "high" : "pending";
+  if (id === "postgres") {
+    return {
+      value,
+      detail: t("dashboard.service.postgresDetail", {
+        acquired: status.pool_acquired ?? 0,
+        total: status.pool_total ?? 0,
+        latency: formatLatency(status.latency_ms)
+      }),
+      tone
+    };
+  }
+  if (id === "push") {
+    if (status.state === "disabled") {
+      return { value, detail: t("dashboard.service.pushDisabled"), tone };
+    }
+    const providers = (status.providers ?? []).map((item) => item === "apns" ? "APNs" : item.toUpperCase()).join(" + ") || t("common.none");
+    return {
+      value,
+      detail: t("dashboard.service.pushDetail", {
+        providers,
+        devices: status.registered_devices ?? 0,
+        pending: status.pending ?? 0,
+        retrying: status.retrying ?? 0
+      }),
+      tone
+    };
+  }
+  if (id === "media") {
+    return {
+      value,
+      detail: t("dashboard.service.mediaDetail", {
+        backend: status.backend ?? "localfs",
+        objects: status.object_count ?? 0,
+        size: formatBytes(status.total_bytes ?? 0)
+      }),
+      tone
+    };
+  }
+  return {
+    value,
+    detail: t("dashboard.service.endpointDetail", {
+      endpoint: status.endpoint ?? "-",
+      latency: formatLatency(status.latency_ms)
+    }),
+    tone
+  };
+}
+
+function formatLatency(value?: number): string {
+  return `${Math.max(1, value ?? 1)} ms`;
+}
+
+function formatBytes(value: number): string {
+  if (value < 1024) return `${value} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let size = value;
+  let unit = -1;
+  do {
+    size /= 1024;
+    unit += 1;
+  } while (size >= 1024 && unit < units.length - 1);
+  return `${size.toFixed(size >= 10 ? 1 : 2)} ${units[unit]}`;
 }
 
 function AttentionRow({

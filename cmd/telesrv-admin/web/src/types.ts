@@ -265,6 +265,31 @@ export type CommandResult = {
   error?: string;
 };
 
+export type RuntimeServiceState = "healthy" | "degraded" | "unavailable" | "disabled";
+
+export type RuntimeServiceStatus = {
+  state: RuntimeServiceState;
+  latency_ms?: number;
+  endpoint?: string;
+  pool_acquired?: number;
+  pool_total?: number;
+  enabled?: boolean;
+  providers?: string[];
+  registered_devices?: number;
+  pending?: number;
+  retrying?: number;
+  backend?: string;
+  writable?: boolean;
+  object_count?: number;
+  total_bytes?: number;
+};
+
+export type RuntimeStatusResponse = {
+  checked_at: string;
+  overall: "healthy" | "degraded" | "unavailable";
+  services: Record<"mtproto" | "admin_api" | "postgres" | "push" | "media", RuntimeServiceStatus>;
+};
+
 export type AccountListResponse = {
   query: string;
   limit: number;
