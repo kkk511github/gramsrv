@@ -418,6 +418,19 @@ function ActivityRow({ item, lang, t }: { item: OverviewActivity; lang: string; 
 
 function activityTitle(action: string, t: TFunction): string {
   const keys: Record<string, string> = {
+    "account.set_frozen": "dashboard.activity.action.setFrozen",
+    "account.grant_premium": "dashboard.activity.action.grantPremium",
+    "account.grant_stars": "dashboard.activity.action.grantStars",
+    "account.set_verified": "dashboard.activity.action.setVerified",
+    "channel.set_verified": "dashboard.activity.action.setChannelVerified",
+    "account.revoke_sessions": "dashboard.activity.action.revokeSessions",
+    "messages.delete": "dashboard.activity.action.deleteMessages",
+    "messages.delete_history": "dashboard.activity.action.deleteHistory",
+    "gifts.import": "dashboard.activity.action.importGift",
+    "gifts.import_official": "dashboard.activity.action.importOfficialGift",
+    "gifts.publish_collectibles": "dashboard.activity.action.publishCollectibles",
+    "gifts.set_enabled": "dashboard.activity.action.setGiftEnabled",
+    "gifts.set_sort_order": "dashboard.activity.action.setGiftOrder",
     "set-frozen": "dashboard.activity.action.setFrozen",
     "grant-premium": "dashboard.activity.action.grantPremium",
     "grant-stars": "dashboard.activity.action.grantStars",
@@ -464,11 +477,12 @@ function RuntimeTrendChart({
   const plot = { left: 44, right: 48, top: 18, bottom: 32 };
   const plotWidth = width - plot.left - plot.right;
   const plotHeight = height - plot.top - plot.bottom;
-  const countMax = niceMaximum(Math.max(
+  const observedRateMax = Math.max(
     ...points.map((point) => point.messages_per_minute),
     ...points.map((point) => point.rpc_requests_per_minute ?? 0),
-    1
-  ));
+    0
+  );
+  const countMax = observedRateMax > 0 ? niceMaximum(observedRateMax) : 1;
   const x = (index: number) => plot.left + (points.length === 1 ? plotWidth / 2 : (index / (points.length - 1)) * plotWidth);
   const countY = (value: number) => plot.top + plotHeight - (value / countMax) * plotHeight;
   const pushY = (value: number) => plot.top + plotHeight - (Math.max(0, Math.min(100, value)) / 100) * plotHeight;
@@ -564,7 +578,8 @@ function formatMetric(value: number | undefined, lang: string): string {
 }
 
 function formatAxis(value: number, lang: string): string {
-  return new Intl.NumberFormat(localeFor(lang), { notation: value >= 1000 ? "compact" : "standard", maximumFractionDigits: value < 10 ? 1 : 0 }).format(value);
+  const maximumFractionDigits = value < 0.1 ? 3 : value < 1 ? 2 : value < 10 ? 1 : 0;
+  return new Intl.NumberFormat(localeFor(lang), { notation: value >= 1000 ? "compact" : "standard", maximumFractionDigits }).format(value);
 }
 
 function formatHour(value: string, lang: string): string {
