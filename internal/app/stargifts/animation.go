@@ -27,6 +27,13 @@ func (s *Service) PrepareTrustedAnimation(fileName string, data []byte) (domain.
 	return prepareAnimation(fileName, data, true)
 }
 
+// PrepareOfficialAnimation preserves expressions present in Telegram's signed-in official
+// snapshot. Callers must first verify the file against manifest size and SHA-256; ordinary
+// operator uploads continue through PrepareAnimation and reject expressions.
+func (s *Service) PrepareOfficialAnimation(fileName string, data []byte) (domain.StarGiftAnimation, error) {
+	return prepareAnimation(fileName, data, true)
+}
+
 func prepareAnimation(fileName string, data []byte, allowExpressions bool) (domain.StarGiftAnimation, error) {
 	fileName = strings.TrimSpace(filepath.Base(fileName))
 	ext := strings.ToLower(filepath.Ext(fileName))
