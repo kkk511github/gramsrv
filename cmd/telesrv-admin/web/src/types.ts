@@ -290,6 +290,43 @@ export type RuntimeStatusResponse = {
   services: Record<"mtproto" | "admin_api" | "postgres" | "push" | "media", RuntimeServiceStatus>;
 };
 
+export type OverviewTrendPoint = {
+  bucket_at: string;
+  messages_per_minute: number;
+  rpc_requests_per_minute?: number;
+  push_success_rate?: number;
+  message_count: number;
+  rpc_request_count: number;
+  push_delivered: number;
+  push_failed: number;
+};
+
+export type OverviewAttention = {
+  id: "frozen_accounts" | "push_retries" | "stale_uploads";
+  state: "healthy" | "needs_review" | "retrying" | "overdue";
+  count: number;
+  discovered_at?: string;
+};
+
+export type OverviewActivity = {
+  id: number;
+  action: string;
+  actor: string;
+  status: "running" | "completed" | "failed";
+  dry_run: boolean;
+  target_user_id?: number;
+  target_peer_type?: string;
+  target_peer_id?: number;
+  created_at: string;
+};
+
+export type OverviewResponse = {
+  checked_at: string;
+  trend: OverviewTrendPoint[];
+  attention: OverviewAttention[];
+  activity: OverviewActivity[];
+};
+
 export type AccountListResponse = {
   query: string;
   limit: number;

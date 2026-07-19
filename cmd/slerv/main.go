@@ -57,6 +57,7 @@ import (
 	"telesrv/internal/domain"
 	"telesrv/internal/ipgeo"
 	"telesrv/internal/mtprotoedge"
+	"telesrv/internal/observability/opsmetrics"
 	"telesrv/internal/officialgifts"
 	"telesrv/internal/otpdelivery"
 	otpsmtp "telesrv/internal/otpdelivery/smtp"
@@ -345,6 +346,8 @@ func run(logger *zap.Logger) error {
 		return fmt.Errorf("connect postgres: %w", err)
 	}
 	defer pool.Close()
+	operationalMetrics := opsmetrics.New(pool, logger.Named("observability").Named("operations"))
+	go operationalMetrics.Run(ctx)
 
 	rdb, err := redisstore.Open(ctx, cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
 	if err != nil {
@@ -774,6 +777,7 @@ func run(logger *zap.Logger) error {
 		Batch:                 cfg.PushBatch,
 		Interval:              cfg.PushInterval,
 		SendTimeout:           cfg.PushSendTimeout,
+		Metrics:               operationalMetrics,
 	}, pushStore, logger.Named("push"))
 	if err != nil {
 		return fmt.Errorf("init push notifications: %w", err)
@@ -839,6 +843,7 @@ func run(logger *zap.Logger) error {
 		Sessions:             activeSessions,
 		Inline:               inlineRegistryStore,
 		Limiter:              rateLimiter,
+		Metrics:              operationalMetrics,
 	}, logger.Named("rpc"), clock.System)
 	readModelListener := postgres.NewReadModelChangeListener(cfg.PostgresDSN, postgres.ReadModelCacheSet{
 		ReadModelVersions:  readModelVersionStore,
@@ -885,6 +890,7 @@ func run(logger *zap.Logger) error {
 		rpc.WithOutboxInterval(cfg.OutboxInterval),
 		rpc.WithOutboxPushTimeout(cfg.OutboundPushTimeout),
 		rpc.WithOutboxUpdateBuilder(router.BuildOutboxUpdates),
+		rpc.WithOutboxMetrics(operationalMetrics),
 	}
 	if pushService != nil {
 		outboxOptions = append(outboxOptions, rpc.WithMessagePushStore(pushStore))
@@ -982,6 +988,7 @@ func run(logger *zap.Logger) error {
 		OutboundControlQueueSize:        cfg.MTProtoOutboundControlQueueSize,
 		OutboundTrackedGlobalMaxBytes:   cfg.MTProtoOutboundTrackedGlobalMaxBytes,
 		OutboundWriteGlobalMaxBytes:     cfg.MTProtoOutboundWriteGlobalMaxBytes,
+		Metrics:                         operationalMetrics,
 		OnServing: func(_ net.Addr) {
 			logger.Info("slerv 服务就绪",
 				zap.String("listen", cfg.ListenAddr),

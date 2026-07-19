@@ -631,3 +631,31 @@ GROUP BY token_type, app_sandbox;
 ```
 
 查询只看类型和数量，不要把 token 打到日志或排障截图里。
+
+## 管理后台真实运行指标
+
+管理后台的 24 小时趋势依赖 migration `0113_operational_metrics` 和 `slerv`
+进程内的分钟级聚合器。部署这项功能时不能只替换 `safelink-admin`：必须先部署并
+重启 `slerv` 完成 migration，再部署 `safelink-admin`。
+
+- 消息速率直接按 `private_messages`、`channel_messages` 的真实创建时间统计。
+- MTProto RPC 请求量、推送成功和失败只保存分钟级总数，不保存方法名、用户、正文、
+  设备 token 或错误内容。
+- RPC 与推送历史从该版本上线后开始采集；上线前的时段必须显示“无数据”，不能伪装成 0。
+- 遥测分钟桶保留 8 天，管理后台只读取最近 24 小时。
+- “需要关注”来自冻结账号、推送重试队列和超过 `TELESRV_UPLOAD_PART_TTL` 的上传任务。
+
+部署后等待至少 10 秒，再确认分钟桶和受保护接口：
+
+```sql
+SELECT bucket_at, rpc_requests, push_delivered, push_failed
+FROM operational_metric_minutes
+ORDER BY bucket_at DESC
+LIMIT 5;
+```
+
+```sh
+curl -i https://admin.hsgram.cloud/api/overview
+```
+
+未登录请求必须返回 `401`；不要为了监控方便把该接口改成公开接口。

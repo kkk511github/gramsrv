@@ -1,0 +1,4 @@
+DROP INDEX IF EXISTS channel_messages_created_at_runtime_metrics_idx;
+DROP INDEX IF EXISTS private_messages_created_at_runtime_metrics_idx;
+DROP TABLE IF EXISTS operational_metric_minutes;
+

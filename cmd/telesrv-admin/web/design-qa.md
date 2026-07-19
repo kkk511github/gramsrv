@@ -5,13 +5,13 @@
 - Combined comparison: `/tmp/safelink-admin-design-comparison.png`
 - Mobile screenshot: `/tmp/safelink-admin-mobile-390.png`
 - Viewport: `1464 x 1042` desktop; `390 x 844` mobile frame
-- State: authenticated Chinese runtime overview with neutral telemetry-pending states
+- State: authenticated Chinese runtime overview with live operational telemetry
 
 **Full-View Comparison Evidence**
 
 - The rendered page matches the reference composition: `210px` dark control sidebar, `66px` white top bar, emerald health band, six-column attention table, two-column activity/trend region, and amber safety strip.
 - Desktop document width and scroll width are both `1464px`; document height is exactly `1042px`, so the full control surface fits the reference viewport without horizontal overflow.
-- The reference's unsupported production counts and trend lines are replaced by explicit telemetry-pending states. This preserves the visual hierarchy without presenting fabricated server metrics.
+- Service cards, attention counts, audit activity, and trend lines now come from authenticated production APIs. No sample production values remain in the dashboard.
 
 **Focused Region Evidence**
 
@@ -19,13 +19,12 @@
 - Spacing and layout: section gaps, table row heights, dividers, `6-7px` radii, sidebar proportions, and lower-panel balance were checked against the combined comparison.
 - Colors and tokens: graphite navigation, emerald health states, cyan/blue trend legend, amber warnings, and restrained red severity states match the reference's multi-color operational palette.
 - Image and icon fidelity: the target has no raster product imagery. All interface icons use the existing `lucide-react` library; no emoji, handwritten SVG, CSS illustration, or placeholder image was introduced.
-- Copy and content: Chinese remains primary. Unknown server metrics are clearly labeled `监控待接入` or `数据待接入` instead of showing sample values from the mockup.
+- Copy and content: Chinese remains primary. Missing collection windows render as unavailable data rather than fabricated zeroes.
 - Mobile: a real `390px` iframe viewport was captured. Client width and scroll width are both `390px`; the health grid stacks, attention rows simplify, and the navigation becomes a working drawer without overlap.
 
 **Findings**
 
 - No actionable P0, P1, or P2 differences remain.
-- P3: the reference shows live chart lines and aggregate counts. The implementation intentionally keeps professional empty states until a real overview metrics endpoint is available.
 - P3: the language control remains the existing two-option segmented control instead of the mockup's dropdown, preserving current behavior and accessibility.
 
 **Interaction Verification**
@@ -40,7 +39,7 @@
 **Comparison History**
 
 - Earlier implementation: user feedback identified a P1 fidelity issue because the risk table, administrator timeline, and trend area from the selected direction were replaced with generic workflow panels.
-- Fix: restored the selected information architecture, tightened the sidebar and top bar, added the six-column attention table, current-session timeline, trend region, and safety strip, while keeping unsupported metrics honest.
+- Fix: restored the selected information architecture, tightened the sidebar and top bar, added the six-column attention table, persisted audit timeline, real 24-hour trend region, and safety strip.
 - Post-fix evidence: `/tmp/safelink-admin-design-comparison.png` shows the revised prototype and reference at the same desktop viewport with matching major-region proportions and density.
 
 **Implementation Checklist**
@@ -48,6 +47,7 @@
 - [x] Match the selected premium control-center hierarchy.
 - [x] Preserve existing routes and API contracts.
 - [x] Avoid fabricated production metrics.
+- [x] Connect production health, attention, audit, and trend data.
 - [x] Verify desktop visual fidelity and navigation behavior.
 - [x] Verify `390px` responsive layout and drawer behavior.
 - [x] Run TypeScript, production build, and console checks.

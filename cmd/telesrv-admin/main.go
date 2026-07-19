@@ -80,6 +80,7 @@ type uiConfig struct {
 	FCMProjectID          string
 	FCMServiceAccountJSON string
 	BlobDir               string
+	UploadPartTTL         time.Duration
 }
 
 // loadConfig 通过 internal/config.Load() 加载 .env 配置文件与环境变量，
@@ -123,6 +124,7 @@ func loadConfig() (uiConfig, error) {
 		FCMProjectID:          appCfg.FCMProjectID,
 		FCMServiceAccountJSON: appCfg.FCMServiceAccountJSON,
 		BlobDir:               appCfg.BlobDir,
+		UploadPartTTL:         appCfg.UploadPartTTL,
 	}, nil
 }
 

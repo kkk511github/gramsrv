@@ -19,7 +19,8 @@ func TestServiceDispatchesAndDeletesInvalidDevice(t *testing.T) {
 		},
 	}
 	sender := &senderStub{invalidToken: "invalid"}
-	service := &Service{store: store, apns: sender, batch: 10, log: zap.NewNop()}
+	metrics := &pushMetricsStub{}
+	service := &Service{store: store, apns: sender, batch: 10, log: zap.NewNop(), metrics: metrics}
 
 	if !service.dispatchOnce(context.Background()) {
 		t.Fatal("dispatchOnce = false, want claimed work")
@@ -36,6 +37,9 @@ func TestServiceDispatchesAndDeletesInvalidDevice(t *testing.T) {
 	if len(store.deliveredDeviceIDs) != 1 || store.deliveredDeviceIDs[0] != 1 {
 		t.Fatalf("delivered device ids = %v, want [1]", store.deliveredDeviceIDs)
 	}
+	if metrics.delivered != 1 || metrics.failed != 0 {
+		t.Fatalf("push metrics delivered/failed = %d/%d, want 1/0", metrics.delivered, metrics.failed)
+	}
 }
 
 func TestServiceRetriesTransientProviderFailure(t *testing.T) {
@@ -43,13 +47,26 @@ func TestServiceRetriesTransientProviderFailure(t *testing.T) {
 		jobs:    []domain.PushNotificationJob{{ID: 10, TargetUserID: 42, Pts: 8}},
 		devices: []domain.PushDevice{{ID: 1, UserID: 42, TokenType: domain.PushTokenFCM, Token: "temporary"}},
 	}
-	service := &Service{store: store, fcm: &senderStub{sendErr: errors.New("provider unavailable")}, batch: 10, log: zap.NewNop()}
+	metrics := &pushMetricsStub{}
+	service := &Service{store: store, fcm: &senderStub{sendErr: errors.New("provider unavailable")}, batch: 10, log: zap.NewNop(), metrics: metrics}
 
 	service.dispatchOnce(context.Background())
 	if store.deliveredID != 0 || store.failedID != 10 {
 		t.Fatalf("delivered=%d failed=%d, want 0/10", store.deliveredID, store.failedID)
 	}
+	if metrics.delivered != 0 || metrics.failed != 1 {
+		t.Fatalf("push metrics delivered/failed = %d/%d, want 0/1", metrics.delivered, metrics.failed)
+	}
 }
+
+type pushMetricsStub struct {
+	delivered int
+	failed    int
+}
+
+func (m *pushMetricsStub) PushDelivered() { m.delivered++ }
+
+func (m *pushMetricsStub) PushFailed() { m.failed++ }
 
 type senderStub struct {
 	invalidToken string

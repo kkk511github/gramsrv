@@ -25,7 +25,19 @@ type Config struct {
 	Batch                 int
 	Interval              time.Duration
 	SendTimeout           time.Duration
+	Metrics               Metrics
 }
+
+type Metrics interface {
+	PushDelivered()
+	PushFailed()
+}
+
+type nopMetrics struct{}
+
+func (nopMetrics) PushDelivered() {}
+
+func (nopMetrics) PushFailed() {}
 
 type deviceSender interface {
 	Send(ctx context.Context, device domain.PushDevice, job domain.PushNotificationJob) (invalid bool, err error)
@@ -40,6 +52,7 @@ type Service struct {
 	batch       int
 	interval    time.Duration
 	sendTimeout time.Duration
+	metrics     Metrics
 }
 
 func New(cfg Config, pushStore store.PushStore, logger *zap.Logger) (*Service, error) {
@@ -59,6 +72,10 @@ func New(cfg Config, pushStore store.PushStore, logger *zap.Logger) (*Service, e
 		batch:       cfg.Batch,
 		interval:    cfg.Interval,
 		sendTimeout: cfg.SendTimeout,
+		metrics:     cfg.Metrics,
+	}
+	if service.metrics == nil {
+		service.metrics = nopMetrics{}
 	}
 	if service.workers <= 0 {
 		service.workers = 4
@@ -184,6 +201,9 @@ func (s *Service) dispatchJob(ctx context.Context, job domain.PushNotificationJo
 		s.log.Warn("mark push notification delivered", zap.Int64("push_id", job.ID), zap.Error(err))
 		return
 	}
+	if s.metrics != nil {
+		s.metrics.PushDelivered()
+	}
 	s.log.Debug("push notification delivered", zap.Int64("push_id", job.ID), zap.Int64("user_id", job.TargetUserID), zap.Int("devices", len(devices)))
 }
 
@@ -200,6 +220,9 @@ func (s *Service) failJob(ctx context.Context, job domain.PushNotificationJob, c
 	if err := s.store.MarkPushNotificationFailed(ctx, job.ID, cause.Error()); err != nil {
 		s.log.Warn("mark push notification failed", zap.Int64("push_id", job.ID), zap.Error(err))
 		return
+	}
+	if s.metrics != nil {
+		s.metrics.PushFailed()
 	}
 	s.log.Warn("push notification delivery failed", zap.Int64("push_id", job.ID), zap.Int64("user_id", job.TargetUserID), zap.Int("attempt", job.Attempts+1), zap.Error(cause))
 }

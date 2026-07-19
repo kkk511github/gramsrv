@@ -14,15 +14,21 @@ import {
   Server,
   ShieldAlert,
   ShieldCheck,
-  Snowflake,
-  Users
+  Snowflake
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { api } from "../api";
 import { AppLink } from "../components/AppLink";
 import { useI18n, type TFunction } from "../i18n";
 import type { Navigate } from "../routing";
-import type { RuntimeServiceStatus, RuntimeStatusResponse } from "../types";
+import type {
+  OverviewActivity,
+  OverviewAttention,
+  OverviewResponse,
+  OverviewTrendPoint,
+  RuntimeServiceStatus,
+  RuntimeStatusResponse
+} from "../types";
 
 type Tone = "good" | "pending" | "high" | "medium";
 
@@ -30,6 +36,8 @@ export function Dashboard({ navigate }: { navigate: Navigate }) {
   const { t, lang } = useI18n();
   const [runtime, setRuntime] = useState<RuntimeStatusResponse | null>(null);
   const [runtimeFailed, setRuntimeFailed] = useState(false);
+  const [overview, setOverview] = useState<OverviewResponse | null>(null);
+  const [overviewFailed, setOverviewFailed] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -46,6 +54,27 @@ export function Dashboard({ navigate }: { navigate: Navigate }) {
     };
     void load();
     const timer = window.setInterval(() => void load(), 15_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const next = await api.overview();
+        if (active) {
+          setOverview(next);
+          setOverviewFailed(false);
+        }
+      } catch {
+        if (active) setOverviewFailed(true);
+      }
+    };
+    void load();
+    const timer = window.setInterval(() => void load(), 60_000);
     return () => {
       active = false;
       window.clearInterval(timer);
@@ -82,28 +111,14 @@ export function Dashboard({ navigate }: { navigate: Navigate }) {
   ];
   const overall = runtime?.overall ?? (runtimeFailed ? "unavailable" : "loading");
   const checkedAt = runtime?.checked_at
-    ? new Intl.DateTimeFormat(lang === "zh" ? "zh-CN" : lang === "ru" ? "ru-RU" : "en-US", {
+    ? new Intl.DateTimeFormat(localeFor(lang), {
         hour: "2-digit",
         minute: "2-digit",
         second: "2-digit",
         hour12: false
       }).format(new Date(runtime.checked_at))
     : "";
-  const activity = useMemo(() => {
-    const formatter = new Intl.DateTimeFormat(lang === "zh" ? "zh-CN" : "en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false
-    });
-    const at = (minutesAgo: number) => formatter.format(new Date(Date.now() - minutesAgo * 60_000));
-    return [
-      { time: at(0), icon: <Users />, title: t("dashboard.activity.session"), detail: t("dashboard.activity.sessionText") },
-      { time: at(2), icon: <Database />, title: t("dashboard.activity.readPath"), detail: t("dashboard.activity.readPathText") },
-      { time: at(4), icon: <ShieldCheck />, title: t("dashboard.activity.preview"), detail: t("dashboard.activity.previewText") },
-      { time: at(6), icon: <Activity />, title: t("dashboard.activity.runtime"), detail: t("dashboard.activity.runtimeText") }
-    ];
-  }, [lang, t]);
+  const attentionCount = overview?.attention.filter((item) => item.count > 0).length ?? 0;
 
   return (
     <div className="control-dashboard">
@@ -134,7 +149,10 @@ export function Dashboard({ navigate }: { navigate: Navigate }) {
       <section className="dashboard-panel attention-panel">
         <div className="dashboard-panel-head">
           <div>
-            <h2>{t("dashboard.attentionTitle")}<b className="attention-count">3</b></h2>
+            <h2>
+              {t("dashboard.attentionTitle")}
+              <b className={`attention-count ${overview && attentionCount === 0 ? "good" : ""}`}>{overview ? attentionCount : "…"}</b>
+            </h2>
             <p>{t("dashboard.attentionBody")}</p>
           </div>
           <AppLink className="panel-link" href="/accounts" navigate={navigate}>
@@ -150,39 +168,24 @@ export function Dashboard({ navigate }: { navigate: Navigate }) {
             <span>{t("dashboard.table.discovered")}</span>
             <span>{t("common.operations")}</span>
           </div>
-          <AttentionRow
-            icon={<Snowflake />}
-            title={t("dashboard.queue.freezeTitle")}
-            text={t("dashboard.queue.freezeText")}
-            severity={t("dashboard.severity.high")}
-            status={t("dashboard.queue.dataPending")}
-            owner={t("dashboard.queue.riskOwner")}
-            href="/accounts"
-            navigate={navigate}
-            tone="high"
-          />
-          <AttentionRow
-            icon={<MessageSquareText />}
-            title={t("dashboard.queue.pushTitle")}
-            text={t("dashboard.queue.pushText")}
-            severity={t("dashboard.severity.medium")}
-            status={t("dashboard.queue.dataPending")}
-            owner={t("dashboard.queue.messageOwner")}
-            href="/messages"
-            navigate={navigate}
-            tone="medium"
-          />
-          <AttentionRow
-            icon={<HardDrive />}
-            title={t("dashboard.queue.mediaTitle")}
-            text={t("dashboard.queue.mediaText")}
-            severity={t("dashboard.severity.medium")}
-            status={t("dashboard.queue.dataPending")}
-            owner={t("dashboard.queue.mediaOwner")}
-            href="/gifts"
-            navigate={navigate}
-            tone="medium"
-          />
+          {overview?.attention.map((item) => {
+            const presentation = attentionPresentation(item, t);
+            return (
+              <AttentionRow
+                key={item.id}
+                {...presentation}
+                count={item.count}
+                status={t(`dashboard.queue.state.${item.state}`)}
+                discovered={item.discovered_at ? formatDateTime(item.discovered_at, lang) : t("dashboard.queue.none")}
+                navigate={navigate}
+              />
+            );
+          })}
+          {!overview && (
+            <div className={`dashboard-data-state ${overviewFailed ? "failed" : ""}`}>
+              {overviewFailed ? t("dashboard.data.failed") : t("dashboard.data.loading")}
+            </div>
+          )}
         </div>
       </section>
 
@@ -193,18 +196,20 @@ export function Dashboard({ navigate }: { navigate: Navigate }) {
               <h2>{t("dashboard.activityTitle")}</h2>
               <p>{t("dashboard.activityBody")}</p>
             </div>
-            <span className="panel-meta"><Clock3 size={14} />{t("dashboard.realtime")}</span>
+            <span className="panel-meta"><Clock3 size={14} />{t("dashboard.activity.audit")}</span>
           </div>
           <div className="activity-list">
-            {activity.map((item) => (
-              <div className="activity-row" key={item.title}>
-                <time>{item.time}</time>
-                <span className="activity-node" />
-                <span className="activity-icon">{item.icon}</span>
-                <div><strong>{item.title}</strong><small>{item.detail}</small></div>
-                <span className="activity-success"><Check size={12} />{t("dashboard.success")}</span>
-              </div>
+            {overview?.activity.map((item) => (
+              <ActivityRow key={item.id} item={item} lang={lang} t={t} />
             ))}
+            {overview && overview.activity.length === 0 && (
+              <div className="dashboard-data-state">{t("dashboard.activity.empty")}</div>
+            )}
+            {!overview && (
+              <div className={`dashboard-data-state ${overviewFailed ? "failed" : ""}`}>
+                {overviewFailed ? t("dashboard.data.failed") : t("dashboard.data.loading")}
+              </div>
+            )}
           </div>
         </section>
 
@@ -216,16 +221,13 @@ export function Dashboard({ navigate }: { navigate: Navigate }) {
             </div>
             <span className="panel-meta">{t("dashboard.last24Hours")}</span>
           </div>
-          <div className="trend-legend" aria-hidden="true">
-            <span><i className="cyan" />{t("dashboard.trend.messages")}</span>
-            <span><i className="blue" />{t("dashboard.trend.api")}</span>
-            <span><i className="gray" />{t("dashboard.trend.push")}</span>
-          </div>
-          <div className="trend-empty">
-            <LineChart size={28} />
-            <strong>{t("dashboard.trend.pendingTitle")}</strong>
-            <span>{t("dashboard.trend.pendingText")}</span>
-          </div>
+          <RuntimeTrendChart
+            points={overview?.trend ?? []}
+            loading={!overview && !overviewFailed}
+            failed={overviewFailed}
+            lang={lang}
+            t={t}
+          />
         </section>
       </div>
 
@@ -304,6 +306,285 @@ function servicePresentation(
   };
 }
 
+function attentionPresentation(item: OverviewAttention, t: TFunction): {
+  icon: ReactNode;
+  title: string;
+  text: string;
+  severity: string;
+  owner: string;
+  href: string;
+  tone: "high" | "medium" | "good";
+} {
+  const healthy = item.count === 0;
+  if (item.id === "frozen_accounts") {
+    return {
+      icon: <Snowflake />,
+      title: t("dashboard.queue.freezeTitle"),
+      text: t("dashboard.queue.freezeText"),
+      severity: healthy ? t("dashboard.severity.normal") : t("dashboard.severity.high"),
+      owner: t("dashboard.queue.riskOwner"),
+      href: "/accounts",
+      tone: healthy ? "good" : "high"
+    };
+  }
+  if (item.id === "push_retries") {
+    return {
+      icon: <MessageSquareText />,
+      title: t("dashboard.queue.pushTitle"),
+      text: t("dashboard.queue.pushText"),
+      severity: healthy ? t("dashboard.severity.normal") : t("dashboard.severity.medium"),
+      owner: t("dashboard.queue.messageOwner"),
+      href: "/messages",
+      tone: healthy ? "good" : "medium"
+    };
+  }
+  return {
+    icon: <HardDrive />,
+    title: t("dashboard.queue.mediaTitle"),
+    text: t("dashboard.queue.mediaText"),
+    severity: healthy ? t("dashboard.severity.normal") : t("dashboard.severity.medium"),
+    owner: t("dashboard.queue.mediaOwner"),
+    href: "/messages",
+    tone: healthy ? "good" : "medium"
+  };
+}
+
+function AttentionRow({
+  icon,
+  title,
+  text,
+  severity,
+  count,
+  status,
+  owner,
+  discovered,
+  href,
+  navigate,
+  tone
+}: {
+  icon: ReactNode;
+  title: string;
+  text: string;
+  severity: string;
+  count: number;
+  status: string;
+  owner: string;
+  discovered: string;
+  href: string;
+  navigate: Navigate;
+  tone: "high" | "medium" | "good";
+}) {
+  const { t } = useI18n();
+  return (
+    <div className={`attention-row ${tone}`} role="row">
+      <div className="attention-item">
+        <span className={`attention-icon ${tone}`}>{icon}</span>
+        <div><strong>{title}</strong><small>{text}</small></div>
+      </div>
+      <span><b className={`severity-badge ${tone}`}>{severity}</b></span>
+      <span className="attention-number">{count.toLocaleString()}</span>
+      <div className="attention-state"><strong>{status}</strong><small>{owner}</small></div>
+      <span className="attention-time">{discovered}</span>
+      <AppLink className="queue-action" href={href} navigate={navigate}>{t("dashboard.view")}</AppLink>
+    </div>
+  );
+}
+
+function ActivityRow({ item, lang, t }: { item: OverviewActivity; lang: string; t: TFunction }) {
+  const title = activityTitle(item.action, t);
+  const target = item.target_user_id
+    ? t("dashboard.activity.targetUser", { id: item.target_user_id })
+    : item.target_peer_id
+      ? t("dashboard.activity.targetPeer", { type: item.target_peer_type || "peer", id: item.target_peer_id })
+      : t("dashboard.activity.targetSystem");
+  return (
+    <div className="activity-row">
+      <time dateTime={item.created_at}>{formatDateTime(item.created_at, lang)}</time>
+      <span className="activity-node" />
+      <span className={`activity-icon ${item.status}`}>
+        {item.status === "failed" ? <AlertTriangle /> : <ShieldCheck />}
+      </span>
+      <div>
+        <strong>{item.dry_run ? t("dashboard.activity.dryRunTitle", { action: title }) : title}</strong>
+        <small>{t("dashboard.activity.detail", { actor: item.actor, target })}</small>
+      </div>
+      <span className={`activity-success ${item.status}`}>
+        {item.status === "failed" ? <AlertTriangle size={12} /> : <Check size={12} />}
+        {t(`dashboard.activity.status.${item.status}`)}
+      </span>
+    </div>
+  );
+}
+
+function activityTitle(action: string, t: TFunction): string {
+  const keys: Record<string, string> = {
+    "set-frozen": "dashboard.activity.action.setFrozen",
+    "grant-premium": "dashboard.activity.action.grantPremium",
+    "grant-stars": "dashboard.activity.action.grantStars",
+    "set-verified": "dashboard.activity.action.setVerified",
+    "set-channel-verified": "dashboard.activity.action.setChannelVerified",
+    "revoke-sessions": "dashboard.activity.action.revokeSessions",
+    "delete-messages": "dashboard.activity.action.deleteMessages",
+    "delete-history": "dashboard.activity.action.deleteHistory",
+    "import-gift": "dashboard.activity.action.importGift",
+    "import-official-gift": "dashboard.activity.action.importOfficialGift",
+    "publish-gift-collectibles": "dashboard.activity.action.publishCollectibles",
+    "set-gift-enabled": "dashboard.activity.action.setGiftEnabled",
+    "set-gift-sort-order": "dashboard.activity.action.setGiftOrder"
+  };
+  return keys[action] ? t(keys[action]) : action;
+}
+
+function RuntimeTrendChart({
+  points,
+  loading,
+  failed,
+  lang,
+  t
+}: {
+  points: OverviewTrendPoint[];
+  loading: boolean;
+  failed: boolean;
+  lang: string;
+  t: TFunction;
+}) {
+  if (loading || failed || points.length === 0) {
+    return (
+      <div className={`trend-empty ${failed ? "failed" : ""}`}>
+        {failed ? <AlertTriangle size={28} /> : <LineChart size={28} />}
+        <strong>{failed ? t("dashboard.data.failed") : t("dashboard.data.loading")}</strong>
+        <span>{failed ? t("dashboard.trend.failedText") : t("dashboard.trend.loadingText")}</span>
+      </div>
+    );
+  }
+
+  const latest = points[points.length - 1];
+  const width = 720;
+  const height = 226;
+  const plot = { left: 44, right: 48, top: 18, bottom: 32 };
+  const plotWidth = width - plot.left - plot.right;
+  const plotHeight = height - plot.top - plot.bottom;
+  const countMax = niceMaximum(Math.max(
+    ...points.map((point) => point.messages_per_minute),
+    ...points.map((point) => point.rpc_requests_per_minute ?? 0),
+    1
+  ));
+  const x = (index: number) => plot.left + (points.length === 1 ? plotWidth / 2 : (index / (points.length - 1)) * plotWidth);
+  const countY = (value: number) => plot.top + plotHeight - (value / countMax) * plotHeight;
+  const pushY = (value: number) => plot.top + plotHeight - (Math.max(0, Math.min(100, value)) / 100) * plotHeight;
+  const messagePath = seriesPath(points, x, (point) => point.messages_per_minute, countY);
+  const rpcPath = seriesPath(points, x, (point) => point.rpc_requests_per_minute, countY);
+  const pushPath = seriesPath(points, x, (point) => point.push_success_rate, pushY);
+  const labelIndexes = new Set([0, 6, 12, 18, points.length - 1].filter((index) => index < points.length));
+
+  return (
+    <>
+      <div className="trend-legend">
+        <span><i className="cyan" />{t("dashboard.trend.messages")}<b>{formatMetric(latest.messages_per_minute, lang)}</b></span>
+        <span><i className="blue" />{t("dashboard.trend.api")}<b>{formatMetric(latest.rpc_requests_per_minute, lang)}</b></span>
+        <span><i className="gray" />{t("dashboard.trend.push")}<b>{latest.push_success_rate == null ? "—" : `${formatMetric(latest.push_success_rate, lang)}%`}</b></span>
+      </div>
+      <div className="trend-chart-wrap">
+        <svg className="trend-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={t("dashboard.trend.chartLabel")}>
+          <title>{t("dashboard.trend.chartLabel")}</title>
+          {Array.from({ length: 5 }, (_, index) => {
+            const ratio = index / 4;
+            const y = plot.top + ratio * plotHeight;
+            return (
+              <g key={index}>
+                <line className="trend-grid-line" x1={plot.left} x2={width - plot.right} y1={y} y2={y} />
+                <text className="trend-axis-label" x={plot.left - 8} y={y + 3} textAnchor="end">{formatAxis(countMax * (1 - ratio), lang)}</text>
+                <text className="trend-axis-label push" x={width - plot.right + 8} y={y + 3}>{Math.round(100 * (1 - ratio))}%</text>
+              </g>
+            );
+          })}
+          {points.map((point, index) => labelIndexes.has(index) ? (
+            <text className="trend-axis-label time" key={point.bucket_at} x={x(index)} y={height - 9} textAnchor="middle">
+              {formatHour(point.bucket_at, lang)}
+            </text>
+          ) : null)}
+          <path className="trend-series messages" d={messagePath} />
+          <path className="trend-series rpc" d={rpcPath} />
+          <path className="trend-series push" d={pushPath} />
+          {points.map((point, index) => (
+            <circle className="trend-hit" key={`hit-${point.bucket_at}`} cx={x(index)} cy={plot.top + plotHeight / 2} r={9}>
+              <title>{trendTooltip(point, lang, t)}</title>
+            </circle>
+          ))}
+          <circle className="trend-latest messages" cx={x(points.length - 1)} cy={countY(latest.messages_per_minute)} r={3.5} />
+          {latest.rpc_requests_per_minute != null && <circle className="trend-latest rpc" cx={x(points.length - 1)} cy={countY(latest.rpc_requests_per_minute)} r={3.5} />}
+          {latest.push_success_rate != null && <circle className="trend-latest push" cx={x(points.length - 1)} cy={pushY(latest.push_success_rate)} r={3.5} />}
+        </svg>
+      </div>
+      <p className="trend-footnote">{t("dashboard.trend.privacy")}</p>
+    </>
+  );
+}
+
+function seriesPath(
+  points: OverviewTrendPoint[],
+  x: (index: number) => number,
+  value: (point: OverviewTrendPoint) => number | undefined,
+  y: (value: number) => number
+): string {
+  let drawing = false;
+  return points.map((point, index) => {
+    const current = value(point);
+    if (current == null || !Number.isFinite(current)) {
+      drawing = false;
+      return "";
+    }
+    const command = drawing ? "L" : "M";
+    drawing = true;
+    return `${command}${x(index).toFixed(2)},${y(current).toFixed(2)}`;
+  }).filter(Boolean).join(" ");
+}
+
+function trendTooltip(point: OverviewTrendPoint, lang: string, t: TFunction): string {
+  return [
+    formatDateTime(point.bucket_at, lang),
+    `${t("dashboard.trend.messages")}: ${formatMetric(point.messages_per_minute, lang)}`,
+    `${t("dashboard.trend.api")}: ${formatMetric(point.rpc_requests_per_minute, lang)}`,
+    `${t("dashboard.trend.push")}: ${point.push_success_rate == null ? "—" : `${formatMetric(point.push_success_rate, lang)}%`}`,
+    `${t("dashboard.trend.pushAttempts")}: ${point.push_delivered + point.push_failed}`
+  ].join("\n");
+}
+
+function niceMaximum(value: number): number {
+  if (value <= 0) return 1;
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  const normalized = value / magnitude;
+  const nice = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  return nice * magnitude;
+}
+
+function formatMetric(value: number | undefined, lang: string): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat(localeFor(lang), { maximumFractionDigits: value < 10 ? 2 : 1 }).format(value);
+}
+
+function formatAxis(value: number, lang: string): string {
+  return new Intl.NumberFormat(localeFor(lang), { notation: value >= 1000 ? "compact" : "standard", maximumFractionDigits: value < 10 ? 1 : 0 }).format(value);
+}
+
+function formatHour(value: string, lang: string): string {
+  return new Intl.DateTimeFormat(localeFor(lang), { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
+}
+
+function formatDateTime(value: string, lang: string): string {
+  return new Intl.DateTimeFormat(localeFor(lang), {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).format(new Date(value));
+}
+
+function localeFor(lang: string): string {
+  return lang === "zh" ? "zh-CN" : lang === "ru" ? "ru-RU" : "en-US";
+}
+
 function formatLatency(value?: number): string {
   return `${Math.max(1, value ?? 1)} ms`;
 }
@@ -318,41 +599,4 @@ function formatBytes(value: number): string {
     unit += 1;
   } while (size >= 1024 && unit < units.length - 1);
   return `${size.toFixed(size >= 10 ? 1 : 2)} ${units[unit]}`;
-}
-
-function AttentionRow({
-  icon,
-  title,
-  text,
-  severity,
-  status,
-  owner,
-  href,
-  navigate,
-  tone
-}: {
-  icon: ReactNode;
-  title: string;
-  text: string;
-  severity: string;
-  status: string;
-  owner: string;
-  href: string;
-  navigate: Navigate;
-  tone: "high" | "medium";
-}) {
-  const { t } = useI18n();
-  return (
-    <div className="attention-row" role="row">
-      <div className="attention-item">
-        <span className={`attention-icon ${tone}`}>{icon}</span>
-        <div><strong>{title}</strong><small>{text}</small></div>
-      </div>
-      <span><b className={`severity-badge ${tone}`}>{severity}</b></span>
-      <span className="attention-number">—</span>
-      <div className="attention-state"><strong>{status}</strong><small>{owner}</small></div>
-      <span className="attention-time">—</span>
-      <AppLink className="queue-action" href={href} navigate={navigate}>{t("dashboard.view")}</AppLink>
-    </div>
-  );
 }

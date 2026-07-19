@@ -50,6 +50,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("POST /api/logout", s.handleAPILogout)
 	mux.Handle("GET /api/session", s.requireAuthAPI(http.HandlerFunc(s.handleSession)))
 	mux.Handle("GET /api/runtime-status", s.requireAuthAPI(http.HandlerFunc(s.handleRuntimeStatusAPI)))
+	mux.Handle("GET /api/overview", s.requireAuthAPI(http.HandlerFunc(s.handleOverviewAPI)))
 	mux.Handle("GET /api/accounts", s.requireAuthAPI(http.HandlerFunc(s.handleAccountsAPI)))
 	mux.Handle("GET /api/accounts/{id}", s.requireAuthAPI(http.HandlerFunc(s.handleAccountDetailAPI)))
 	mux.Handle("GET /api/channels", s.requireAuthAPI(http.HandlerFunc(s.handleChannelsAPI)))
