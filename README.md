@@ -31,6 +31,16 @@ or sponsored by Telegram or the official Telegram team.
 
 https://github.com/user-attachments/assets/25e651dc-a022-4d60-8b9b-ca3e8bfe216c
 
+## SafeLink Client Ecosystem
+
+`gramsrv` is the server side of the stack, and client projects make self-hosted
+Telegram-compatible networks much easier to try in real life.
+
+SafeLink provides Desktop, Android, iOS, and [Web](https://web.safelink.chat)
+clients configured for this server. They use SafeLink domains, links, public
+keys, and push settings while retaining the MTProto compatibility paths covered
+by `gramsrv`.
+
 ## Project Traits
 
 | Status | Trait | What it means |

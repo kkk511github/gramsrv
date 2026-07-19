@@ -29,6 +29,15 @@
 
 https://github.com/user-attachments/assets/25e651dc-a022-4d60-8b9b-ca3e8bfe216c
 
+## SafeLink 客户端生态
+
+`gramsrv` 是这一套生态里的 server 侧实现，而客户端项目会让自建
+Telegram-compatible 网络更容易被真实用户体验和验证。
+
+SafeLink 提供 Desktop、Android、iOS 和 [Web](https://web.safelink.chat)
+客户端，统一使用 SafeLink 域名、链接、公钥与推送配置，同时保留 `gramsrv`
+所覆盖的 MTProto 兼容路径。
+
 ## 项目特性
 
 | 状态 | 特性 | 说明 |
