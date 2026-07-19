@@ -659,3 +659,22 @@ curl -i https://admin.hsgram.cloud/api/overview
 ```
 
 未登录请求必须返回 `401`；不要为了监控方便把该接口改成公开接口。
+
+## 2026-07-20 上游迁移编号兼容
+
+SafeLink 已经在 `0107–0113` 使用了礼物、推送和运行指标迁移。
+上游同期功能原始也使用了这些版本号，因此合并到 SafeLink `dev` 时已按原始依赖顺序
+整体顺延为 `0114–0126`。
+
+- 现有生产库从 clean version `113` 直接升级到 `126`。
+- 新安装从 `0001` 完整执行时也必须最终到达 clean version `126`。
+- 不要把这批文件改回上游原始的 `0107–0119`，否则会与 SafeLink 已发布迁移重号，
+  导致新库报 duplicate version，或生产库误跳过 Bot API 和账号生命周期表。
+
+正式部署前必须同时演练空库升级和 `113 -> 126` 结构副本升级，部署后确认：
+
+```sql
+SELECT version, dirty FROM schema_migrations;
+```
+
+期望结果为 `126 | false`。

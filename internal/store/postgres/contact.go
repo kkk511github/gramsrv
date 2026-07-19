@@ -87,6 +87,8 @@ SELECT
   COALESCE(EXTRACT(EPOCH FROM u.premium_expires_at), 0)::bigint AS premium_until,
   u.emoji_status_document_id,
   u.emoji_status_until,
+  u.emoji_status_collectible_id,
+  u.emoji_status_collectible,
   u.last_seen_at
 FROM contacts c
 JOIN users u ON u.id = c.contact_user_id
@@ -137,6 +139,8 @@ SELECT
   COALESCE(EXTRACT(EPOCH FROM u.premium_expires_at), 0)::bigint AS premium_until,
   u.emoji_status_document_id,
   u.emoji_status_until,
+  u.emoji_status_collectible_id,
+  u.emoji_status_collectible,
   u.last_seen_at
 FROM contacts c
 JOIN users u ON u.id = c.contact_user_id
@@ -306,6 +310,8 @@ SELECT
   COALESCE(EXTRACT(EPOCH FROM u.premium_expires_at), 0)::bigint AS premium_until,
   u.emoji_status_document_id,
   u.emoji_status_until,
+  u.emoji_status_collectible_id,
+  u.emoji_status_collectible,
   u.last_seen_at,
   EXISTS (SELECT 1 FROM reverse_updated ru WHERE ru.user_id = c.contact_user_id)::boolean AS reverse_mutual_changed
 FROM upserted c
@@ -370,6 +376,8 @@ func (s *ContactStore) UpsertMany(ctx context.Context, userID int64, inputs []do
 			premiumUntil         int64
 			emojiStatusDocID     int64
 			emojiStatusUntil     int64
+			emojiCollectibleID   *int64
+			emojiCollectibleJSON []byte
 			lastSeenAt           int64
 			reverseMutualChanged bool
 		)
@@ -394,6 +402,8 @@ func (s *ContactStore) UpsertMany(ctx context.Context, userID int64, inputs []do
 			&premiumUntil,
 			&emojiStatusDocID,
 			&emojiStatusUntil,
+			&emojiCollectibleID,
+			&emojiCollectibleJSON,
 			&lastSeenAt,
 			&reverseMutualChanged,
 		); err != nil {
@@ -404,7 +414,7 @@ func (s *ContactStore) UpsertMany(ctx context.Context, userID int64, inputs []do
 		if err != nil {
 			return nil, fmt.Errorf("decode contact note entities: %w", err)
 		}
-		out = append(out, contactFromFields(id, accessHash, phone, firstName, lastName, username, countryCode, verified, support, false, 0, int(premiumUntil), emojiStatusDocID, int(emojiStatusUntil), int(lastSeenAt), contactFirstName, contactLastName, contactPhone, note, entities, mutual, closeFriend))
+		out = append(out, contactFromFields(id, accessHash, phone, firstName, lastName, username, countryCode, verified, support, false, 0, int(premiumUntil), emojiStatusDocID, int(emojiStatusUntil), emojiCollectibleID, emojiCollectibleJSON, int(lastSeenAt), contactFirstName, contactLastName, contactPhone, note, entities, mutual, closeFriend))
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate upsert contacts many: %w", err)
@@ -584,7 +594,7 @@ func contactFromListRow(row sqlcgen.ListContactsByUserRow) (domain.Contact, erro
 	if err != nil {
 		return domain.Contact{}, fmt.Errorf("decode contact note entities: %w", err)
 	}
-	return contactFromFields(row.ID, row.AccessHash, row.Phone, row.FirstName, row.LastName, row.Username, row.CountryCode, row.Verified, row.Support, row.IsBot, int(row.BotInfoVersion), premiumUntilFromModel(row.PremiumExpiresAt), row.EmojiStatusDocumentID, int(row.EmojiStatusUntil), int(row.LastSeenAt), row.ContactFirstName, row.ContactLastName, row.ContactPhone, row.Note, entities, row.Mutual, row.CloseFriend), nil
+	return contactFromFields(row.ID, row.AccessHash, row.Phone, row.FirstName, row.LastName, row.Username, row.CountryCode, row.Verified, row.Support, row.IsBot, int(row.BotInfoVersion), premiumUntilFromModel(row.PremiumExpiresAt), row.EmojiStatusDocumentID, int(row.EmojiStatusUntil), row.EmojiStatusCollectibleID, row.EmojiStatusCollectible, int(row.LastSeenAt), row.ContactFirstName, row.ContactLastName, row.ContactPhone, row.Note, entities, row.Mutual, row.CloseFriend), nil
 }
 
 func contactFromGetRow(row sqlcgen.GetContactRow) (domain.Contact, error) {
@@ -592,7 +602,7 @@ func contactFromGetRow(row sqlcgen.GetContactRow) (domain.Contact, error) {
 	if err != nil {
 		return domain.Contact{}, fmt.Errorf("decode contact note entities: %w", err)
 	}
-	return contactFromFields(row.ID, row.AccessHash, row.Phone, row.FirstName, row.LastName, row.Username, row.CountryCode, row.Verified, row.Support, row.IsBot, int(row.BotInfoVersion), premiumUntilFromModel(row.PremiumExpiresAt), row.EmojiStatusDocumentID, int(row.EmojiStatusUntil), int(row.LastSeenAt), row.ContactFirstName, row.ContactLastName, row.ContactPhone, row.Note, entities, row.Mutual, row.CloseFriend), nil
+	return contactFromFields(row.ID, row.AccessHash, row.Phone, row.FirstName, row.LastName, row.Username, row.CountryCode, row.Verified, row.Support, row.IsBot, int(row.BotInfoVersion), premiumUntilFromModel(row.PremiumExpiresAt), row.EmojiStatusDocumentID, int(row.EmojiStatusUntil), row.EmojiStatusCollectibleID, row.EmojiStatusCollectible, int(row.LastSeenAt), row.ContactFirstName, row.ContactLastName, row.ContactPhone, row.Note, entities, row.Mutual, row.CloseFriend), nil
 }
 
 func contactFromUpsertRow(row sqlcgen.UpsertContactRow) (domain.Contact, error) {
@@ -600,7 +610,7 @@ func contactFromUpsertRow(row sqlcgen.UpsertContactRow) (domain.Contact, error) 
 	if err != nil {
 		return domain.Contact{}, fmt.Errorf("decode contact note entities: %w", err)
 	}
-	return contactFromFields(row.ID, row.AccessHash, row.Phone, row.FirstName, row.LastName, row.Username, row.CountryCode, row.Verified, row.Support, row.IsBot, int(row.BotInfoVersion), premiumUntilFromModel(row.PremiumExpiresAt), row.EmojiStatusDocumentID, int(row.EmojiStatusUntil), int(row.LastSeenAt), row.ContactFirstName, row.ContactLastName, row.ContactPhone, row.Note, entities, row.Mutual, row.CloseFriend), nil
+	return contactFromFields(row.ID, row.AccessHash, row.Phone, row.FirstName, row.LastName, row.Username, row.CountryCode, row.Verified, row.Support, row.IsBot, int(row.BotInfoVersion), premiumUntilFromModel(row.PremiumExpiresAt), row.EmojiStatusDocumentID, int(row.EmojiStatusUntil), row.EmojiStatusCollectibleID, row.EmojiStatusCollectible, int(row.LastSeenAt), row.ContactFirstName, row.ContactLastName, row.ContactPhone, row.Note, entities, row.Mutual, row.CloseFriend), nil
 }
 
 func contactFromUpdateNoteRow(row sqlcgen.UpdateContactNoteRow) (domain.Contact, error) {
@@ -608,7 +618,7 @@ func contactFromUpdateNoteRow(row sqlcgen.UpdateContactNoteRow) (domain.Contact,
 	if err != nil {
 		return domain.Contact{}, fmt.Errorf("decode contact note entities: %w", err)
 	}
-	return contactFromFields(row.ID, row.AccessHash, row.Phone, row.FirstName, row.LastName, row.Username, row.CountryCode, row.Verified, row.Support, row.IsBot, int(row.BotInfoVersion), premiumUntilFromModel(row.PremiumExpiresAt), row.EmojiStatusDocumentID, int(row.EmojiStatusUntil), int(row.LastSeenAt), row.ContactFirstName, row.ContactLastName, row.ContactPhone, row.Note, entities, row.Mutual, row.CloseFriend), nil
+	return contactFromFields(row.ID, row.AccessHash, row.Phone, row.FirstName, row.LastName, row.Username, row.CountryCode, row.Verified, row.Support, row.IsBot, int(row.BotInfoVersion), premiumUntilFromModel(row.PremiumExpiresAt), row.EmojiStatusDocumentID, int(row.EmojiStatusUntil), row.EmojiStatusCollectibleID, row.EmojiStatusCollectible, int(row.LastSeenAt), row.ContactFirstName, row.ContactLastName, row.ContactPhone, row.Note, entities, row.Mutual, row.CloseFriend), nil
 }
 
 // contactFromFields 组装 domain.Contact。getContacts 主路径（List/Get/Upsert/UpdateNote
@@ -616,27 +626,28 @@ func contactFromUpdateNoteRow(row sqlcgen.UpdateContactNoteRow) (domain.Contact,
 // raw-scan 调用传 false/0——bot 无 phone 不经手机号导入，bot 加联系人走 username
 // 的单条 UpsertContact 路径（已带真实 bot 列）。premium/emoji status 列所有路径必须
 // 传真实值：TDesktop 对任何缺 emoji_status 字段的 user TL 一律清空本地状态。
-func contactFromFields(id, accessHash int64, phone, firstName, lastName, username, countryCode string, verified, support, isBot bool, botInfoVersion, premiumUntil int, emojiStatusDocumentID int64, emojiStatusUntil, lastSeenAt int, contactFirstName, contactLastName, contactPhone, note string, noteEntities []domain.MessageEntity, mutual, closeFriend bool) domain.Contact {
+func contactFromFields(id, accessHash int64, phone, firstName, lastName, username, countryCode string, verified, support, isBot bool, botInfoVersion, premiumUntil int, emojiStatusDocumentID int64, emojiStatusUntil int, emojiCollectibleID *int64, emojiCollectibleJSON []byte, lastSeenAt int, contactFirstName, contactLastName, contactPhone, note string, noteEntities []domain.MessageEntity, mutual, closeFriend bool) domain.Contact {
 	return domain.Contact{
 		User: domain.User{
-			ID:                    id,
-			AccessHash:            accessHash,
-			Phone:                 phone,
-			FirstName:             firstName,
-			LastName:              lastName,
-			Username:              username,
-			CountryCode:           countryCode,
-			Verified:              verified,
-			Support:               support,
-			Bot:                   isBot,
-			BotInfoVersion:        botInfoVersion,
-			PremiumUntil:          premiumUntil,
-			EmojiStatusDocumentID: emojiStatusDocumentID,
-			EmojiStatusUntil:      emojiStatusUntil,
-			LastSeenAt:            lastSeenAt,
-			Contact:               true,
-			Mutual:                mutual,
-			CloseFriend:           closeFriend,
+			ID:                     id,
+			AccessHash:             accessHash,
+			Phone:                  phone,
+			FirstName:              firstName,
+			LastName:               lastName,
+			Username:               username,
+			CountryCode:            countryCode,
+			Verified:               verified,
+			Support:                support,
+			Bot:                    isBot,
+			BotInfoVersion:         botInfoVersion,
+			PremiumUntil:           premiumUntil,
+			EmojiStatusDocumentID:  emojiStatusDocumentID,
+			EmojiStatusUntil:       emojiStatusUntil,
+			EmojiStatusCollectible: mustDecodeEmojiStatusCollectible(emojiCollectibleID, emojiCollectibleJSON),
+			LastSeenAt:             lastSeenAt,
+			Contact:                true,
+			Mutual:                 mutual,
+			CloseFriend:            closeFriend,
 		},
 		FirstName:    contactFirstName,
 		LastName:     contactLastName,
@@ -654,27 +665,29 @@ type contactScanner interface {
 
 func scanContactRows(row contactScanner) (domain.Contact, error) {
 	var (
-		contactUserID    int64
-		mutual           bool
-		closeFriend      bool
-		contactPhone     string
-		contactFirstName string
-		contactLastName  string
-		note             string
-		noteEntitiesJSON string
-		id               int64
-		accessHash       int64
-		phone            string
-		firstName        string
-		lastName         string
-		username         string
-		countryCode      string
-		verified         bool
-		support          bool
-		premiumUntil     int64
-		emojiStatusDocID int64
-		emojiStatusUntil int64
-		lastSeenAt       int32
+		contactUserID        int64
+		mutual               bool
+		closeFriend          bool
+		contactPhone         string
+		contactFirstName     string
+		contactLastName      string
+		note                 string
+		noteEntitiesJSON     string
+		id                   int64
+		accessHash           int64
+		phone                string
+		firstName            string
+		lastName             string
+		username             string
+		countryCode          string
+		verified             bool
+		support              bool
+		premiumUntil         int64
+		emojiStatusDocID     int64
+		emojiStatusUntil     int64
+		emojiCollectibleID   *int64
+		emojiCollectibleJSON []byte
+		lastSeenAt           int32
 	)
 	if err := row.Scan(
 		&contactUserID,
@@ -697,6 +710,8 @@ func scanContactRows(row contactScanner) (domain.Contact, error) {
 		&premiumUntil,
 		&emojiStatusDocID,
 		&emojiStatusUntil,
+		&emojiCollectibleID,
+		&emojiCollectibleJSON,
 		&lastSeenAt,
 	); err != nil {
 		return domain.Contact{}, err
@@ -705,32 +720,34 @@ func scanContactRows(row contactScanner) (domain.Contact, error) {
 	if err != nil {
 		return domain.Contact{}, err
 	}
-	return contactFromFields(id, accessHash, phone, firstName, lastName, username, countryCode, verified, support, false, 0, int(premiumUntil), emojiStatusDocID, int(emojiStatusUntil), int(lastSeenAt), contactFirstName, contactLastName, contactPhone, note, entities, mutual, closeFriend), nil
+	return contactFromFields(id, accessHash, phone, firstName, lastName, username, countryCode, verified, support, false, 0, int(premiumUntil), emojiStatusDocID, int(emojiStatusUntil), emojiCollectibleID, emojiCollectibleJSON, int(lastSeenAt), contactFirstName, contactLastName, contactPhone, note, entities, mutual, closeFriend), nil
 }
 
 func scanReverseContactRows(row contactScanner) (int64, domain.Contact, error) {
 	var (
-		ownerUserID      int64
-		mutual           bool
-		closeFriend      bool
-		contactPhone     string
-		contactFirstName string
-		contactLastName  string
-		note             string
-		noteEntitiesJSON string
-		id               int64
-		accessHash       int64
-		phone            string
-		firstName        string
-		lastName         string
-		username         string
-		countryCode      string
-		verified         bool
-		support          bool
-		premiumUntil     int64
-		emojiStatusDocID int64
-		emojiStatusUntil int64
-		lastSeenAt       int32
+		ownerUserID          int64
+		mutual               bool
+		closeFriend          bool
+		contactPhone         string
+		contactFirstName     string
+		contactLastName      string
+		note                 string
+		noteEntitiesJSON     string
+		id                   int64
+		accessHash           int64
+		phone                string
+		firstName            string
+		lastName             string
+		username             string
+		countryCode          string
+		verified             bool
+		support              bool
+		premiumUntil         int64
+		emojiStatusDocID     int64
+		emojiStatusUntil     int64
+		emojiCollectibleID   *int64
+		emojiCollectibleJSON []byte
+		lastSeenAt           int32
 	)
 	if err := row.Scan(
 		&ownerUserID,
@@ -753,6 +770,8 @@ func scanReverseContactRows(row contactScanner) (int64, domain.Contact, error) {
 		&premiumUntil,
 		&emojiStatusDocID,
 		&emojiStatusUntil,
+		&emojiCollectibleID,
+		&emojiCollectibleJSON,
 		&lastSeenAt,
 	); err != nil {
 		return 0, domain.Contact{}, err
@@ -761,7 +780,7 @@ func scanReverseContactRows(row contactScanner) (int64, domain.Contact, error) {
 	if err != nil {
 		return 0, domain.Contact{}, err
 	}
-	contact := contactFromFields(id, accessHash, phone, firstName, lastName, username, countryCode, verified, support, false, 0, int(premiumUntil), emojiStatusDocID, int(emojiStatusUntil), int(lastSeenAt), contactFirstName, contactLastName, contactPhone, note, entities, mutual, closeFriend)
+	contact := contactFromFields(id, accessHash, phone, firstName, lastName, username, countryCode, verified, support, false, 0, int(premiumUntil), emojiStatusDocID, int(emojiStatusUntil), emojiCollectibleID, emojiCollectibleJSON, int(lastSeenAt), contactFirstName, contactLastName, contactPhone, note, entities, mutual, closeFriend)
 	return ownerUserID, contact, nil
 }
 
