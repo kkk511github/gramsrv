@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/iamxvbaba/td/tlprofile"
+	"telesrv/internal/branding"
 	ioscompat "telesrv/internal/compat/ios"
 	"telesrv/internal/compat/tdesktop"
 	"telesrv/internal/domain"
@@ -1893,12 +1894,12 @@ func tgAuthorization(a domain.Authorization, currentAuthKeyID [8]byte, now int, 
 		Current:       a.AuthKeyID == currentAuthKeyID,
 		OfficialApp:   true,
 		Hash:          a.Hash,
-		DeviceModel:   a.DeviceModel,
-		Platform:      a.Platform,
-		SystemVersion: a.SystemVersion,
+		DeviceModel:   branding.UserVisibleText(a.DeviceModel, ""),
+		Platform:      branding.UserVisibleClientPlatform(a.Platform),
+		SystemVersion: branding.UserVisibleText(a.SystemVersion, ""),
 		APIID:         a.APIID,
 		AppName:       authorizationAppName(a),
-		AppVersion:    a.AppVersion,
+		AppVersion:    branding.UserVisibleText(a.AppVersion, ""),
 		DateCreated:   created,
 		DateActive:    active,
 		IP:            ip,
@@ -1934,13 +1935,15 @@ func authorizationAppName(a domain.Authorization) string {
 	client := strings.ToLower(strings.TrimSpace(a.Platform + " " + a.DeviceModel + " " + a.SystemVersion + " " + a.AppVersion))
 	switch {
 	case strings.Contains(client, "iphone"), strings.Contains(client, "ipad"), strings.Contains(client, "ios"):
-		return "SafeLink iOS"
+		return branding.IOSAppName
 	case strings.Contains(client, "android"), androidSDKVersionRE.MatchString(client):
-		return "SafeLink Android"
+		return branding.AndroidAppName
+	case strings.Contains(client, "macos"), strings.Contains(client, "mac os"):
+		return branding.MacOSAppName
 	case strings.Contains(client, "tdesktop"), strings.Contains(client, "desktop"), strings.Contains(client, "windows"), strings.Contains(client, "macos"), strings.Contains(client, "linux"):
-		return "SafeLink Desktop"
+		return branding.DesktopAppName
 	default:
-		return "SafeLink"
+		return branding.ClientAppName(a.Platform)
 	}
 }
 

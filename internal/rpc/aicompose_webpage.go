@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"telesrv/internal/brand"
+	"telesrv/internal/branding"
 	"telesrv/internal/domain"
 )
 
@@ -43,7 +44,7 @@ func (r *Router) resolveAIComposeStyleWebPage(ctx context.Context, rawURL string
 		Hash:               aiComposeToneWebPageHash(tone),
 		Date:               int(now.Unix()),
 		Type:               aiComposeToneWebPageType,
-		SiteName:           brand.DefaultAppName,
+		SiteName:           branding.ProductName,
 		Title:              tone.Title,
 		Description:        tone.Prompt,
 		ComposeToneEmojiID: tone.EmojiID,

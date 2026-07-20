@@ -12,6 +12,7 @@ import (
 	"github.com/iamxvbaba/td/tgerr"
 	"go.uber.org/zap"
 
+	"telesrv/internal/branding"
 	"telesrv/internal/domain"
 )
 
@@ -324,11 +325,11 @@ func (r *Router) starsTopupPaymentForm(userID int64, purpose *tg.InputStorePayme
 	return &tg.PaymentsPaymentFormStars{
 		FormID:      starsTopupFormID(userID, purpose.Stars, purpose.Currency, purpose.Amount),
 		BotID:       domain.OfficialSystemUserID,
-		Title:       "SafeLink Stars",
-		Description: "SafeLink dev Stars top-up",
+		Title:       branding.StarsName,
+		Description: branding.ProductName + " dev Stars top-up",
 		Invoice: tg.Invoice{
 			Currency: "XTR",
-			Prices:   []tg.LabeledPrice{{Label: "SafeLink Stars", Amount: purpose.Stars}},
+			Prices:   []tg.LabeledPrice{{Label: branding.StarsName, Amount: purpose.Stars}},
 		},
 		Users: tgUsersForViewer(userID, []domain.User{domain.OfficialSystemUser()}),
 	}

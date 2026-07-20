@@ -671,10 +671,20 @@ SafeLink 已经在 `0107–0113` 使用了礼物、推送和运行指标迁移�
 - 不要把这批文件改回上游原始的 `0107–0119`，否则会与 SafeLink 已发布迁移重号，
   导致新库报 duplicate version，或生产库误跳过 Bot API 和账号生命周期表。
 
-正式部署前必须同时演练空库升级和 `113 -> 126` 结构副本升级，部署后确认：
+后续上游又在原始编号 `0120–0122` 增加了 Bot API 短暂消息、滥用举报和
+社区数据。SafeLink 的 `0120–0126` 已在生产使用，所以这三个上游迁移依次映射为：
+
+- `0127_bot_api_ephemeral_payload`
+- `0128_ephemeral_abuse_reports`
+- `0129_communities`
+
+现有生产库应从 clean version `126` 升级到 `129`；新安装从 `0001` 完整执行时
+也必须最终到达 clean version `129`。不要把这三个文件改回上游原始编号。
+
+正式部署前必须同时演练空库升级和 `126 -> 129` 结构副本升级，部署后确认：
 
 ```sql
 SELECT version, dirty FROM schema_migrations;
 ```
 
-期望结果为 `126 | false`。
+期望结果为 `129 | false`。

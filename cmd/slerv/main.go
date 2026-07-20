@@ -30,8 +30,10 @@ import (
 	botsapp "telesrv/internal/app/bots"
 	channelapp "telesrv/internal/app/channels"
 	chatlistsapp "telesrv/internal/app/chatlists"
+	communitiesapp "telesrv/internal/app/communities"
 	"telesrv/internal/app/contacts"
 	"telesrv/internal/app/dialogs"
+	ephemeralapp "telesrv/internal/app/ephemeral"
 	filesapp "telesrv/internal/app/files"
 	groupcallsapp "telesrv/internal/app/groupcalls"
 	"telesrv/internal/app/help"
@@ -369,6 +371,8 @@ func run(logger *zap.Logger) error {
 	bootstrapUpdateStore := postgres.NewBootstrapUpdateJobStore(pool)
 	botAPIUpdateStore := postgres.NewBotAPIUpdateStore(pool)
 	botCallbackStore := redisstore.NewBotCallbackRegistryStore(rdb)
+	ephemeralStore := redisstore.NewEphemeralMessageStore(rdb)
+	ephemeralReportStore := postgres.NewEphemeralReportStore(pool)
 	boxIDAllocator := redisstore.NewBoxIDAllocator(rdb, postgres.NewMessageBoxCounterSource(pool))
 	channelIDAllocator := redisstore.NewChannelIDAllocator(rdb, postgres.NewChannelIDCounterSource(pool))
 	channelMessageIDAllocator := redisstore.NewChannelMessageIDAllocator(rdb, postgres.NewChannelMessageIDCounterSource(pool))
@@ -392,6 +396,7 @@ func run(logger *zap.Logger) error {
 		postgres.WithChannelMemberCache(channelMemberCache),
 		postgres.WithChannelDialogCache(channelDialogCache),
 		postgres.WithChannelBoostCache(channelBoostCache))
+	communityStore := postgres.NewCommunityStore(pool, channelIDAllocator, channelMessageIDAllocator)
 	pollStore := postgres.NewPollStore(pool)
 	mediaStore := postgres.NewMediaStore(pool)
 	// 头像投影缓存：所有 projector 共用一层短 TTL owner→头像缓存，消除高频「返回用户」RPC
@@ -498,7 +503,7 @@ func run(logger *zap.Logger) error {
 	).Run(ctx)
 	langPackService := langpack.NewService(langPackStore, langpack.WithBranding(langpack.Branding{
 		AppName: cfg.AppName,
-	}))
+	}), langpack.WithPublicBaseURL(cfg.PublicBaseURL))
 	privacyService := privacyapp.NewService(privacyStore, contactStore)
 	contactsService := contacts.NewService(contactStore, userStore).Configure(
 		contacts.WithPhotoProvider(cachedPhotos),
@@ -721,6 +726,8 @@ func run(logger *zap.Logger) error {
 		channelapp.WithReadModelVersions(readModelVersionStore),
 		channelapp.WithSendPermissionChecker(adminService),
 	)
+	communitiesService := communitiesapp.NewService(communityStore)
+	ephemeralService := ephemeralapp.NewService(ephemeralStore, channelsService, usersService, botsService)
 	chatlistsService := chatlistsapp.NewService(
 		chatlistStore,
 		dialogStore,
@@ -816,6 +823,9 @@ func run(logger *zap.Logger) error {
 		Help:                 help.NewService(helpStore, helpStore, help.WithMapboxToken(cfg.MapboxToken), help.WithAccountFreezeProvider(adminService)),
 		AccountFreeze:        adminService,
 		AICompose:            aiComposeService,
+		Ephemeral:            ephemeralService,
+		EphemeralPush:        ephemeralStore,
+		EphemeralReports:     ephemeralReportStore,
 		Users:                usersService,
 		Updates:              updatesService,
 		BootstrapUpdates:     bootstrapUpdateStore,
@@ -828,6 +838,7 @@ func run(logger *zap.Logger) error {
 		Messages:             messagesService,
 		Translation:          translationService,
 		Channels:             channelsService,
+		Communities:          communitiesService,
 		Files:                filesService,
 		Bots:                 botsService,
 		Polls:                pollsapp.NewService(pollStore),
@@ -939,6 +950,7 @@ func run(logger *zap.Logger) error {
 	}()
 	go router.RunInlineBotPushSubscriber(ctx)
 	go router.RunBotCallbackAnswerSubscriber(ctx)
+	go router.RunEphemeralPushSubscriber(ctx)
 	if _, err := botapi.Start(ctx, cfg.BotAPIAddr, botsService, usersService, router, router, logger.Named("botapi")); err != nil {
 		return fmt.Errorf("start bot api: %w", err)
 	}
