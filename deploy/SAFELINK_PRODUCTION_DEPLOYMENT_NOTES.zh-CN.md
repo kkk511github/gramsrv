@@ -715,3 +715,11 @@ SELECT version, dirty FROM schema_migrations;
 这三项分别提供收藏礼物升级预览属性池校验，以及频道建议帖的审批、定时发布、
 Stars/TON 托管结算和实际发布时间记录。生产部署后必须确认
 `schema_migrations` 为 `140 | false`；后续上游迁移从 `0141` 继续顺延。
+
+2026-07-23 上游新增原始 `0135_star_gift_prepaid_message_refs`，SafeLink 映射为：
+
+- `0141_star_gift_prepaid_message_refs`
+
+该迁移补齐“单独预付升级”礼物消息与已保存礼物聚合的引用，并修复已经升级后的
+历史消息状态。生产部署后必须确认 `schema_migrations` 为 `141 | false`；后续上游
+迁移从 `0142` 继续顺延。

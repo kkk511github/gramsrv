@@ -33,6 +33,7 @@ type Config struct {
 	Addr            string
 	PublicBaseURL   string
 	AppScheme       string
+	AppLinkBase     string
 	WebBaseURL      string
 	AppName         string
 	StickerSets     StickerSetResolver
@@ -111,6 +112,7 @@ func Start(ctx context.Context, cfg Config, logger *zap.Logger) (*http.Server, e
 			zap.String("addr", addr),
 			zap.String("public_base_url", cfg.PublicBaseURL),
 			zap.String("app_scheme", cfg.AppScheme),
+			zap.String("app_link_base", cfg.AppLinkBase),
 			zap.String("web_base_url", cfg.WebBaseURL))
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Warn("Public link Web endpoint exited", zap.Error(err))
@@ -143,8 +145,9 @@ func newHandler(cfg Config, logger *zap.Logger) (http.Handler, error) {
 	if cfg.PublicBaseURL, err = links.ValidateBaseURL(cfg.PublicBaseURL); err != nil {
 		return nil, fmt.Errorf("public base URL: %w", err)
 	}
-	if cfg.AppScheme, err = links.ValidateAppScheme(cfg.AppScheme); err != nil {
-		return nil, fmt.Errorf("app scheme: %w", err)
+	appLinks, err := links.NewAppLinkBuilder(cfg.AppScheme, cfg.AppLinkBase)
+	if err != nil {
+		return nil, fmt.Errorf("app links: %w", err)
 	}
 	if cfg.WebBaseURL, err = links.ValidateBaseURL(cfg.WebBaseURL); err != nil {
 		return nil, fmt.Errorf("Web base URL: %w", err)
@@ -164,7 +167,7 @@ func newHandler(cfg Config, logger *zap.Logger) (http.Handler, error) {
 		uniqueGifts:      cfg.UniqueGifts,
 		giftWithdrawals:  cfg.GiftWithdrawals,
 		publicBaseURL:    cfg.PublicBaseURL,
-		appScheme:        cfg.AppScheme,
+		appLinks:         appLinks,
 		webBaseURL:       cfg.WebBaseURL,
 		appName:          cfg.AppName,
 		logger:           logger,
@@ -226,7 +229,7 @@ type handler struct {
 	uniqueGifts      UniqueStarGiftResolver
 	giftWithdrawals  StarGiftWithdrawalResolver
 	publicBaseURL    string
-	appScheme        string
+	appLinks         links.AppLinkBuilder
 	webBaseURL       string
 	appName          string
 	logger           *zap.Logger
@@ -943,8 +946,8 @@ func (h *handler) usernameLink(w http.ResponseWriter, r *http.Request) {
 		h.serveUsernameNotFound(w, username)
 		return
 	}
+	app := h.appLinks.BuildUsername(peer.username, params)
 	params.Set("domain", peer.username)
-	app := schemeURLValues(h.appScheme, "resolve", params)
 	legacy := schemeURLValues("tg", "resolve", params)
 	description := peer.about
 	if description == "" {
@@ -1102,17 +1105,15 @@ func (h *handler) publicURL(path string) string {
 
 func (h *handler) appURL(command string, params ...string) string {
 	if command == "" {
-		return h.appScheme + "://"
+		return h.appLinks.BuildRoot()
 	}
-	u := url.URL{Scheme: h.appScheme, Host: command}
+	query := url.Values{}
 	if len(params) > 0 {
-		q := u.Query()
 		for i := 0; i+1 < len(params); i += 2 {
-			q.Set(params[i], params[i+1])
+			query.Set(params[i], params[i+1])
 		}
-		u.RawQuery = q.Encode()
 	}
-	return u.String()
+	return h.appLinks.Build(command, query)
 }
 
 func (h *handler) serveStickerLanding(w http.ResponseWriter, data pageData) {
