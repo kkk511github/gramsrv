@@ -77,7 +77,124 @@ This document describes every setting loaded by `internal/config`. Defaults and 
 | `TELESRV_TELEGRAM_LOGIN_SWEEP_INTERVAL` | duration / `5m` | Retention worker interval; bounded to `10s..1h`. |
 | `TELESRV_TELEGRAM_LOGIN_SWEEP_BATCH` | int / `500` | Maximum rows per retention pass; bounded to `1..1000`. |
 
-### 3.1 Complete SafeLink Login / OIDC setup
+### 3.1 Bot API webhook troubleshooting
+
+Start by separating the three addresses below. Never use the webhook receiver domain as the Bot
+API endpoint unless an explicit reverse-proxy route maps that domain to the SafeLink server:
+
+| Name | Setting/source | Direction and purpose |
+|---|---|---|
+| Bot API listener | SafeLink server `TELESRV_BOT_API_ADDR` | The server bind address; empty disables the gateway. `0.0.0.0` is valid only for binding and is not a client request target. |
+| Bot API base URL | the bot application's `TELEGRAM_API_URL` or equivalent | A client-reachable address for the SafeLink server, for example `http://172.17.0.1:8088`. Method URLs are `<base>/bot<TOKEN>/<method>` and file URLs are `<base>/file/bot<TOKEN>/<file_path>`. |
+| Webhook receiver URL | the bot application's `WEBHOOK_URL + WEBHOOK_PATH`, registered by `setWebhook` | The target to which the SafeLink server actively POSTs updates, for example `https://bot.example.com/webhook`. It is not the Bot API base URL. |
+
+The network direction is different too: polling is `bot application -> SafeLink Bot API`, while
+webhook delivery is `SafeLink server -> bot application webhook receiver`. Working polling proves only the
+first path. It does not prove webhook DNS, outbound TCP, TLS, reverse proxy, or Docker hairpin
+connectivity.
+
+#### 1. Query the authoritative webhook state from the Bot API
+
+Run this inside the bot application container with its actual Bot API base URL. Do not expand and
+paste the token into chat, tickets, or screenshots:
+
+```sh
+curl -sS -X POST \
+  "${TELEGRAM_API_URL%/}/bot${BOT_TOKEN}/getWebhookInfo" | jq
+```
+
+If the application uses a differently named variable, replace `TELEGRAM_API_URL` with the
+**client-reachable address** corresponding to `TELESRV_BOT_API_ADDR`. For example, if the server binds
+`0.0.0.0:8088`, a container on the same host might use `http://172.17.0.1:8088`; it must not request
+`http://0.0.0.0:8088`.
+
+Interpret the result as follows:
+
+| Result | Conclusion and next step |
+|---|---|
+| Empty `url` | No webhook is registered on this SafeLink server instance. Verify that the application uses this Bot API base URL and that startup `setWebhook` succeeded. |
+| Increasing `pending_update_count` | Updates reached the SafeLink server's durable queue but are not being delivered successfully. Inspect `last_error_message`. |
+| HTTP `401`/`403` in `last_error_message` | The receiver is reachable, but its webhook secret differs or an authentication layer rejected the request. |
+| `dial tcp ... i/o timeout` | The SafeLink server cannot connect to the target IP/port. Check outbound firewall rules, Docker networking, loopback/hairpin NAT, and security groups. |
+| `connection refused` | The address is reachable, but nothing listens on that port or the port mapping/reverse-proxy upstream is wrong. |
+| DNS/`no such host` | The webhook hostname cannot be resolved from the SafeLink server runtime environment. |
+| TLS/`x509` error | The certificate chain, hostname, SNI, or container CA trust is wrong. HTTPS uses the system trust store. |
+| Target type absent from `allowed_updates` | Newly produced updates of that type are not queued. A normal `/start` requires at least `message`. |
+| Pending reaches zero but the app does not react | The SafeLink server received a 2xx response. Inspect the receiver's internal queue, workers, dispatcher, and handlers. |
+
+`getWebhookInfo` reports the SafeLink server's persisted delivery facts. An application `/health` endpoint only
+proves that its receiver route and workers started; it cannot replace this check.
+
+#### 2. Validate the receiver with the correct header
+
+The Telegram webhook secret is distinct from the Bot token, OIDC Client Secret, and other API
+keys. The receiver validates `X-Telegram-Bot-Api-Secret-Token`, not `Authorization: Bearer`:
+
+```sh
+curl -i -X POST "${WEBHOOK_URL%/}${WEBHOOK_PATH}" \
+  -H 'Content-Type: application/json' \
+  -H "X-Telegram-Bot-Api-Secret-Token: ${WEBHOOK_SECRET_TOKEN}" \
+  -d '{"update_id":2147483000}'
+```
+
+Expect an HTTP 2xx response. `401 invalid_secret_token` proves that the request reached the
+application but the header was absent or did not match. Recreate/restart the application after
+editing `.env`; changing the file alone neither updates the secret already registered in the SafeLink server
+nor the receiver process's startup-time secret.
+
+#### 3. Test from the actual SafeLink server network namespace
+
+A browser or official Telegram reaching the public webhook proves only public inbound
+connectivity. Repeat the test from the host, container, or network namespace that actually runs
+the SafeLink server:
+
+```sh
+docker exec <safelink-server-container> sh -lc \
+  'getent hosts bot.example.com; curl -vk --connect-timeout 10 https://bot.example.com/health/unified'
+```
+
+If public clients work but this returns `dial tcp ...:443: i/o timeout`, a same-host public-IP
+hairpin failure is a common cause. Prefer split DNS or a container host mapping so the public
+hostname resolves to the reverse proxy's internal entry point inside the SafeLink server container while
+preserving the hostname, HTTPS SNI, and certificate validation. If the reverse proxy publishes
+443 on the Docker host, test first with:
+
+```sh
+curl -vk --resolve bot.example.com:443:172.17.0.1 \
+  https://bot.example.com/health/unified
+```
+
+After that succeeds, a deployment may use a network-appropriate Compose entry such as:
+
+```yaml
+extra_hosts:
+  - "bot.example.com:host-gateway"
+```
+
+Other fixes include attaching the SafeLink server to the reverse proxy's Docker network, allowing the Docker
+subnet to reach host port 443, or correcting cloud security-group/NAT hairpin rules. The server allows
+an internal HTTP receiver, but use one only on a controlled shared network and only when the
+application's `WEBHOOK_URL` is not also its public OIDC, payment, or media callback base. Do not
+blindly replace a global public URL with an internal address to mask a routing problem.
+
+#### 4. Close the loop after the fix
+
+1. Restart the bot application so it calls `setWebhook` again with the current URL, secret, and
+   `allowed_updates`.
+2. Send a new `/start` or press a callback button.
+3. Call `getWebhookInfo` again. `pending_update_count` should fall to `0`, with no new
+   `last_error_date`.
+4. Inspect `slerv` Warning logs for `bot api webhook delivery failed`. The record contains
+   `bot_user_id`, `retry_in`, and the failure reason, but must not contain the webhook URL, Bot
+   token, or secret.
+5. Confirm that the receiver recorded and processed the `update_id`. Delivery is at-least-once, so
+   the application must safely handle duplicate updates caused by retries.
+
+Immediately rotate any Bot token, webhook secret, OIDC Client Secret, API key, or database
+password exposed in shell history, chat, or screenshots. Keep only redacted diagnostics in support
+material.
+
+### 3.2 Complete SafeLink Login / OIDC setup
 
 #### 1. Generate `data/telegram-login` once
 
@@ -154,8 +271,10 @@ and choose that bot. Initial setup returns:
 - `Client Secret`: shown once, separate from the Bot API token, and meant to be saved immediately
   in a secret manager.
 
-Send each configuration command separately. This example runs the relying party at
-`http://192.0.2.30:3000`:
+After selecting a bot once, BotFather keeps that configuration session active; there is no need to
+repeat `/setlogin` and the bot username for every change. Send commands one at a time or paste them
+as separate lines in one message (up to 32 lines per message). This example runs the relying party
+at `http://192.0.2.30:3000`:
 
 ```text
 add origin http://192.0.2.30:3000
@@ -163,6 +282,12 @@ add redirect http://192.0.2.30:3000/oauth/callback
 algorithm RS256
 enable
 ```
+
+Send `/done` after the changes succeed. BotFather closes the session and returns the final
+configuration summary. Every successful change takes effect immediately, so `/cancel` only closes
+the session and does not roll back changes. If a multi-line message fails partway through,
+BotFather identifies the applied lines, the failed line, and the later lines that were skipped,
+then keeps the selected bot active for a corrected command.
 
 An `origin` is an exact Web origin without a path, query, or fragment; it authorizes the JS SDK,
 popup CORS, and legacy `login_url`. A `redirect` is the exact full URI that receives an
@@ -204,8 +329,8 @@ load `<issuer>/js/telegram-login.js` for the local JS SDK. A Client Secret must 
 Install the demo dependencies:
 
 ```powershell
-python -m venv "$env:TEMP\telesrv-bedolaga-demo-venv"
-& "$env:TEMP\telesrv-bedolaga-demo-venv\Scripts\python.exe" -m pip install `
+python -m venv "$env:TEMP\safelink-bedolaga-demo-venv"
+& "$env:TEMP\safelink-bedolaga-demo-venv\Scripts\python.exe" -m pip install `
   -r .\cmd\bots\bedolagaformat\requirements.txt
 ```
 
@@ -221,7 +346,7 @@ $env:TELESRV_BOT_LOGIN_CLIENT_SECRET = "<one-time OIDC Client Secret>"
 $env:TELESRV_BOT_LOGIN_PUBLIC_URL = "http://192.0.2.30:3000"
 $env:TELESRV_BOT_LOGIN_LISTEN = "0.0.0.0:3000"
 
-& "$env:TEMP\telesrv-bedolaga-demo-venv\Scripts\python.exe" `
+& "$env:TEMP\safelink-bedolaga-demo-venv\Scripts\python.exe" `
   .\cmd\bots\bedolagaformat\demo.py --drop-pending --login-demo
 ```
 
@@ -250,7 +375,7 @@ key rings independently on different instances.
 
 | Setting | Type / code default | Description and constraints |
 |---|---|---|
-| `TELESRV_POSTGRES_DSN` | secret DSN / `postgres://telesrv:telesrv@127.0.0.1:5432/telesrv?sslmode=disable` | Primary durable business database. Production must replace the development credentials and TLS policy. |
+| `TELESRV_POSTGRES_DSN` | secret DSN / `postgres://safelink:safelink@127.0.0.1:5432/safelink?sslmode=disable` | Primary durable business database. Production must replace the development credentials and TLS policy. |
 | `TELESRV_POSTGRES_MAX_CONNS` | int / `50` | pgxpool maximum connections. `<=0` delegates to pgx defaults, which are usually too small for production outbox/RPC concurrency. |
 | `TELESRV_POSTGRES_MIN_CONNS` | int / `16` | pgxpool pre-warmed minimum connections. |
 | `TELESRV_REDIS_ADDR` | address / `127.0.0.1:6399` | Redis used for volatile codes, limits, and shared update/cache state. |
@@ -262,7 +387,7 @@ key rings independently on different instances.
 | `TELESRV_STICKER_SEED_DIR` | path / `data/sticker-seed` | Sticker/reaction seed packages imported into documents, sticker sets, and blobs. |
 | `TELESRV_STICKER_SEED_MAX_SETS` | int / `300` | Maximum regular sticker sets imported at startup; `<=0` means unlimited. |
 
-The language-pack file manifest is authoritative. To add a language, place `data/langpack/<pack>/<pack>_<lang>_v<version>.strings` and restart `telesrv`. The `pack` must match its first-level directory and may use the letters, digits, `-`, and `_` already used by Telegram (for example, `android_x`); `lang` is canonicalized to lowercase with hyphens (`pt_BR` becomes `pt-br`). Only the highest file version for each language is loaded. Effective content changes require a version bump; same-version effective mutations and version rollbacks stop startup. Removing a language file or an entire pack subdirectory atomically removes its database catalog and strings on the next restart. Startup streams a source-file SHA-256 first: unchanged files reuse the last atomic manifest without parsing strings or writing the database, while only new or changed files are parsed and replaced through PostgreSQL `COPY`.
+The language-pack file manifest is authoritative. To add a language, place `data/langpack/<pack>/<pack>_<lang>_v<version>.strings` and restart `slerv`. The `pack` must match its first-level directory and may use the letters, digits, `-`, and `_` already used by Telegram (for example, `android_x`); `lang` is canonicalized to lowercase with hyphens (`pt_BR` becomes `pt-br`). Only the highest file version for each language is loaded. Effective content changes require a version bump; same-version effective mutations and version rollbacks stop startup. Removing a language file or an entire pack subdirectory atomically removes its database catalog and strings on the next restart. Startup streams a source-file SHA-256 first: unchanged files reuse the last atomic manifest without parsing strings or writing the database, while only new or changed files are parsed and replaced through PostgreSQL `COPY`.
 
 ## 5. Authentication, OTP providers, SMTP, and passkeys
 
@@ -288,7 +413,7 @@ The language-pack file manifest is authoritative. To add a language, place `data
 | `TELESRV_SMTP_USERNAME` | sensitive string / empty | SMTP username. Also used as sender when `TELESRV_SMTP_FROM` is empty. |
 | `TELESRV_SMTP_PASSWORD` | secret string / empty | SMTP password. |
 | `TELESRV_SMTP_FROM` | email/string / empty | Envelope/header sender. Either this or SMTP username is required when login email is enabled. |
-| `TELESRV_SMTP_FROM_NAME` | string / `telesrv` | Display name for login-email messages. |
+| `TELESRV_SMTP_FROM_NAME` | string / `SafeLink` | Display name for login-email messages. |
 | `TELESRV_SMTP_TLS` | enum / `starttls` | `starttls`, `tls`, or `none`; any other value fails startup. |
 | `TELESRV_SMTP_TIMEOUT` | duration / `10s` | SMTP operation timeout; must be positive when the SMTP provider is used. |
 | `TELESRV_PASSKEY_RP_ID` | hostname / `safelink.chat` | WebAuthn relying-party ID used for `rpIdHash`. Android Credential Manager requires alignment with hosted `assetlinks.json`. |
@@ -330,9 +455,9 @@ The language-pack file manifest is authoritative. To add a language, place `data
 | `TELESRV_TRANSLATION_RATE_LIMIT` | int / `60` | Per-account translated text items per window; a 20-item batch costs 20 to prevent provider-call amplification. |
 | `TELESRV_TRANSLATION_RATE_WINDOW` | duration / `1m` | Translation rate-limit window. |
 
-Chat translation sends message bodies explicitly selected by the user to the configured external provider. Default logs omit content, but deployments should still disclose the upstream processor in their privacy policy. With only `local` configured, telesrv returns `TRANSLATIONS_DISABLED` instead of presenting source text as a translation.
+Chat translation sends message bodies explicitly selected by the user to the configured external provider. Default logs omit content, but deployments should still disclose the upstream processor in their privacy policy. With only `local` configured, the SafeLink server returns `TRANSLATIONS_DISABLED` instead of presenting source text as a translation.
 
-For each name in `TELESRV_AI_PROVIDERS`, telesrv uppercases it, converts non-alphanumeric characters to `_`, and reads the following dynamic keys. Example: provider `openai-compatible` uses suffix `OPENAI_COMPATIBLE`.
+For each name in `TELESRV_AI_PROVIDERS`, the SafeLink server uppercases it, converts non-alphanumeric characters to `_`, and reads the following dynamic keys. Example: provider `openai-compatible` uses suffix `OPENAI_COMPATIBLE`.
 
 | Dynamic setting | Type / default | Description |
 |---|---|---|
@@ -391,7 +516,7 @@ The following fallback keys are accepted from the **process environment only**. 
 | `TELESRV_PREMIUM_SWEEP_BATCH` | int / `500` | Maximum expired premium rows processed per sweep. |
 | `TELESRV_STARGIFT_SWEEP_INTERVAL` | duration / `15s` | Local Star Gift offer/auction lifecycle sweep interval; no blockchain connection is made. |
 | `TELESRV_STARGIFT_SWEEP_BATCH` | int / `1000` | Maximum offer/auction/outbox work claimed per lifecycle sweep. |
-| `TELESRV_STARGIFT_TON_STARTING_GRANT` | int64 / `10000000000` | Nanoton granted idempotently on a user's first access to the internal telesrv TON ledger; `0` disables it. This is not an on-chain asset. |
+| `TELESRV_STARGIFT_TON_STARTING_GRANT` | int64 / `10000000000` | Nanoton granted idempotently on a user's first access to the internal SafeLink TON ledger; `0` disables it. This is not an on-chain asset. |
 | `TELESRV_STARGIFT_TRANSFER_STARS` | int64 / `25` | Stars charged for a collectible transfer; `0` enables the free-transfer RPC. |
 | `TELESRV_STARGIFT_DROP_DETAILS_STARS` | int64 / `25` | Stars charged to remove a collectible's original sender/message details. |
 | `TELESRV_STARGIFT_OFFER_MIN_STARS` | int / `1` | Minimum Stars offer snapshotted for user-owned collectibles; `0` disables the offer entry point. |

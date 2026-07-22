@@ -47,15 +47,24 @@ func (r *Router) NotifyStarsBalanceChanged(ctx context.Context, balance domain.S
 	return nil
 }
 
-// NotifyAccountFreezeChanged asks every online client session for the account
-// to reload config, where freeze_since_date/freeze_until_date are projected.
-func (r *Router) NotifyAccountFreezeChanged(ctx context.Context, userID int64) error {
-	if r == nil || userID == 0 {
+// NotifyAccountFreezeChanged invalidates target-scoped projections immediately
+// and wakes the durable audience nudge worker. The affected account also gets
+// updateConfig immediately so its own freeze overlay takes effect without a
+// reconnect. Cross-instance invalidation is carried by user_visibility.
+func (r *Router) NotifyAccountFreezeChanged(ctx context.Context, freeze domain.AccountFreeze) error {
+	if r == nil || freeze.UserID == 0 {
 		return nil
 	}
-	r.pushUserUpdates(ctx, userID, &tg.Updates{
+	r.pushUserUpdates(ctx, freeze.UserID, &tg.Updates{
 		Updates: []tg.UpdateClass{&tg.UpdateConfig{}},
 		Date:    int(r.clock.Now().Unix()),
 	})
+	r.invalidateRPCProjectionForUser(freeze.UserID)
+	if r.accountFreezeWake != nil {
+		select {
+		case r.accountFreezeWake <- struct{}{}:
+		default:
+		}
+	}
 	return nil
 }

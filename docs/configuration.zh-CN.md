@@ -77,7 +77,117 @@
 | `TELESRV_TELEGRAM_LOGIN_SWEEP_INTERVAL` | duration / `5m` | retention worker 周期，限定 `10s..1h`。 |
 | `TELESRV_TELEGRAM_LOGIN_SWEEP_BATCH` | int / `500` | 每轮最大清理行数，限定 `1..1000`。 |
 
-### 3.1 SafeLink Login / OIDC 完整启用流程
+### 3.1 Bot API webhook 故障排查
+
+先区分三个地址，禁止把 webhook 接收域名当成 Bot API 地址：
+
+| 名称 | 配置/来源 | 方向与用途 |
+|---|---|---|
+| Bot API listener | SafeLink 服务端的 `TELESRV_BOT_API_ADDR` | 服务端监听地址；空值表示关闭。`0.0.0.0` 只能用于 bind，不能作为客户端请求目标。 |
+| Bot API base URL | bot 应用的 `TELEGRAM_API_URL` 等配置 | bot 应用访问 SafeLink 服务端的可达地址，例如 `http://172.17.0.1:8088`。方法地址为 `<base>/bot<TOKEN>/<method>`，文件地址为 `<base>/file/bot<TOKEN>/<file_path>`。 |
+| Webhook receiver URL | bot 应用的 `WEBHOOK_URL + WEBHOOK_PATH`，经 `setWebhook` 登记 | SafeLink 服务端主动 POST update 的目标，例如 `https://bot.example.com/webhook`。它不是 Bot API base URL。 |
+
+网络方向也不同：polling 是 `bot 应用 -> SafeLink Bot API`，webhook 是
+`SafeLink 服务端 -> bot 应用 webhook receiver`。因此 polling 正常只能证明前一条路径可达，
+不能证明 webhook 的 DNS、出站 TCP、TLS、反向代理或 Docker hairpin 路径正常。
+
+#### 1. 从 Bot API 查询真实 webhook 状态
+
+应在 bot 应用容器中使用它实际配置的 Bot API base URL；不要把 token 展开后粘贴到
+聊天、工单或截图：
+
+```sh
+curl -sS -X POST \
+  "${TELEGRAM_API_URL%/}/bot${BOT_TOKEN}/getWebhookInfo" | jq
+```
+
+若没有 `TELEGRAM_API_URL` 这个变量，就把它替换成与
+`TELESRV_BOT_API_ADDR` 对应的**客户端可达地址**。例如 SafeLink 服务端监听
+`0.0.0.0:8088`，同宿主 Docker 容器可能使用 `http://172.17.0.1:8088`；不要请求
+`http://0.0.0.0:8088`。
+
+按下表判读响应：
+
+| 结果 | 结论与下一步 |
+|---|---|
+| `url` 为空 | webhook 没有登记到这台 SafeLink 服务端；检查 bot 应用是否确实使用该 Bot API base URL，以及启动时 `setWebhook` 是否成功。 |
+| `pending_update_count` 增长 | update 已进入 SafeLink 服务端持久化队列，但没有成功交付；继续看 `last_error_message`。 |
+| `last_error_message` 为 HTTP `401`/`403` | 接收端已可达，但 webhook secret 不一致或请求被认证层拒绝。 |
+| `dial tcp ... i/o timeout` | SafeLink 服务端到目标 IP/端口的连接超时；检查出站防火墙、Docker 网络、回环 NAT/hairpin 和安全组。 |
+| `connection refused` | 目标地址可达，但相应端口没有监听或端口映射/反代 upstream 错误。 |
+| DNS/`no such host` | SafeLink 服务端所在运行环境无法解析 webhook hostname。 |
+| TLS/`x509` 错误 | 证书链、hostname、SNI 或容器 CA trust 有问题。HTTPS 使用系统信任链。 |
+| `allowed_updates` 不含目标类型 | 新产生的该类型 update 不会入队；普通 `/start` 至少需要 `message`。 |
+| pending 归零但应用无响应 | SafeLink 服务端已收到 2xx；转查接收应用内部 queue、worker、dispatcher 和 handler 日志。 |
+
+`getWebhookInfo` 查询的是 SafeLink 服务端持久化的交付事实；应用自己的 `/health` 只能证明
+接收路由和 worker 已启动，不能代替这一步。
+
+#### 2. 用正确请求头验证接收端
+
+Telegram webhook secret 与 Bot token、OIDC Client Secret、API key 都是不同凭据。
+接收端校验的标准请求头是 `X-Telegram-Bot-Api-Secret-Token`，不是
+`Authorization: Bearer`：
+
+```sh
+curl -i -X POST "${WEBHOOK_URL%/}${WEBHOOK_PATH}" \
+  -H 'Content-Type: application/json' \
+  -H "X-Telegram-Bot-Api-Secret-Token: ${WEBHOOK_SECRET_TOKEN}" \
+  -d '{"update_id":2147483000}'
+```
+
+预期为 HTTP 2xx。`401 invalid_secret_token` 表示请求已经到达应用，但 header 缺失或
+值不匹配。编辑 `.env` 后必须重建/重启读取该配置的应用；只修改磁盘文件不会更新
+已经登记到 SafeLink 服务端的 secret，也不会更新接收进程启动时捕获的 secret。
+
+#### 3. 从 SafeLink 服务端的实际网络命名空间测试
+
+浏览器或官方 Telegram 能访问公网 webhook，只能证明公网入站正常。必须从实际运行
+SafeLink 服务端的宿主机、容器或 network namespace 再测一次：
+
+```sh
+docker exec <safelink-server-container> sh -lc \
+  'getent hosts bot.example.com; curl -vk --connect-timeout 10 https://bot.example.com/health/unified'
+```
+
+如果公网客户端正常而这里 `dial tcp ...:443: i/o timeout`，常见原因是同机公网 IP
+回环失败。优先使用 split DNS 或容器 host mapping，让公网 hostname 在 SafeLink 服务端容器
+内解析到反向代理的内部入口，同时保留原 hostname、HTTPS SNI 和证书校验。例如反代
+的 443 已发布到 Docker 宿主机时，可先验证：
+
+```sh
+curl -vk --resolve bot.example.com:443:172.17.0.1 \
+  https://bot.example.com/health/unified
+```
+
+验证通过后，可在 SafeLink 服务端 Compose 中使用与实际网络匹配的配置：
+
+```yaml
+extra_hosts:
+  - "bot.example.com:host-gateway"
+```
+
+其它可选修复包括：把 SafeLink 服务端接入反向代理所在 Docker network、为 Docker subnet
+放行宿主机 443，或修正云安全组/NAT hairpin。SafeLink 服务端允许登记内部 HTTP receiver，
+但只有在两端共享受控内网且调用方的 `WEBHOOK_URL` 不同时承担 OIDC、支付或公开媒体
+回调时才应使用；不要为绕过网络问题盲目把应用的全局公开 URL 改成内部地址。
+
+#### 4. 修复后的闭环验证
+
+1. 重新启动 bot 应用，让它用当前 URL、secret 和 `allowed_updates` 再次调用
+   `setWebhook`。
+2. 发送一条新的 `/start` 或点击 callback 按钮。
+3. 再次调用 `getWebhookInfo`；`pending_update_count` 应下降到 `0`，且不再出现新的
+   `last_error_date`。
+4. 检查 `slerv` Warning 日志中的 `bot api webhook delivery failed`。日志包含
+   `bot_user_id`、`retry_in` 和失败原因，但不得记录 webhook URL、Bot token 或 secret。
+5. 检查接收应用是否记录并处理该 `update_id`。webhook 是 at-least-once，应用必须能
+   安全处理失败重试带来的重复 update。
+
+若凭据曾出现在命令历史、聊天或截图中，立即轮换 Bot token、webhook secret、OIDC
+Client Secret 及同屏暴露的其它 API key/数据库密码；排查资料只保留脱敏结果。
+
+### 3.2 SafeLink Login / OIDC 完整启用流程
 
 #### 1. 一次性生成 `data/telegram-login`
 
@@ -151,7 +261,9 @@ discovery 返回的 `issuer` 必须等于配置值，`authorization_endpoint`、
 - `Client ID`：bot user ID 的十进制字符串；
 - `Client Secret`：只显示一次，与 Bot API token 不同，必须立即保存到密钥管理系统。
 
-接着逐条发送配置命令。下面假设依赖方页面运行在 `http://192.0.2.30:3000`：
+选择一次 bot 后会持续停留在它的配置会话中，无需为每项修改重复 `/setlogin` 和 bot
+username。可以逐条发送，也可以像下面这样在一条消息中粘贴多行命令（每条消息最多
+32 行）。下面假设依赖方页面运行在 `http://192.0.2.30:3000`：
 
 ```text
 add origin http://192.0.2.30:3000
@@ -159,6 +271,11 @@ add redirect http://192.0.2.30:3000/oauth/callback
 algorithm RS256
 enable
 ```
+
+全部修改成功后发送 `/done`，BotFather 会退出配置会话并返回最终配置摘要。各条修改会
+立即生效；`/cancel` 只关闭当前会话，不会回滚已经成功的修改。多行消息若中途失败，
+BotFather 会明确列出已应用项、失败行以及未执行的后续行，并保留当前 bot 选择供修正
+后继续操作。
 
 `origin` 只能是无 path/query/fragment 的精确 Web origin，用于 JS SDK、popup CORS 和
 legacy `login_url`；`redirect` 是 Authorization Code Flow 返回 code 的精确完整 URI。
@@ -197,8 +314,8 @@ UserInfo、refresh token 或 introspection endpoint。浏览器前端可以加�
 安装 demo 依赖：
 
 ```powershell
-python -m venv "$env:TEMP\telesrv-bedolaga-demo-venv"
-& "$env:TEMP\telesrv-bedolaga-demo-venv\Scripts\python.exe" -m pip install `
+python -m venv "$env:TEMP\safelink-bedolaga-demo-venv"
+& "$env:TEMP\safelink-bedolaga-demo-venv\Scripts\python.exe" -m pip install `
   -r .\cmd\bots\bedolagaformat\requirements.txt
 ```
 
@@ -214,7 +331,7 @@ $env:TELESRV_BOT_LOGIN_CLIENT_SECRET = "<只显示一次的 OIDC Client Secret>"
 $env:TELESRV_BOT_LOGIN_PUBLIC_URL = "http://192.0.2.30:3000"
 $env:TELESRV_BOT_LOGIN_LISTEN = "0.0.0.0:3000"
 
-& "$env:TEMP\telesrv-bedolaga-demo-venv\Scripts\python.exe" `
+& "$env:TEMP\safelink-bedolaga-demo-venv\Scripts\python.exe" `
   .\cmd\bots\bedolagaformat\demo.py --drop-pending --login-demo
 ```
 
@@ -242,7 +359,7 @@ active key。不要手工编辑 manifest 或 PEM，不要在各实例上分别�
 
 | 参数 | 类型 / 代码默认值 | 说明与约束 |
 |---|---|---|
-| `TELESRV_POSTGRES_DSN` | secret DSN / `postgres://telesrv:telesrv@127.0.0.1:5432/telesrv?sslmode=disable` | 主业务持久库；生产必须替换开发凭证与 TLS 策略。 |
+| `TELESRV_POSTGRES_DSN` | secret DSN / `postgres://safelink:safelink@127.0.0.1:5432/safelink?sslmode=disable` | 主业务持久库；生产必须替换开发凭证与 TLS 策略。 |
 | `TELESRV_POSTGRES_MAX_CONNS` | int / `50` | pgxpool 最大连接数；`<=0` 使用 pgx 默认值，该默认通常不足以覆盖生产 outbox/RPC 并发。 |
 | `TELESRV_POSTGRES_MIN_CONNS` | int / `16` | pgxpool 预热最小连接数。 |
 | `TELESRV_REDIS_ADDR` | address / `127.0.0.1:6399` | 验证码、限流、共享更新/缓存易失态使用的 Redis。 |
@@ -254,7 +371,7 @@ active key。不要手工编辑 manifest 或 PEM，不要在各实例上分别�
 | `TELESRV_STICKER_SEED_DIR` | path / `data/sticker-seed` | 导入 documents、sticker sets、blob 的贴纸/reaction seed 目录。 |
 | `TELESRV_STICKER_SEED_MAX_SETS` | int / `300` | 启动时导入的常规贴纸集上限；`<=0` 表示不限。 |
 
-语言包 seed 以文件 manifest 为事实源。新增语言时放入 `data/langpack/<pack>/<pack>_<lang>_v<version>.strings` 并重启 `telesrv`；`pack` 必须与所在一级目录一致，允许 Telegram 已使用的字母、数字、`-` 与 `_`（例如 `android_x`），`lang` 会统一为小写、连字符形式（例如 `pt_BR` 归一为 `pt-br`）。同一语言存在多个文件时只读取最高版本。修改已有语言的有效内容必须提高版本；同版本有效内容变化或版本倒退会阻止启动。删除语言文件或整个 pack 子目录后，下次重启会原子移除对应数据库目录和字符串。启动先流式计算源文件 SHA-256；未变化文件复用上次原子 manifest，不解析字符串也不写库，只有新增或变化文件才解析并通过 PostgreSQL `COPY` 整包替换。
+语言包 seed 以文件 manifest 为事实源。新增语言时放入 `data/langpack/<pack>/<pack>_<lang>_v<version>.strings` 并重启 `slerv`；`pack` 必须与所在一级目录一致，允许 Telegram 已使用的字母、数字、`-` 与 `_`（例如 `android_x`），`lang` 会统一为小写、连字符形式（例如 `pt_BR` 归一为 `pt-br`）。同一语言存在多个文件时只读取最高版本。修改已有语言的有效内容必须提高版本；同版本有效内容变化或版本倒退会阻止启动。删除语言文件或整个 pack 子目录后，下次重启会原子移除对应数据库目录和字符串。启动先流式计算源文件 SHA-256；未变化文件复用上次原子 manifest，不解析字符串也不写库，只有新增或变化文件才解析并通过 PostgreSQL `COPY` 整包替换。
 
 ## 5. 登录、OTP Provider、SMTP 与 passkey
 
@@ -280,7 +397,7 @@ active key。不要手工编辑 manifest 或 PEM，不要在各实例上分别�
 | `TELESRV_SMTP_USERNAME` | sensitive string / 空 | SMTP 用户名；`TELESRV_SMTP_FROM` 为空时也用作发件人。 |
 | `TELESRV_SMTP_PASSWORD` | secret string / 空 | SMTP 密码。 |
 | `TELESRV_SMTP_FROM` | email/string / 空 | envelope/header 发件人；启用登录邮箱时它与 SMTP username 至少一个非空。 |
-| `TELESRV_SMTP_FROM_NAME` | string / `telesrv` | 登录邮件展示的发件人名称。 |
+| `TELESRV_SMTP_FROM_NAME` | string / `SafeLink` | 登录邮件展示的发件人名称。 |
 | `TELESRV_SMTP_TLS` | enum / `starttls` | 仅允许 `starttls`、`tls`、`none`，其它值阻止启动。 |
 | `TELESRV_SMTP_TIMEOUT` | duration / `10s` | SMTP 操作超时；使用 SMTP provider 时必须为正数。 |
 | `TELESRV_PASSKEY_RP_ID` | hostname / `safelink.chat` | WebAuthn relying-party ID，用于校验 `rpIdHash`；Android Credential Manager 必须与公网 `assetlinks.json` 对齐。 |
@@ -324,7 +441,7 @@ active key。不要手工编辑 manifest 或 PEM，不要在各实例上分别�
 
 聊天翻译会把用户主动选择翻译的消息正文发送给所配置的外部 provider。默认日志不记录正文，但部署者仍应在隐私政策中披露上游处理方；只配置 `local` 时服务端返回 `TRANSLATIONS_DISABLED`，不会回原文冒充译文。
 
-对 `TELESRV_AI_PROVIDERS` 中的每个名称，telesrv 会转大写并把非字母数字字符替换为 `_`，再读取下列动态参数。例如 `openai-compatible` 对应 suffix `OPENAI_COMPATIBLE`。
+对 `TELESRV_AI_PROVIDERS` 中的每个名称，SafeLink 服务端会转大写并把非字母数字字符替换为 `_`，再读取下列动态参数。例如 `openai-compatible` 对应 suffix `OPENAI_COMPATIBLE`。
 
 | 动态参数 | 类型 / 默认值 | 说明 |
 |---|---|---|
@@ -383,7 +500,7 @@ active key。不要手工编辑 manifest 或 PEM，不要在各实例上分别�
 | `TELESRV_PREMIUM_SWEEP_BATCH` | int / `500` | 单次 sweep 最大处理行数。 |
 | `TELESRV_STARGIFT_SWEEP_INTERVAL` | duration / `15s` | Star Gift 报价/竞拍本地生命周期清扫周期；不会连接区块链。 |
 | `TELESRV_STARGIFT_SWEEP_BATCH` | int / `1000` | 单次礼物生命周期清扫最多处理的报价、竞拍与 outbox 工作量。 |
-| `TELESRV_STARGIFT_TON_STARTING_GRANT` | int64 / `10000000000` | 每个用户首次访问 telesrv 内部 TON 账本时幂等授予的 nanoton；`0` 关闭赠送。它不是链上资产。 |
+| `TELESRV_STARGIFT_TON_STARTING_GRANT` | int64 / `10000000000` | 每个用户首次访问 SafeLink 内部 TON 账本时幂等授予的 nanoton；`0` 关闭赠送。它不是链上资产。 |
 | `TELESRV_STARGIFT_TRANSFER_STARS` | int64 / `25` | collectible 转赠费用；设为 `0` 时使用免费转赠 RPC。 |
 | `TELESRV_STARGIFT_DROP_DETAILS_STARS` | int64 / `25` | 移除 collectible 原始发送者/附言信息所需 Stars。 |
 | `TELESRV_STARGIFT_OFFER_MIN_STARS` | int / `1` | collectible 签发时固化的用户持有礼物最低 Stars 报价；`0` 不开放报价入口。 |

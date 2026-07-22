@@ -688,3 +688,20 @@ SELECT version, dirty FROM schema_migrations;
 ```
 
 期望结果为 `129 | false`。
+
+后续上游原始编号 `0124–0129` 与 SafeLink 已发布迁移再次重号，已顺延为：
+
+- `0130_star_gift_private_box_local_refs`
+- `0131_telegram_login_oidc`
+- `0132_star_gift_user_refs_and_profile_state`
+- `0133_validate_star_gift_profile_state`
+- `0134_star_gift_craft_readiness`
+- `0135_star_gift_craft_output_receipt`
+
+2026-07-22 上游新增的原始 `0130/0131` 同样不能直接使用，在 SafeLink 中映射为：
+
+- `0136_botfather_done_command`
+- `0137_account_freeze_visibility`
+
+生产部署后必须确认 `schema_migrations` 为 `137 | false`。后续合并上游迁移时，
+必须从 `0138` 继续顺延，不得改回上游原始编号。

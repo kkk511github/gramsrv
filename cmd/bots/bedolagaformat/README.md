@@ -57,7 +57,7 @@ $env:TELESRV_BOT_API_SERVER = "http://127.0.0.1:8081"
 只主动验证 rich menu（HTML + Markdown + 按钮 + 编辑 + logo fallback）：
 
 ```powershell
-& "$env:TEMP\telesrv-bedolaga-demo-venv\Scripts\python.exe" `
+& "$env:TEMP\safelink-bedolaga-demo-venv\Scripts\python.exe" `
   .\cmd\bots\bedolagaformat\demo.py `
   --send-only `
   --rich-only `
@@ -74,12 +74,12 @@ $env:TELESRV_BOT_API_SERVER = "http://127.0.0.1:8081"
 
 1. Bot API `login_url` 按钮 → TDesktop/Android 的
    `messages.requestUrlAuth/acceptUrlAuth` → legacy HMAC 回调；
-2. telesrv 本地 `/telegram-login.js` → popup `postMessage` → JWKS 验签；
+2. SafeLink 服务端本地 `/telegram-login.js` → popup `postMessage` → JWKS 验签；
 3. 服务端 Authorization Code + PKCE S256 → `/token` Basic Client Secret →
    JWKS 验签和 `issuer/audience/nonce/subject` 复核。
 
-先在 telesrv 的 @BotFather 中对目标 bot 运行 `/setlogin`。选择 bot 后逐条登记 demo
-的精确 origin 和 callback（本机示例）：
+先在 SafeLink 的 @BotFather 中对目标 bot 运行 `/setlogin`。选择一次 bot 后，可逐条发送，
+也可把下面三行作为一条多行消息粘贴，无需每次重新运行 `/setlogin` 或重选 bot：
 
 ```text
 add origin http://127.0.0.1:3000
@@ -87,9 +87,11 @@ add redirect http://127.0.0.1:3000/oauth/callback
 enable
 ```
 
+发送 `/done` 退出配置会话并查看最终摘要。`/cancel` 只退出，不回滚已经成功应用的命令。
+
 `/setlogin` 首次创建 client 时只展示一次 OIDC Client Secret；不要写进仓库。可用
 `/logininfo` 查看 Client ID 和登记结果，或用 `/resetloginsecret` 轮换 secret。
-使用 HTTP 域名/IP 时，在 telesrv 配置 `TELESRV_TELEGRAM_LOGIN_ALLOW_HTTP=true`；
+使用 HTTP 域名/IP 时，在 SafeLink 服务端配置 `TELESRV_TELEGRAM_LOGIN_ALLOW_HTTP=true`；
 demo 会接受任意合法 HTTP(S) issuer/public origin，不再限制为 loopback。
 
 把一次性 secret 和 Client ID 放入进程环境，再启动：
@@ -102,7 +104,7 @@ $env:TELESRV_BOT_LOGIN_CLIENT_SECRET = "<one-time OIDC client secret>"
 $env:TELESRV_BOT_LOGIN_PUBLIC_URL = "http://127.0.0.1:3000"
 $env:TELESRV_BOT_LOGIN_LISTEN = "127.0.0.1:3000"
 
-& "$env:TEMP\telesrv-bedolaga-demo-venv\Scripts\python.exe" `
+& "$env:TEMP\safelink-bedolaga-demo-venv\Scripts\python.exe" `
   .\cmd\bots\bedolagaformat\demo.py --drop-pending --login-demo
 ```
 
@@ -125,8 +127,8 @@ base-URL patch 或等价测试构建，不能把官方生产 SDK 未修改的结
 测试命令：
 
 ```powershell
-& "$env:TEMP\telesrv-bedolaga-demo-venv\Scripts\python.exe" `
+& "$env:TEMP\safelink-bedolaga-demo-venv\Scripts\python.exe" `
   .\cmd\bots\bedolagaformat\test_demo.py -v
-& "$env:TEMP\telesrv-bedolaga-demo-venv\Scripts\python.exe" `
+& "$env:TEMP\safelink-bedolaga-demo-venv\Scripts\python.exe" `
   .\cmd\bots\bedolagaformat\test_login_demo.py -v
 ```

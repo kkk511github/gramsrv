@@ -558,6 +558,7 @@ func run(logger *zap.Logger) error {
 	contactsService := contacts.NewService(contactStore, userStore).Configure(
 		contacts.WithPhotoProvider(cachedPhotos),
 		contacts.WithPrivacyEvaluator(privacyService),
+		contacts.WithAccountFreezeProvider(adminService),
 		contacts.WithReadModelVersions(readModelVersionStore),
 	)
 	if seeded, err := langPackService.SeedDirectory(ctx, cfg.LangPackSeedDir); err != nil {
@@ -759,13 +760,14 @@ func run(logger *zap.Logger) error {
 		passkeyapp.WithAllowedOrigins(cfg.PasskeyAllowedOrigins))
 	// 自定义云主题(Create a New Theme):主题目录与每用户已安装列表均持久化到 postgres。
 	themeService := themesapp.NewService(postgres.NewThemeStore(pool))
-	usersService := users.NewService(userStore, users.WithBaseUserCache(userCache), users.WithContactStore(contactStore), users.WithPhotoProvider(cachedPhotos), users.WithPrivacyEvaluator(privacyService))
+	usersService := users.NewService(userStore, users.WithBaseUserCache(userCache), users.WithContactStore(contactStore), users.WithPhotoProvider(cachedPhotos), users.WithPrivacyEvaluator(privacyService), users.WithAccountFreezeProvider(adminService))
 	aiComposeService := aiapp.NewService(aiComposeStore, newAIComposeOptions(cfg, rateLimiter, usersService.PremiumActive, logger)...)
 	botsService.SetAIChatGenerator(aiComposeService)
 	dialogsService := dialogs.NewService(dialogStore, channelStore).Configure(
 		dialogs.WithContactStore(contactStore),
 		dialogs.WithPhotoProvider(cachedPhotos),
 		dialogs.WithPrivacyEvaluator(privacyService),
+		dialogs.WithAccountFreezeProvider(adminService),
 		dialogs.WithPremiumChecker(usersService.PremiumActive),
 		dialogs.WithReadModelVersions(readModelVersionStore),
 	)
@@ -790,6 +792,7 @@ func run(logger *zap.Logger) error {
 		messageapp.WithContactStore(contactStore),
 		messageapp.WithPhotoProvider(cachedPhotos),
 		messageapp.WithPrivacyEvaluator(privacyService),
+		messageapp.WithAccountFreezeProvider(adminService),
 		messageapp.WithReadModelVersions(readModelVersionStore),
 		messageapp.WithBotResponder(botsService),
 		messageapp.WithSendPermissionChecker(adminService),
@@ -974,6 +977,7 @@ func run(logger *zap.Logger) error {
 	go activeSessions.RunPendingSweeper(ctx, time.Minute)
 	go router.RunPremiumSweeper(ctx, cfg.PremiumSweepInterval, cfg.PremiumSweepBatch)
 	go router.RunAccountLifecycle(ctx, time.Minute, 500)
+	go router.RunAccountFreezeNotifications(ctx, time.Minute, 500)
 	if telegramLoginService != nil {
 		go runTelegramLoginRetention(ctx, telegramLoginService, cfg.TelegramLoginRetention, cfg.TelegramLoginSweepInterval, cfg.TelegramLoginSweepBatch, logger.Named("telegram-login-retention"))
 	}
