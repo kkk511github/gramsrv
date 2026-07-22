@@ -705,3 +705,13 @@ SELECT version, dirty FROM schema_migrations;
 
 生产部署后必须确认 `schema_migrations` 为 `137 | false`。后续合并上游迁移时，
 必须从 `0138` 继续顺延，不得改回上游原始编号。
+
+2026-07-22 上游随后新增原始 `0132–0134`，SafeLink 继续按依赖顺序映射为：
+
+- `0138_star_gift_upgrade_preview_pool`
+- `0139_suggested_post_lifecycle`
+- `0140_suggested_post_effective_publish_date`
+
+这三项分别提供收藏礼物升级预览属性池校验，以及频道建议帖的审批、定时发布、
+Stars/TON 托管结算和实际发布时间记录。生产部署后必须确认
+`schema_migrations` 为 `140 | false`；后续上游迁移从 `0141` 继续顺延。
