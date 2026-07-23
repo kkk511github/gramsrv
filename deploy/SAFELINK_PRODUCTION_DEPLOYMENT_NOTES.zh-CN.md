@@ -66,9 +66,16 @@ TELESRV_REDIS_ADDR=127.0.0.1:6399
 TELESRV_STICKER_SEED_DIR=/www/safelink/slerv/data/sticker-seed
 TELESRV_PUBLIC_BASE_URL=https://safelink.chat
 TELESRV_PUBLIC_LINK_WEB_ADDR=127.0.0.1:2401
+TELESRV_PUBLIC_APP_SCHEME=safelink
+TELESRV_PUBLIC_APP_LINK_BASE=safelink://safelink.chat
 TELESRV_PUBLIC_LINK_APP_SCHEME=safelink
 TELESRV_WEBSOCKET_ORIGINS=https://safelink.chat,http://safelink.chat,https://web.safelink.chat,http://web.safelink.chat
 ```
+
+生产 `.env` 使用 `SLERV_*` 别名时，对应配置为
+`SLERV_PUBLIC_APP_LINK_BASE=safelink://safelink.chat`。启用后，邀请、用户名和
+SafeLink Login/OIDC 链接使用 `safelink://safelink.chat/<route>`；旧
+`safelink://<route>` 只作为服务端输入兼容，不再作为公开页面的主链接。
 
 `TELESRV_DEV_AUTH_CODE` 只适合测试环境。生产真上线前要换成真实短信/验证码链路，或者至少不要把固定测试码暴露给外部用户。
 
