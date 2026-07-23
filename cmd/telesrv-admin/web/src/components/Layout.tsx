@@ -1,5 +1,6 @@
 import {
   Bell,
+  Bot,
   ChevronDown,
   CircleCheck,
   Gift,
@@ -10,7 +11,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCw,
+  Send,
   ShieldCheck,
+  Smile,
   UserRound,
   Users,
   X
@@ -19,6 +22,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../api";
 import { LanguageSwitch, useI18n } from "../i18n";
 import { type Navigate, type RouteState, routeSubtitle, routeTitle } from "../routing";
+import { ThemeSwitch } from "../theme";
 import { AppLink } from "./AppLink";
 
 export function BootScreen() {
@@ -104,7 +108,10 @@ export function Shell({
           <NavLink icon={<LayoutDashboard size={18} />} href="/" route={route} navigate={navigate} title={t("layout.dashboard")}>{t("layout.dashboard")}</NavLink>
           <NavLink icon={<Users size={18} />} href="/accounts" route={route} navigate={navigate} title={t("layout.accounts")}>{t("layout.accounts")}</NavLink>
           <NavLink icon={<ShieldCheck size={18} />} href="/channels" route={route} navigate={navigate} title={t("layout.channels")}>{t("layout.channels")}</NavLink>
+          <NavLink icon={<Bot size={18} />} href="/bots" route={route} navigate={navigate} title={t("layout.bots")}>{t("layout.bots")}</NavLink>
           <NavLink icon={<Gift size={18} />} href="/gifts" route={route} navigate={navigate} title={t("layout.gifts")}>{t("layout.gifts")}</NavLink>
+          <NavLink icon={<Send size={18} />} href="/give-gifts" route={route} navigate={navigate} title={t("layout.giveGifts")}>{t("layout.giveGifts")}</NavLink>
+          <NavLink icon={<Smile size={18} />} href="/emoji" route={route} navigate={navigate} title={t("layout.emoji")}>{t("layout.emoji")}</NavLink>
           <div className={`nav-section ${messagesActive ? "active" : ""} ${messagesOpen ? "open" : ""}`}>
             <button
               className="nav-section-toggle"
@@ -183,6 +190,7 @@ export function Shell({
             <button className="icon-btn" type="button" title={t("common.refresh")} aria-label={t("common.refresh")} onClick={() => window.location.reload()}>
               <RefreshCw size={16} />
             </button>
+            <ThemeSwitch />
             <LanguageSwitch />
             <button className="icon-btn notification-button" type="button" title={t("layout.notifications")} aria-label={t("layout.notifications")}>
               <Bell size={17} />

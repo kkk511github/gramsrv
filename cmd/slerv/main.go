@@ -846,6 +846,7 @@ func run(logger *zap.Logger) error {
 		return fmt.Errorf("init push notifications: %w", err)
 	}
 	ipGeoResolver := ipgeo.NewResolver(ipgeo.Options{})
+	rpc.SetModerationWarnings(cfg.ScamWarning, cfg.FakeWarning)
 	router := rpc.New(rpc.Config{
 		DC:                       cfg.DC,
 		IP:                       cfg.AdvertiseIP,
@@ -950,6 +951,9 @@ func run(logger *zap.Logger) error {
 		ChannelNotifier: router,
 		Messages:        messagesService,
 		Gifts:           giftsService,
+		GiftGranter:     router,
+		Bots:            botsService,
+		Emoji:           filesService,
 	})
 	// bot session 撤销、在线通知与 @ChatBot 流式草稿推送经 router 实现（需 tg.* 边界），
 	// router 创建后注入。

@@ -730,3 +730,13 @@ Stars/TON 托管结算和实际发布时间记录。生产部署后必须确认
 该迁移补齐“单独预付升级”礼物消息与已保存礼物聚合的引用，并修复已经升级后的
 历史消息状态。生产部署后必须确认 `schema_migrations` 为 `141 | false`；后续上游
 迁移从 `0142` 继续顺延。
+
+2026-07-23 上游新增原始 `0136–0138`，SafeLink 按依赖顺序映射为：
+
+- `0142_scam_fake_flags`
+- `0143_channel_gigagroup`
+- `0144_star_gift_admin_grants`
+
+这三项支持用户/频道 SCAM 与 FAKE 审核标记、频道 Gigagroup 强制设置，以及管理员
+直接赠送普通或收藏礼物。生产部署后必须确认 `schema_migrations` 为 `144 | false`；
+后续上游迁移从 `0145` 继续顺延。
