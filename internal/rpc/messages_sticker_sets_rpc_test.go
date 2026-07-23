@@ -141,6 +141,41 @@ func TestMessagesGetAllStickersIncludesDefaultCatalogSets(t *testing.T) {
 	}
 }
 
+func TestMessagesGetEmojiStickersIncludesDefaultCatalogSets(t *testing.T) {
+	ctx := WithUserID(context.Background(), 1000000001)
+	files := &fakeFiles{
+		docs: map[int64]domain.Document{
+			201: {ID: 201, AccessHash: 21, Attributes: []domain.DocumentAttribute{{Kind: domain.DocAttrCustomEmoji}}},
+			202: {ID: 202, AccessHash: 22, Attributes: []domain.DocumentAttribute{{Kind: domain.DocAttrCustomEmoji}}},
+			203: {ID: 203, AccessHash: 23, Attributes: []domain.DocumentAttribute{{Kind: domain.DocAttrCustomEmoji}}},
+		},
+		sets: map[domain.StickerSetKind][]domain.StickerSet{
+			domain.StickerSetKindEmoji: {
+				{ID: 40, AccessHash: 400, ShortName: "default_emoji", Title: "Default Emoji", Kind: domain.StickerSetKindEmoji, Emojis: true, Count: 1, Hash: 10, SortOrder: 10, DocumentIDs: []int64{201}},
+				{ID: 50, AccessHash: 500, ShortName: "user_emoji", Title: "User Emoji", Kind: domain.StickerSetKindEmoji, Emojis: true, Count: 1, Hash: 11, Creator: true, CreatorUserID: 1000000002, DocumentIDs: []int64{202}},
+				{ID: 60, AccessHash: 600, ShortName: "plain_emoji", Title: "Plain Emoji", Kind: domain.StickerSetKindEmoji, Emojis: true, Count: 1, Hash: 12, DocumentIDs: []int64{203}},
+			},
+		},
+	}
+	passwordStore := memory.NewPasswordStore()
+	r := New(Config{}, Deps{
+		Account: appaccount.NewService(passwordStore, appaccount.WithUserStickerSets(passwordStore)),
+		Files:   files,
+	}, zaptest.NewLogger(t), clock.System)
+
+	out, err := r.onMessagesGetEmojiStickers(ctx, 0)
+	if err != nil {
+		t.Fatalf("get emoji stickers: %v", err)
+	}
+	full, ok := out.(*tg.MessagesAllStickers)
+	if !ok {
+		t.Fatalf("get emoji stickers = %T, want *tg.MessagesAllStickers", out)
+	}
+	if len(full.Sets) != 1 || full.Sets[0].ID != 40 || full.Sets[0].InstalledDate == 0 {
+		t.Fatalf("default catalog emoji stickers = %+v, want only default set 40 as installed", full.Sets)
+	}
+}
+
 func TestMessagesEmptyViewerStickerSetsInvalidateOldClientHash(t *testing.T) {
 	r, _, _ := userStickerSetRouter(t)
 	ctx := WithUserID(context.Background(), 1000000001)

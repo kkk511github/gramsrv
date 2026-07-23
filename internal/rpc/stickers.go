@@ -240,8 +240,8 @@ func (r *Router) allStickersForKind(ctx context.Context, hash int64, kind domain
 	if !handled {
 		// 兼容无 per-user 安装态的测试/旧内存路径：从目录缓存读全局 installed 标志。
 		sets = installedGlobalStickerSets(r.stickerCatalogSets(ctx, kind))
-	} else if kind == domain.StickerSetKindStickers {
-		sets = r.stickerPanelSetsWithDefaultCatalog(ctx, sets)
+	} else if kind == domain.StickerSetKindStickers || kind == domain.StickerSetKindEmoji {
+		sets = r.stickerPanelSetsWithDefaultCatalog(ctx, kind, sets)
 	}
 	if len(sets) == 0 {
 		return messagesAllStickersEmpty(hash), nil
@@ -344,8 +344,8 @@ func stickerSetWithViewerInstallItem(set domain.StickerSet, item domain.UserStic
 	return set
 }
 
-func (r *Router) stickerPanelSetsWithDefaultCatalog(ctx context.Context, installed []domain.StickerSet) []domain.StickerSet {
-	catalog := r.stickerCatalogSets(ctx, domain.StickerSetKindStickers)
+func (r *Router) stickerPanelSetsWithDefaultCatalog(ctx context.Context, kind domain.StickerSetKind, installed []domain.StickerSet) []domain.StickerSet {
+	catalog := r.stickerCatalogSets(ctx, kind)
 	if len(catalog) == 0 {
 		return installed
 	}
@@ -359,7 +359,7 @@ func (r *Router) stickerPanelSetsWithDefaultCatalog(ctx context.Context, install
 		seen[set.ID] = struct{}{}
 	}
 	for _, set := range catalog {
-		if _, ok := seen[set.ID]; ok || !defaultStickerSetForPanel(set) {
+		if _, ok := seen[set.ID]; ok || !defaultStickerSetForPanel(set, kind) {
 			continue
 		}
 		set = stickerSetWithoutViewerInstallState(set)
@@ -371,11 +371,11 @@ func (r *Router) stickerPanelSetsWithDefaultCatalog(ctx context.Context, install
 	return out
 }
 
-func defaultStickerSetForPanel(set domain.StickerSet) bool {
+func defaultStickerSetForPanel(set domain.StickerSet, kind domain.StickerSetKind) bool {
 	if set.ID == 0 || set.Deleted || set.Archived {
 		return false
 	}
-	if userStickerSetKind(set) != domain.StickerSetKindStickers {
+	if userStickerSetKind(set) != kind {
 		return false
 	}
 	if set.Creator || set.CreatorUserID != 0 {
