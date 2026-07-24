@@ -786,3 +786,17 @@ worker 正常启动，管理后台可以读取真实审核案件。后续上游�
   账号删除等永久销毁流程仍会删除协议密钥。
 - SafeLink 的真实客户端 IP 上下文必须在 transport 自动探测前写入，避免设备位置退化
   为代理或空值。
+
+## 2026-07-25 单后端 DC 标签兼容
+
+本次上游同步不包含数据库迁移，生产部署前后 `schema_migrations` 都必须保持
+`153 | false`。
+
+- 默认 `TELESRV_STRICT_DC_CHECK=false`，密钥交换接受官方客户端发送的任意 int32 DC
+  标签，包括 Android 媒体临时密钥使用的负 DC、其他生产 DC 和测试 DC。
+- DC 标签只用于客户端路由兼容，不参与 auth key、session 或业务数据分区；服务端输出
+  配置和媒体元数据仍使用 `TELESRV_DC=2`。
+- `TELESRV_STRICT_DC_CHECK=true` 只用于诊断：永久密钥必须使用本机 DC，临时密钥允许
+  `+/-` 本机 DC。该开关本身不提供多 DC 隔离，生产单后端不要误开。
+- 部署后必须确认启动日志提交号正确、数据库仍为 153，并使用现有 iOS、Android、Desktop
+  客户端分别完成登录握手或重连验证。

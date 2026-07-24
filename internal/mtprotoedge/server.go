@@ -304,6 +304,13 @@ type Options struct {
 
 	// DC 是本 server 的 DC ID。默认 2。
 	DC int
+	// StrictDC enables DC-label validation during key exchange. It is false by
+	// default: this single physical backend accepts every wire int32 label for
+	// permanent and temporary keys, and the label never changes auth-key
+	// persistence, session identity, or business state. When enabled,
+	// permanent labels must equal DC and temporary labels may equal +/-DC.
+	// This diagnostic switch does not itself provide multi-DC isolation.
+	StrictDC bool
 	// RSAKey 是 server RSA 私钥，用于密钥交换。nil 时无法完成握手。
 	RSAKey *rsa.PrivateKey
 	// AuthKeys 持久化 auth key。默认内存实现。
@@ -483,6 +490,7 @@ type Server struct {
 	outboundScratchPool      *outboundScratchPool
 
 	dc        int
+	strictDC  bool
 	key       exchange.PrivateKey
 	authKeys  store.AuthKeyStore
 	conns     *SessionManager
@@ -534,6 +542,7 @@ func New(opts Options) *Server {
 		outboundControlBudget:    newOutboundTrackedBudget(defaultOutboundControlMaxBytes),
 		outboundScratchPool:      newOutboundScratchPool(opts.OutboundWriteGlobalMaxBytes),
 		dc:                       opts.DC,
+		strictDC:                 opts.StrictDC,
 		key:                      exchange.PrivateKey{RSA: opts.RSAKey},
 		authKeys:                 opts.AuthKeys,
 		conns:                    conns,

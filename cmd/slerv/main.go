@@ -1096,6 +1096,7 @@ func run(logger *zap.Logger) error {
 	srv := mtprotoedge.New(mtprotoedge.Options{
 		Logger:                          logger.Named("mtprotoedge"),
 		DC:                              cfg.DC,
+		StrictDC:                        cfg.StrictDCCheck,
 		RSAKey:                          rsaKey,
 		LayerRPC:                        router,
 		AuthKeys:                        authKeyStore,
