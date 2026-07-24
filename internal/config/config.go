@@ -92,13 +92,12 @@ type Config struct {
 	// PublicAppName 是公开落地页展示的产品名，不参与协议路由。
 	PublicAppName string
 	// ScamWarning / FakeWarning override the profile warning text injected into
-	// getFullUser/getFullChannel About for scam/fake peers. Empty keeps the
-	// built-in per-peer-type English defaults. Clients cannot localize
-	// server-provided text, so operators set these to their audience language.
+	// full user/channel projections. Empty values keep the built-in defaults.
 	ScamWarning string
 	FakeWarning string
 	// PublicLinkWebAddr 是公开链接落地页监听地址；为空关闭。
-	// 生产应只监听 loopback，并由 nginx 将公开链接页面反代到该地址。
+	// 生产应只监听 loopback，并由 nginx 将 /<username>、/addstickers/、/addemoji/、
+	// /addlist/ 与 hash-only /appeal/ 路由反代到该地址。
 	PublicLinkWebAddr string
 	// PublicLinkAppScheme 是网页 Open 按钮调起客户端时使用的已注册 URL scheme。
 	PublicLinkAppScheme string

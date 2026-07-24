@@ -12,6 +12,7 @@ import {
   PanelLeftOpen,
   RefreshCw,
   Send,
+  ShieldAlert,
   ShieldCheck,
   Smile,
   UserRound,
@@ -109,6 +110,7 @@ export function Shell({
           <NavLink icon={<Users size={18} />} href="/accounts" route={route} navigate={navigate} title={t("layout.accounts")}>{t("layout.accounts")}</NavLink>
           <NavLink icon={<ShieldCheck size={18} />} href="/channels" route={route} navigate={navigate} title={t("layout.channels")}>{t("layout.channels")}</NavLink>
           <NavLink icon={<Bot size={18} />} href="/bots" route={route} navigate={navigate} title={t("layout.bots")}>{t("layout.bots")}</NavLink>
+          <NavLink icon={<ShieldAlert size={18} />} href="/moderation" route={route} navigate={navigate} title={t("layout.moderation")}>{t("layout.moderation")}</NavLink>
           <NavLink icon={<Gift size={18} />} href="/gifts" route={route} navigate={navigate} title={t("layout.gifts")}>{t("layout.gifts")}</NavLink>
           <NavLink icon={<Send size={18} />} href="/give-gifts" route={route} navigate={navigate} title={t("layout.giveGifts")}>{t("layout.giveGifts")}</NavLink>
           <NavLink icon={<Smile size={18} />} href="/emoji" route={route} navigate={navigate} title={t("layout.emoji")}>{t("layout.emoji")}</NavLink>

@@ -740,3 +740,34 @@ Stars/TON 托管结算和实际发布时间记录。生产部署后必须确认
 这三项支持用户/频道 SCAM 与 FAKE 审核标记、频道 Gigagroup 强制设置，以及管理员
 直接赠送普通或收藏礼物。生产部署后必须确认 `schema_migrations` 为 `144 | false`；
 后续上游迁移从 `0145` 继续顺延。
+
+## 2026-07-24 持久化审核、隐私读模型与客户端遥测迁移
+
+上游新增原始迁移 `0139–0147`，与 SafeLink 已发布的 `0139–0144` 重号。合并到
+SafeLink `dev` 时已按依赖顺序映射为：
+
+- `0145_moderation_reports`
+- `0146_auth_delivery_reports`
+- `0147_moderation_cases`
+- `0148_clear_ambiguous_contact_phones`
+- `0149_client_telemetry`
+- `0150_moderation_evidence_registries`
+- `0151_privacy_update_events`
+- `0152_account_settings_read_model`
+- `0153_user_moderation_profile_events`
+
+这批迁移将举报、审核案件、证据、审核动作和账号申诉改为数据库持久化，并增加认证
+投递诊断、客户端遥测、隐私设置读模型及用户审核标记更新事件。`0148` 会清空历史上
+被服务端错误复制为联系人账号本人手机号的 `contacts.contact_phone`；联系人关系、
+备注和名称不会删除，后续只有客户端明确导入的手机号才会重新写入。
+
+正式部署必须先升级并重启 `slerv`，确认迁移完成后再重启 `safelink-admin`。生产库
+应从 clean version `144` 升级到 `153`：
+
+```sql
+SELECT version, dirty FROM schema_migrations;
+```
+
+期望结果为 `153 | false`。部署后还应确认审核 worker、读模型 listener 和 retention
+worker 正常启动，管理后台可以读取真实审核案件。后续上游迁移必须从 `0154` 继续
+顺延，不得恢复上游原始编号。

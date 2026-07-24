@@ -65,7 +65,7 @@
 | `TELESRV_PUBLIC_APP_NAME` | string / `SafeLink` | 公开落地页产品名；trim 后非空、无控制字符、最多 64 个 Unicode 字符。 |
 | `TELESRV_SCAM_WARNING` | string / 空 | 覆盖 SCAM 用户或频道资料页中注入的警告文案；为空时使用内置英文文案。不会覆盖数据库中的原始简介，每次读取时根据标记重新附加。 |
 | `TELESRV_FAKE_WARNING` | string / 空 | 与 `TELESRV_SCAM_WARNING` 相同，用于 FAKE 用户或频道。 |
-| `TELESRV_PUBLIC_LINK_WEB_ADDR` | nullable address / 空 | 只读 username/avatar/sticker/emoji/chatlist/collectible gift 落地页监听；空值关闭。生产应 loopback + nginx 精确反代；`.env.example` 为开发启用 `127.0.0.1:2401`。 |
+| `TELESRV_PUBLIC_LINK_WEB_ADDR` | nullable address / 空 | username/avatar/sticker/emoji/chatlist/collectible gift 落地页及仅在 URL fragment 中携带令牌的账号申诉表单监听；空值关闭。生产应 loopback + nginx 精确反代。关闭监听时，无法生成可访问申诉链接的 `freeze_account` 操作会直接拒绝执行；`.env.example` 为开发启用 `127.0.0.1:2401`。 |
 | `TELESRV_TELEGRAM_LOGIN_ENABLE` | bool / `false` | 在 `TELESRV_PUBLIC_LINK_WEB_ADDR` 上挂载自建 SafeLink Login/OIDC Provider；启用时必须同时配置该 listener 与下列全部密钥文件。 |
 | `TELESRV_TELEGRAM_LOGIN_ISSUER` | 绝对 origin URL / `TELESRV_PUBLIC_BASE_URL` | discovery 与 token 使用的精确公开 issuer；默认必须 HTTPS，禁止 path、credentials、query、fragment。开启下一项后可直接配置任意 HTTP 域名/IP。 |
 | `TELESRV_TELEGRAM_LOGIN_ALLOW_HTTP` | bool / `false` | 开启后允许任意合法 HTTP issuer、BotFather Web origin、redirect URI 和 native HTTP callback，不限制为 loopback，也不限制 IP 网段或端口。关闭时这些 Web URL 仍必须 HTTPS。 |
