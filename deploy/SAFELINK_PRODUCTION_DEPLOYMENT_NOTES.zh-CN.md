@@ -771,3 +771,18 @@ SELECT version, dirty FROM schema_migrations;
 期望结果为 `153 | false`。部署后还应确认审核 worker、读模型 listener 和 retention
 worker 正常启动，管理后台可以读取真实审核案件。后续上游迁移必须从 `0154` 继续
 顺延，不得恢复上游原始编号。
+
+## 2026-07-24 同端口传输、公开频道预览与远程设备退出
+
+本次上游同步不包含数据库迁移，生产部署前后 `schema_migrations` 都必须保持
+`153 | false`。
+
+- MTProto TCP 在同一端口自动识别 plain 与 obfuscated2，并继续与 WebSocket 共用
+  `2398`；部署后需要分别验证普通 TCP、混淆 TCP 和 WebSocket 接入。
+- 非成员打开公开频道时会建立最多 10 个短期预览订阅，接收新增、编辑、置顶和删除
+  更新；订阅会自动过期，不能扩大为永久在线成员索引。
+- `account.resetAuthorization` 与 `auth.resetAuthorizations` 只撤销业务授权，暂时保留
+  协议密钥，使被踢设备重连后收到 `AUTH_KEY_UNREGISTERED` 并可靠清理本地登录态。
+  账号删除等永久销毁流程仍会删除协议密钥。
+- SafeLink 的真实客户端 IP 上下文必须在 transport 自动探测前写入，避免设备位置退化
+  为代理或空值。
