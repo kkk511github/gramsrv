@@ -391,6 +391,7 @@ key rings independently on different instances.
 | `TELESRV_BLOB_DIR` | path / `data/blobs` | Local development blob-backend root for media bytes. |
 | `TELESRV_STICKER_SEED_DIR` | path / `data/sticker-seed` | Sticker/reaction seed packages imported into documents, sticker sets, and blobs. |
 | `TELESRV_STICKER_SEED_MAX_SETS` | int / `300` | Maximum regular sticker sets imported at startup; `<=0` means unlimited. |
+| `TELESRV_PREMIUM_PROMO_SEED_DIR` | path / `data/premium-promo` | Exported `help.getPremiumPromo` manifest, MP4 videos, and JPEG thumbnails. A missing directory keeps the no-video fallback; an existing invalid/incomplete directory fails startup. |
 
 The language-pack file manifest is authoritative. To add a language, place `data/langpack/<pack>/<pack>_<lang>_v<version>.strings` and restart `slerv`. The `pack` must match its first-level directory and may use the letters, digits, `-`, and `_` already used by Telegram (for example, `android_x`); `lang` is canonicalized to lowercase with hyphens (`pt_BR` becomes `pt-br`). Only the highest file version for each language is loaded. Effective content changes require a version bump; same-version effective mutations and version rollbacks stop startup. Removing a language file or an entire pack subdirectory atomically removes its database catalog and strings on the next restart. Startup streams a source-file SHA-256 first: unchanged files reuse the last atomic manifest without parsing strings or writing the database, while only new or changed files are parsed and replaced through PostgreSQL `COPY`.
 
@@ -547,6 +548,7 @@ path. `TELESRV_PUBLIC_BASE_URL` must resolve to that proxy for moderation freeze
 | `TELESRV_CALL_RING_TIMEOUT` | duration / `90s` | Server fallback timeout for ringing/accepted private calls; should remain aligned with the client `callRingTimeoutMs`. |
 | `TELESRV_CALL_TOMBSTONE_TTL` | duration / `60s` | Terminal-call tombstone window for idempotency and late RPC absorption. |
 | `TELESRV_CALL_MAX_ACTIVE_PER_USER` | int / `4` | Maximum non-terminal private calls per user. Non-positive values are normalized by the phone service. |
+| `TELESRV_CALL_REGISTRY_MAX_ENTRIES` | int / `10000` | Process-wide private-call registry hard limit. At capacity, new calls fail with `CALL_OCCUPY_FAILED`; established calls are never evicted by age. |
 | `TELESRV_CALL_SIGNALING_MAX_BYTES` | int bytes / `65536` | Maximum payload for one `phone.sendSignalingData`. |
 | `TELESRV_CALL_SIGNALING_RATE` | int / `50` | Signaling forwards per call per second; excess is silently dropped. |
 | `TELESRV_CALL_EXPIRY_INTERVAL` | duration / `1s` | Call-expiry dispatcher polling interval. |

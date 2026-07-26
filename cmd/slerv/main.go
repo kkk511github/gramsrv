@@ -500,6 +500,15 @@ func run(logger *zap.Logger) error {
 			zap.Int("blobs", stats.Blobs),
 		)
 	}
+	if stats, err := filesService.SeedPremiumPromo(ctx, cfg.PremiumPromoSeedDir); err != nil {
+		return fmt.Errorf("seed premium promo: %w", err)
+	} else if !stats.Skipped {
+		logger.Info("Premium promo 视频种子导入完成",
+			zap.String("dir", cfg.PremiumPromoSeedDir),
+			zap.Int("videos", stats.Videos),
+			zap.Int("blobs", stats.Blobs),
+		)
+	}
 	if stats, err := filesService.SeedAppearance(ctx); err != nil {
 		return fmt.Errorf("seed appearance: %w", err)
 	} else if !stats.Skipped {
@@ -735,6 +744,7 @@ func run(logger *zap.Logger) error {
 		RingTimeout:            cfg.CallRingTimeout,
 		TombstoneTTL:           cfg.CallTombstoneTTL,
 		MaxActivePerUser:       cfg.CallMaxActivePerUser,
+		MaxRegistryEntries:     cfg.CallRegistryMaxEntries,
 		SignalingRatePerSecond: cfg.CallSignalingRate,
 	})
 	// 私聊端对端加密（Secret Chat）握手状态机 + qts 投递队列（盲中继）。
@@ -929,6 +939,7 @@ func run(logger *zap.Logger) error {
 		Channels:             channelsService,
 		Communities:          communitiesService,
 		Files:                filesService,
+		PremiumPromo:         filesService,
 		Bots:                 botsService,
 		Polls:                pollsapp.NewService(pollStore),
 		Stories:              storiesService,

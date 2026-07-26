@@ -79,6 +79,9 @@ func (s *Service) GetDifference(ctx context.Context, langPack, langCode string, 
 	if s == nil || s.packs == nil {
 		return domain.LangPack{LangPack: packName, LangCode: code, FromVersion: fromVersion}, nil
 	}
+	if err := s.validateLanguage(ctx, packName, code); err != nil {
+		return domain.LangPack{}, err
+	}
 	var (
 		pack domain.LangPack
 		err  error
@@ -104,6 +107,9 @@ func (s *Service) GetStrings(ctx context.Context, langPack, langCode string, key
 	code := normalizeCode(langCode)
 	if s == nil || s.packs == nil {
 		return domain.LangPack{LangPack: packName, LangCode: code}, nil
+	}
+	if err := s.validateLanguage(ctx, packName, code); err != nil {
+		return domain.LangPack{}, err
 	}
 	pack, err := s.effectivePack(ctx, packName, code)
 	if err != nil {
@@ -132,13 +138,23 @@ func (s *Service) ListLanguages(ctx context.Context, langPack string) ([]domain.
 	if s == nil || s.packs == nil {
 		return nil, nil
 	}
-	return s.cachedLanguages(ctx, packName)
+	languages, err := s.cachedLanguages(ctx, packName)
+	if err != nil {
+		return nil, err
+	}
+	if len(languages) == 0 {
+		return nil, domain.ErrLangPackInvalid
+	}
+	return languages, nil
 }
 
 func normalizePack(langPack string) string {
 	pack := strings.ToLower(strings.TrimSpace(langPack))
 	if pack == "" {
 		return "tdesktop"
+	}
+	if pack == "web" {
+		return "webk"
 	}
 	return pack
 }
@@ -269,6 +285,22 @@ func (s *Service) cachedLanguages(ctx context.Context, langPack string) ([]domai
 			return nil, err
 		}
 	}
+}
+
+func (s *Service) validateLanguage(ctx context.Context, langPack, langCode string) error {
+	languages, err := s.cachedLanguages(ctx, langPack)
+	if err != nil {
+		return err
+	}
+	if len(languages) == 0 {
+		return domain.ErrLangPackInvalid
+	}
+	for _, language := range languages {
+		if normalizeCode(language.LangCode) == langCode {
+			return nil
+		}
+	}
+	return domain.ErrLangCodeNotSupported
 }
 
 func (s *Service) brandPack(pack domain.LangPack) domain.LangPack {

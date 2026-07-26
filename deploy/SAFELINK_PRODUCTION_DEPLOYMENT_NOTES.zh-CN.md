@@ -800,3 +800,25 @@ worker 正常启动，管理后台可以读取真实审核案件。后续上游�
   `+/-` 本机 DC。该开关本身不提供多 DC 隔离，生产单后端不要误开。
 - 部署后必须确认启动日志提交号正确、数据库仍为 153，并使用现有 iOS、Android、Desktop
   客户端分别完成登录握手或重连验证。
+
+## 2026-07-26 收藏消息标签、Premium 宣传视频与后台审核本地化
+
+上游新增原始迁移 `0148_saved_message_reaction_tags`，与 SafeLink 已发布迁移重号，已映射为：
+
+- `0154_saved_message_reaction_tags`
+
+已发布的 `0153_user_moderation_profile_events` 必须保持原内容，不得按上游原编号回改。
+生产部署后 `schema_migrations` 必须从 `153 | false` 升级为 `154 | false`，后续上游迁移
+从 `0155` 继续顺延。
+
+- 收藏消息现在按每条消息持久化普通 Emoji 或自定义 Emoji 标签，可供客户端筛选和显示
+  标签计数。
+- `help.getPremiumPromo` 可从 `TELESRV_PREMIUM_PROMO_SEED_DIR` 导入 MP4、JPEG 缩略图和
+  manifest。目录不存在时继续返回无视频兼容结果；目录一旦存在，缺文件或数据非法会阻止
+  `slerv` 启动，禁止只创建空目录。
+- 私聊通话 registry 默认最多保留 10000 个条目，已确认但一直没有后续信令的通话会按超时
+  正常终止，不会因为容量压力按年龄驱逐仍在进行的通话。
+- WebK 使用的语言包 catalog 别名会映射到同一份语言数据；管理后台审核页新增完整中英文
+  文案和状态下拉筛选。
+- SafeLink 必须继续使用 `https://web.safelink.chat`，不得采用上游
+  `https://weba.telesrv.net`。
