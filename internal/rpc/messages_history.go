@@ -197,35 +197,50 @@ func (r *Router) onMessagesGetSearchCounters(ctx context.Context, req *tg.Messag
 	if err != nil {
 		return nil, err
 	}
+	needsPinned := false
+	needsMedia := false
+	for _, filter := range req.Filters {
+		if filter == nil {
+			continue
+		}
+		if _, ok := filter.(*tg.InputMessagesFilterPinned); ok {
+			needsPinned = true
+			continue
+		}
+		if len(mediaCategoriesForFilter(filter)) > 0 {
+			needsMedia = true
+		}
+	}
 	pinnedCount := 0
 	mediaCounts := domain.MediaCategoryCounts{}
-	if peer.Type == domain.PeerTypeChannel && r.deps.Channels != nil {
-		// 只读 PinnedMessageID（Channel 字段）：走轻量 ResolveChannel，省 dialog/读态/boost 查询。
-		view, err := r.deps.Channels.ResolveChannel(ctx, userID, peer.ID)
-		if err != nil {
-			return nil, err
+	if needsPinned {
+		switch {
+		case peer.Type == domain.PeerTypeChannel && r.deps.Channels != nil:
+			history, err := r.deps.Channels.GetHistory(ctx, userID, domain.ChannelHistoryFilter{
+				ChannelID:      peer.ID,
+				PinnedOnly:     true,
+				NeedTotalCount: true,
+				CountOnly:      true,
+			})
+			if err != nil {
+				return nil, err
+			}
+			pinnedCount = history.Count
+		case peer.Type == domain.PeerTypeUser && r.deps.Messages != nil:
+			list, err := r.deps.Messages.Search(ctx, userID, domain.MessageFilter{
+				HasPeer:        true,
+				Peer:           peer,
+				PinnedOnly:     true,
+				Limit:          1,
+				NeedTotalCount: true,
+			})
+			if err != nil {
+				return nil, err
+			}
+			pinnedCount = list.Count
 		}
-		if view.Channel.PinnedMessageID > 0 {
-			pinnedCount = 1
-		}
-		counts, err := r.mediaCountsForPeer(ctx, userID, peer)
-		if err != nil {
-			return nil, err
-		}
-		mediaCounts = counts
 	}
-	if peer.Type == domain.PeerTypeUser && r.deps.Messages != nil {
-		list, err := r.deps.Messages.Search(ctx, userID, domain.MessageFilter{
-			HasPeer:        true,
-			Peer:           peer,
-			PinnedOnly:     true,
-			Limit:          1,
-			NeedTotalCount: true,
-		})
-		if err != nil {
-			return nil, err
-		}
-		pinnedCount = list.Count
+	if needsMedia {
 		counts, err := r.mediaCountsForPeer(ctx, userID, peer)
 		if err != nil {
 			return nil, err
@@ -789,8 +804,13 @@ func (r *Router) messageFilterFromSearchRequest(ctx context.Context, userID int6
 		filter.Peer = peer
 	}
 	savedReactions, hasSavedReactions := req.GetSavedReaction()
+	// An empty optional vector carries no reaction-filtering semantics. Some TL
+	// clients emit flags.3 with a zero-length vector on ordinary peer searches.
+	// Keep the wire presence intact at the TL edge, but only apply Saved
+	// Messages scope and reaction validation when the vector has values.
+	hasSavedReactionFilter := hasSavedReactions && len(savedReactions) > 0
 	savedPeerInput, hasSavedPeer := req.GetSavedPeerID()
-	if hasSavedReactions || hasSavedPeer {
+	if hasSavedReactionFilter || hasSavedPeer {
 		if !filter.HasPeer ||
 			filter.Peer != (domain.Peer{Type: domain.PeerTypeUser, ID: userID}) {
 			return domain.MessageFilter{}, peerIDInvalidErr()
@@ -806,8 +826,8 @@ func (r *Router) messageFilterFromSearchRequest(ctx context.Context, userID int6
 		}
 		filter.SavedPeer = savedPeer
 	}
-	if hasSavedReactions {
-		if len(savedReactions) == 0 || len(savedReactions) > maxReactionVector {
+	if hasSavedReactionFilter {
+		if len(savedReactions) > maxReactionVector {
 			return domain.MessageFilter{}, reactionInvalidErr()
 		}
 		seen := make(map[string]struct{}, len(savedReactions))
@@ -828,6 +848,7 @@ func (r *Router) messageFilterFromSearchRequest(ctx context.Context, userID int6
 
 func (r *Router) channelHistoryFilterFromSearchRequest(userID int64, req *tg.MessagesSearchRequest, channelID int64) (domain.ChannelHistoryFilter, bool) {
 	limit := req.Limit
+	countOnly := limit == 0
 	if limit <= 0 || limit > 100 {
 		limit = 100
 	}
@@ -836,14 +857,17 @@ func (r *Router) channelHistoryFilterFromSearchRequest(userID int64, req *tg.Mes
 		Query:      req.Q,
 		PinnedOnly: messagesSearchFilterPinned(req.Filter),
 		MusicOnly:  messagesSearchFilterMusic(req.Filter),
-		OffsetID:   req.OffsetID,
-		AddOffset:  domain.ClampMessageHistoryAddOffset(req.AddOffset),
-		Limit:      limit,
-		MinDate:    req.MinDate,
-		MaxDate:    req.MaxDate,
-		MaxID:      req.MaxID,
-		MinID:      req.MinID,
-		Hash:       req.Hash,
+		NeedTotalCount: countOnly ||
+			(req.OffsetID == 0 && req.MinDate == 0 && req.MaxDate == 0 && req.AddOffset >= 0 && req.Hash == 0),
+		CountOnly: countOnly,
+		OffsetID:  req.OffsetID,
+		AddOffset: domain.ClampMessageHistoryAddOffset(req.AddOffset),
+		Limit:     limit,
+		MinDate:   req.MinDate,
+		MaxDate:   req.MaxDate,
+		MaxID:     req.MaxID,
+		MinID:     req.MinID,
+		Hash:      req.Hash,
 	}
 	if req.FromID != nil {
 		from, ok := r.domainPeerFromInputPeer(userID, req.FromID)

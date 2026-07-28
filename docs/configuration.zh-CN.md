@@ -22,6 +22,7 @@
 | `TELESRV_ADVERTISE_IP` | string / `127.0.0.1` | 媒体、通话等回退路径使用的客户端可达 IP；当前 TDesktop 静态 DC patch 不从这里获取 MTProto 地址。 |
 | `TELESRV_RSA_KEY` | path / `data/server_rsa.pem` | MTProto RSA 私钥；缺失时自动生成。属于敏感文件，重启和升级间必须稳定保存。 |
 | `TELESRV_DC` | int / `2` | 服务端输出配置及媒体/DC 元数据使用的规范 DC ID；当前单后端不会按它分区密钥交换状态。 |
+| `TELESRV_DEFAULT_COUNTRY_CODE` | ISO alpha-2 / `CN` | `help.getNearestDc` 返回的登录页默认国家。客户端把 `CN` 映射为国际区号 `+86`、`US` 映射为 `+1`。输入会 trim、转大写并校验为国家或自治地区；格式错误或未知值会让启动失败。 |
 | `TELESRV_STRICT_DC_CHECK` | bool / `false` | 默认 `false`，永久与临时密钥交换接受任意 wire int32 DC 标签。设为 `true` 时永久标签必须等于 `TELESRV_DC`、临时标签绝对值必须等于 `TELESRV_DC`；它仅是诊断开关，不提供多 DC 隔离。 |
 | `TELESRV_WEBSOCKET_ENABLE` | bool / `true` | 在 MTProto 监听端口启用 MTProto-over-WebSocket 分流。 |
 | `TELESRV_WEBSOCKET_ALLOWED_ORIGINS` | list / `http://localhost:1234,http://127.0.0.1:1234` | 浏览器 WebSocket origin 白名单；`*` 只用于临时调试。 |
@@ -517,6 +518,58 @@ active key。不要手工编辑 manifest 或 PEM，不要在各实例上分别�
 | `TELESRV_STARGIFT_RESELL_DELAY` | duration / `0s` | 签发时固化到 `can_resell_at` 的等待期。 |
 | `TELESRV_STARGIFT_CRAFT_DELAY` | duration / `0s` | 签发时固化到 `can_craft_at` 的等待期；可 Craft 礼物即使为 `0s` 也写升级时间这一正数能力边界，0 只表示不具备 Craft 能力或已终结。 |
 | `TELESRV_STARGIFT_CRAFT_CHANCE_PERMILLE` | int / `250` | 每份输入礼物贡献的本地合成成功概率，累计上限 1000‰。 |
+
+### 本地账号评分与 collectible username
+
+账号评分是 gramsrv 自己的本地风控/信誉复合分，组合 Stars 收支、账号活跃和管理处罚；它不承诺 1:1 复刻 Telegram 的私有评分算法。已计算的本地等级会投影到 `userFull.stars_rating`，本人还会收到 `stars_my_pending_rating` 与生效时间，让官方客户端直接显示；他人的 pending 永不下发。资料页只读取后台 worker 已持久化的评分并复用现有 30 分钟 `userFull` 投影缓存，不会同步重算或写库。Collectible username 由管理员签发，本功能不访问外部市场、钱包或区块链节点。
+
+| 参数 | 类型 / 代码默认值 | 说明与约束 |
+|---|---|---|
+| `TELESRV_RATING_ENABLED` | bool / `true` | 启用本地复合评分及客户端等级投影；关闭时拒绝评分写入且客户端 rating flags 保持未设置。 |
+| `TELESRV_RATING_PENDING_DELAY` | duration / `24h` | 本地评分上涨进入可见后台等级前的等待期；下降立即生效。允许 `0..720h`，`0` 表示立即应用。 |
+| `TELESRV_RATING_RECOMPUTE_INTERVAL` | duration / `15m` | 后台重算周期，必须为正数。 |
+| `TELESRV_RATING_RECOMPUTE_BATCH` | int / `500` | 每轮重算的 stale projection 数，必须为 `1..10000`。 |
+| `TELESRV_RATING_STALE_AFTER` | duration / `6h` | 超过该年龄的评分进入重算，必须为正数。 |
+| `TELESRV_RATING_WEIGHT_STARS_RECEIVED_PERMILLE` | int64 / `1000` | Stars 收入权重（千分比）。 |
+| `TELESRV_RATING_WEIGHT_STARS_SPENT_PERMILLE` | int64 / `250` | Stars 支出权重（千分比）。 |
+| `TELESRV_RATING_WEIGHT_MESSAGE_SENT` | int64 / `1` | 每条已发送消息贡献分。 |
+| `TELESRV_RATING_WEIGHT_ACCOUNT_AGE_DAY` | int64 / `2` | 每个账号存续日贡献分。 |
+| `TELESRV_RATING_WEIGHT_GIFT_RECEIVED` | int64 / `25` | 每份持有 collectible gift 贡献分。 |
+| `TELESRV_RATING_WEIGHT_MODERATION_CASE` | int64 / `150` | 每个成立管理案件的扣分幅度。 |
+| `TELESRV_RATING_WEIGHT_SCAM_PENALTY` | int64 / `5000` | scam 标记固定扣分。 |
+| `TELESRV_RATING_WEIGHT_FAKE_PENALTY` | int64 / `5000` | fake 标记固定扣分。 |
+| `TELESRV_RATING_ACTIVITY_CAP` | int64 / `5000` | 活跃分上限；`0` 表示不封顶。 |
+| `TELESRV_COLLECTIBLE_USERNAME_URL_TEMPLATE` | URL template / 空 | 管理员未显式给 URL 时写入资产的落地页模板；空值派生 `<TELESRV_PUBLIC_BASE_URL>/nft/username/<username>`。配置值须为无 userinfo 的绝对 http(s) URL，可含 `{username}`；无占位符时把 username 追加为最后路径段。 |
+
+`fragment.collectibleInfo.amount` 与 `crypto_amount` 使用币种最小单位：例如 USD 1000 表示 10 美元，TON 900 表示 900 nanotons，XTR 无子单位。后台 UI 负责整币单位与最小单位转换；直接调用 Admin API 的集成必须自行传最小单位。
+
+### 官方平台认证
+
+官方认证对应 `user.verified` / `channel.verified`。申请由内置 `@verifybot` 收集、管理后台审核；提交和批准时都会重新校验目标存在、公开 username、申请者控制权、账号状态与系统账号禁入，badge 写入和决定状态在同一事务提交。申请 URL 只做 public http(s) 形状校验，服务端不会抓取，避免 SSRF。
+
+| 参数 | 类型 / 代码默认值 | 说明与约束 |
+|---|---|---|
+| `TELESRV_VERIFICATION_ENABLED` | bool / `true` | 启用官方认证；关闭时拒绝新操作，既有 badge 保留。 |
+| `TELESRV_VERIFICATION_ALLOW_USER_TARGETS` | bool / `false` | 是否允许普通用户账号成为认证目标。 |
+| `TELESRV_VERIFICATION_REJECT_COOLDOWN` | duration / `720h` | 同申请者/目标被拒后的等待期；允许 `0..8760h`。 |
+| `TELESRV_VERIFICATION_APPLY_RATE_LIMIT` | int / `3` | 每个申请者在窗口内可新建的申请数；`0` 关闭。 |
+| `TELESRV_VERIFICATION_APPLY_RATE_WINDOW` | duration / `24h` | 申请预算窗口；limit>0 时必须为正数。 |
+| `TELESRV_VERIFICATION_BOT_RATE_LIMIT` | int / `30` | `@verifybot` 每个申请者的对话限流；`0` 关闭。 |
+| `TELESRV_VERIFICATION_BOT_RATE_WINDOW` | duration / `1m` | bot 对话限流窗口；limit>0 时必须为正数。 |
+| `TELESRV_VERIFICATION_NOTIFY_INTERVAL` | duration / `15s` | durable 通知 outbox worker 周期，必须为正数。 |
+| `TELESRV_VERIFICATION_NOTIFY_BATCH` | int / `50` | 每轮投递通知数，必须为 `1..500`。 |
+| `TELESRV_VERIFICATION_MAX_ACTIVE_PER_USER` | int / `3` | 每个申请者可保持的 active 申请数；允许 `0..50`。 |
+
+### 第三方 bot 认证
+
+第三方认证对应 `botVerification`，由管理员授权的 verifier bot 使用自己的 custom emoji document 与描述标记 user/channel，不会授予官方 checkmark。Icon 必须是客户端可通过 `messages.getCustomEmojiDocuments` 读取的真实 document。每个 peer 只保留一个 wire-visible mark；新的 verifier 替换旧 mark，禁止旧 badge 在撤销或 kill switch 后意外复活。客户端自定义描述上限通过 appConfig `bot_verification_description_length_limit=70` 发布。
+
+| 参数 | 类型 / 代码默认值 | 说明与约束 |
+|---|---|---|
+| `TELESRV_BOT_VERIFICATION_ENABLED` | bool / `true` | 启用第三方认证；关闭时拒绝新 mutation，既有 mark 仍投影。 |
+| `TELESRV_BOT_VERIFICATION_MAX_PER_VERIFIER` | int / `10000` | 单 verifier 可标记的 peer 数；`0` 仅关闭 service cap，storage 硬上限仍为 10000。 |
+| `TELESRV_BOT_VERIFICATION_REQUEST_RATE_LIMIT` | int / `5` | 每个申请者跨 verifier 的申请预算；`0` 关闭。 |
+| `TELESRV_BOT_VERIFICATION_REQUEST_RATE_WINDOW` | duration / `24h` | 第三方认证申请预算窗口；limit>0 时必须为正数。 |
 
 ## 11. 私聊通话、群通话、TURN、SFU 与直播
 

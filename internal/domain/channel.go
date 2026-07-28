@@ -1614,6 +1614,23 @@ const (
 	SuggestedPostStateRefunded   SuggestedPostLifecycleState = "refunded"
 )
 
+const MaxSuggestedPostScheduleDelay = 31 * 24 * 60 * 60
+
+// EffectiveSuggestedPostPublishDate validates an approval schedule against the
+// server's bounded future window and converts a missing or already-due absolute
+// date into an immediate publication at now. Client date pickers can legally
+// submit after their selected time has crossed a relative minimum; that delay
+// must not turn a valid approval into an error or persist a past accepted date.
+func EffectiveSuggestedPostPublishDate(scheduleDate, now int) (int, error) {
+	if now <= 0 || scheduleDate > now+MaxSuggestedPostScheduleDelay {
+		return 0, ErrSuggestedPostInvalid
+	}
+	if scheduleDate <= now {
+		return now, nil
+	}
+	return scheduleDate, nil
+}
+
 // ToggleSuggestedPostApprovalResult contains every durable update produced by
 // one command or lifecycle transition.  OriginalEvent is an edit in the
 // monoforum; ServiceEvent is the approval/success/refund service message; an
@@ -2176,15 +2193,22 @@ type ChannelHistoryFilter struct {
 	SenderUserID int64
 	PinnedOnly   bool
 	MusicOnly    bool
-	OffsetID     int
-	OffsetDate   int
-	AddOffset    int
-	Limit        int
-	MinDate      int
-	MaxDate      int
-	MaxID        int
-	MinID        int
-	Hash         int64
+	// NeedTotalCount requests the exact number of messages matching the static
+	// filters before offset/add_offset pagination. Ordinary history pages leave
+	// this false and keep the bounded len(page)+has-more hint.
+	NeedTotalCount bool
+	// CountOnly skips message hydration and returns only the exact Count plus
+	// the viewer-scoped channel metadata needed for access validation.
+	CountOnly  bool
+	OffsetID   int
+	OffsetDate int
+	AddOffset  int
+	Limit      int
+	MinDate    int
+	MaxDate    int
+	MaxID      int
+	MinID      int
+	Hash       int64
 }
 
 // ChannelSearchPostsRequest describes a bounded global public post search.
@@ -2326,7 +2350,11 @@ type ReadChannelHistoryResult struct {
 	MaxID            int
 	StillUnreadCount int
 	Changed          bool
-	Pts              int
+	// ReadOnly marks a synthetic viewer (public preview, linked guest or
+	// monoforum shell). The read is acknowledged without creating member,
+	// dialog, watermark, receipt or update state.
+	ReadOnly bool
+	Pts      int
 	// Forum 标记该频道是否为话题群。RPC 层据此在频道级 readHistory 后顺带推进
 	// General(topic 1) 的话题级已读水位（General 消息即频道根历史，被频道级已读覆盖）。
 	Forum         bool

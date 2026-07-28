@@ -81,6 +81,11 @@ type uiConfig struct {
 	FCMServiceAccountJSON string
 	BlobDir               string
 	UploadPartTTL         time.Duration
+	// Permissions is the right set a panel session is issued with, from
+	// TELESRV_ADMIN_UI_PERMISSIONS. The shipped default is the single wildcard
+	// entry, so introducing the permission model never locks an operator out of a
+	// panel that worked before.
+	Permissions []string
 }
 
 // loadConfig 通过 internal/config.Load() 加载 .env 配置文件与环境变量，
@@ -125,6 +130,7 @@ func loadConfig() (uiConfig, error) {
 		FCMServiceAccountJSON: appCfg.FCMServiceAccountJSON,
 		BlobDir:               appCfg.BlobDir,
 		UploadPartTTL:         appCfg.UploadPartTTL,
+		Permissions:           appCfg.AdminUIPermissions,
 	}, nil
 }
 

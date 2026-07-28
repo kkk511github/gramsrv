@@ -1,4 +1,6 @@
 import {
+  AtSign,
+  BadgeCheck,
   Bell,
   Bot,
   ChevronDown,
@@ -15,6 +17,8 @@ import {
   ShieldAlert,
   ShieldCheck,
   Smile,
+  Stamp,
+  Trophy,
   UserRound,
   Users,
   X
@@ -22,6 +26,7 @@ import {
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../api";
 import { LanguageSwitch, useI18n } from "../i18n";
+import { permissionBotVerificationReview, permissionVerificationReview, useCan } from "../permissions";
 import { type Navigate, type RouteState, routeSubtitle, routeTitle } from "../routing";
 import { ThemeSwitch } from "../theme";
 import { AppLink } from "./AppLink";
@@ -56,6 +61,12 @@ export function Shell({
   children: ReactNode;
 }) {
   const { t, lang } = useI18n();
+  // The verification queue is hidden for a session without verification.review:
+  // the entry would only lead to a 403 (and the route itself is gated as well).
+  const canReviewVerification = useCan(permissionVerificationReview);
+  // Same reasoning for the third-party queue, which has its own right: the two
+  // sections are granted independently, so one entry can be visible without the other.
+  const canReviewBotVerification = useCan(permissionBotVerificationReview);
   const messagesActive = route.path.startsWith("/messages");
   const [messagesOpen, setMessagesOpen] = useState(messagesActive);
   const [collapsed, setCollapsed] = useState(false);
@@ -111,6 +122,14 @@ export function Shell({
           <NavLink icon={<ShieldCheck size={18} />} href="/channels" route={route} navigate={navigate} title={t("layout.channels")}>{t("layout.channels")}</NavLink>
           <NavLink icon={<Bot size={18} />} href="/bots" route={route} navigate={navigate} title={t("layout.bots")}>{t("layout.bots")}</NavLink>
           <NavLink icon={<ShieldAlert size={18} />} href="/moderation" route={route} navigate={navigate} title={t("layout.moderation")}>{t("layout.moderation")}</NavLink>
+          {canReviewVerification && (
+            <NavLink icon={<BadgeCheck size={18} />} href="/verification" route={route} navigate={navigate} title={t("layout.verification")}>{t("layout.verification")}</NavLink>
+          )}
+          {canReviewBotVerification && (
+            <NavLink icon={<Stamp size={18} />} href="/bot-verification" route={route} navigate={navigate} title={t("layout.botVerification")}>{t("layout.botVerification")}</NavLink>
+          )}
+          <NavLink icon={<AtSign size={18} />} href="/collectible-usernames" route={route} navigate={navigate} title={t("layout.collectibleUsernames")}>{t("layout.collectibleUsernames")}</NavLink>
+          <NavLink icon={<Trophy size={18} />} href="/account-ratings" route={route} navigate={navigate} title={t("layout.accountRatings")}>{t("layout.accountRatings")}</NavLink>
           <NavLink icon={<Gift size={18} />} href="/gifts" route={route} navigate={navigate} title={t("layout.gifts")}>{t("layout.gifts")}</NavLink>
           <NavLink icon={<Send size={18} />} href="/give-gifts" route={route} navigate={navigate} title={t("layout.giveGifts")}>{t("layout.giveGifts")}</NavLink>
           <NavLink icon={<Smile size={18} />} href="/emoji" route={route} navigate={navigate} title={t("layout.emoji")}>{t("layout.emoji")}</NavLink>
