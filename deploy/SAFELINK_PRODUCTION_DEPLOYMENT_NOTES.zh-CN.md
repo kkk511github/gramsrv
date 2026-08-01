@@ -822,3 +822,27 @@ worker 正常启动，管理后台可以读取真实审核案件。后续上游�
   文案和状态下拉筛选。
 - SafeLink 必须继续使用 `https://web.safelink.chat`，不得采用上游
   `https://weba.telesrv.net`。
+
+## 2026-08-01 礼物投影修复、App 链接实体与冷启动检查
+
+上游新增原始迁移 `0163_star_gift_prepaid_viewer_projection`，与 SafeLink 已发布的
+`0163_custom_emoji_reactions` 重号，合并时必须映射为：
+
+- `0169_star_gift_prepaid_viewer_projection`
+
+生产库应从 `168 | false` 升级为 `169 | false`。该迁移会修复普通礼物预付升级能力在
+发送方和接收方消息投影中的归属，并为受影响消息写入账号级编辑事件；部署前必须备份
+数据库，不能把文件改回上游原编号。
+
+- 服务端会把配置允许的 SafeLink App 链接补成消息 URL 实体，即使客户端已为同一条消息
+  提供普通 HTTP URL 实体，也不能漏掉 `safelink://safelink.chat/...`。
+- SafeLink 默认值必须继续保持 `https://safelink.chat`、`https://web.safelink.chat`、
+  `safelink` 和 `safelink://safelink.chat`。
+- 最终频道恢复差异必须推进 `state.date`，避免 iOS 切换账号时重复收到同一条
+  `UpdateChannelTooLong` 并一直显示“正在刷新”。
+- 生产素材较多时，`slerv` 冷启动会先预热贴纸和媒体缓存；systemd 显示 `active` 后仍可能
+  有约一分钟尚未监听 `2398`，此时 Nginx 会短暂返回 `502`。部署脚本必须等待日志出现
+  `slerv 服务就绪` 或确认 `2398` 已监听，再执行官网、邀请链接和 Web 健康检查。
+
+部署后至少确认：迁移为 `169 | false`、RSA 指纹未变化、消息特效数量大于 `0`、APNs
+仍启用、`2398` 可连接，以及官网、邀请链接和 Web 均返回 `200`。
