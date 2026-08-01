@@ -102,19 +102,14 @@ func (r *Router) onUpdatesGetDifference(ctx context.Context, req *tg.UpdatesGetD
 		return nil, internalErr()
 	}
 	st.ChannelNudges = r.accountChannelDifferenceNudges(ctx, userID, req.Date)
-	if !st.Partial {
-		for _, nudge := range st.ChannelNudges {
-			if nudge.AvailableMinID <= 0 {
-				continue
-			}
-			// No-PTS owner-local clear recovery is date-indexed. Advance only
-			// on the final account page and never beyond the server clock; the
-			// indexed query deliberately overlaps equality, so a same-second
-			// reconnect can receive an idempotent duplicate rather than miss.
-			if now := int(r.clock.Now().Unix()); now > st.State.Date {
-				st.State.Date = now
-			}
-			break
+	if !st.Partial && len(st.ChannelNudges) > 0 {
+		// Channel recovery is date-indexed independently of account pts. Advance
+		// the final account cursor past every nudge included in this response so
+		// a reconnect does not replay the same UpdateChannelTooLong forever.
+		// Owner-local clear recovery deliberately overlaps equality, so a
+		// same-second reconnect may still receive one idempotent duplicate.
+		if now := int(r.clock.Now().Unix()); now > st.State.Date {
+			st.State.Date = now
 		}
 	}
 	// 密聊设备级 qts 消息（独立于账号级 pts 事件）：按当前设备 req.Qts 补回。

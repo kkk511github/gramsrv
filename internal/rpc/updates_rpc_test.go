@@ -786,6 +786,23 @@ func TestUpdatesGetDifferenceChannelNudgeIncludesFullChat(t *testing.T) {
 	if chat.AccessHash == 0 {
 		t.Fatalf("chat access_hash = 0, want full channel access hash")
 	}
+	if got.State.Date != 1700000410 {
+		t.Fatalf("difference state date = %d, want final channel recovery cursor 1700000410", got.State.Date)
+	}
+
+	next, err := r.onUpdatesGetDifference(WithUserID(ctx, memberID), &tg.UpdatesGetDifferenceRequest{
+		Date: got.State.Date,
+	})
+	if err != nil {
+		t.Fatalf("second updates.getDifference: %v", err)
+	}
+	empty, ok := next.(*tg.UpdatesDifferenceEmpty)
+	if !ok {
+		t.Fatalf("second difference = %T, want *tg.UpdatesDifferenceEmpty after consuming channel nudge", next)
+	}
+	if empty.Date != got.State.Date {
+		t.Fatalf("second difference date = %d, want retained recovery cursor %d", empty.Date, got.State.Date)
+	}
 }
 
 func TestUpdatesGetDifferenceEmptyRetentionCheckpointStaysDifferenceSlice(t *testing.T) {
