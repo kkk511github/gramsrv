@@ -230,6 +230,10 @@ func (s *Service) availableReactionSeedNeedsRepair(ctx context.Context) (bool, e
 // ---- sticker sets ----
 
 func (s *Service) seedStickerSets(ctx context.Context, root string, maxRegular int, force bool, stats *SeedStats) error {
+	existingByID, err := s.listExistingStickerSetsByID(ctx)
+	if err != nil {
+		return err
+	}
 	// default 系统集：目录名 → system_key。
 	defaultDir := filepath.Join(root, "telegram_default_stickers_export")
 	order := 0
@@ -237,7 +241,7 @@ func (s *Service) seedStickerSets(ctx context.Context, root string, maxRegular i
 		for _, name := range names {
 			systemKey := systemKeyForDefaultSet(name)
 			setDir := filepath.Join(defaultDir, name)
-			if err := s.importStickerSetDir(ctx, setDir, systemKey, order, force, stats); err != nil {
+			if err := s.importStickerSetDir(ctx, setDir, systemKey, order, force, existingByID, stats); err != nil {
 				return fmt.Errorf("import default set %s: %w", name, err)
 			}
 			order++
@@ -250,7 +254,7 @@ func (s *Service) seedStickerSets(ctx context.Context, root string, maxRegular i
 	if names, err := seedStickerSetDirNames(emojiDir); err == nil {
 		for _, name := range names {
 			setDir := filepath.Join(emojiDir, name)
-			if err := s.importStickerSetDir(ctx, setDir, "", order, force, stats); err != nil {
+			if err := s.importStickerSetDir(ctx, setDir, "", order, force, existingByID, stats); err != nil {
 				return fmt.Errorf("import emoji set %s: %w", name, err)
 			}
 			order++
@@ -266,7 +270,7 @@ func (s *Service) seedStickerSets(ctx context.Context, root string, maxRegular i
 				break
 			}
 			setDir := filepath.Join(regularDir, name)
-			if err := s.importStickerSetDir(ctx, setDir, "", order, force, stats); err != nil {
+			if err := s.importStickerSetDir(ctx, setDir, "", order, force, existingByID, stats); err != nil {
 				return fmt.Errorf("import sticker set %s: %w", name, err)
 			}
 			order++
@@ -274,6 +278,25 @@ func (s *Service) seedStickerSets(ctx context.Context, root string, maxRegular i
 		}
 	}
 	return nil
+}
+
+func (s *Service) listExistingStickerSetsByID(ctx context.Context) (map[int64]domain.StickerSet, error) {
+	setsByID := make(map[int64]domain.StickerSet)
+	for _, kind := range []domain.StickerSetKind{
+		domain.StickerSetKindStickers,
+		domain.StickerSetKindEmoji,
+		domain.StickerSetKindMasks,
+		domain.StickerSetKindSystem,
+	} {
+		sets, err := s.media.ListStickerSets(ctx, kind)
+		if err != nil {
+			return nil, err
+		}
+		for _, set := range sets {
+			setsByID[set.ID] = set
+		}
+	}
+	return setsByID, nil
 }
 
 func seedStickerSetDirNames(dir string) ([]string, error) {
@@ -345,7 +368,7 @@ func embeddedSeedStickerSetOrder(dirName string) []byte {
 	}
 }
 
-func (s *Service) importStickerSetDir(ctx context.Context, setDir, systemKey string, order int, force bool, stats *SeedStats) error {
+func (s *Service) importStickerSetDir(ctx context.Context, setDir, systemKey string, order int, force bool, existingByID map[int64]domain.StickerSet, stats *SeedStats) error {
 	infoPath := filepath.Join(setDir, "set_info.json")
 	raw, err := os.ReadFile(infoPath)
 	if err != nil {
@@ -371,14 +394,13 @@ func (s *Service) importStickerSetDir(ctx context.Context, setDir, systemKey str
 	// 仅导入新增/变更集；但系统集分类由导出元数据决定，旧库中 hash 相同但 system_key/kind
 	// 错误的记录必须重写，避免 constructor 方式取不到同一个资源集。
 	if !force {
-		if existing, found, err := s.media.GetStickerSetByID(ctx, sj.ID); err != nil {
-			return err
-		} else if found && existing.Hash == sj.Hash && existing.SystemKey == systemKey && existing.Kind == kind {
+		if existing, found := existingByID[sj.ID]; found && existing.Hash == sj.Hash && existing.SystemKey == systemKey && existing.Kind == kind {
 			if existing.SortOrder != order {
 				existing.SortOrder = order
 				if err := s.media.PutStickerSet(ctx, existing); err != nil {
 					return err
 				}
+				existingByID[existing.ID] = existing
 				stats.StickerSets++
 			}
 			return nil
@@ -436,6 +458,7 @@ func (s *Service) importStickerSetDir(ctx context.Context, setDir, systemKey str
 	if err := s.media.PutStickerSet(ctx, set); err != nil {
 		return err
 	}
+	existingByID[set.ID] = set
 	s.stickerSetCache.put(set, docs)
 	stats.StickerSets++
 	return nil

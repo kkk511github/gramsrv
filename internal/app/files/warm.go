@@ -17,6 +17,16 @@ type WarmStats struct {
 // WarmCaches 从已持久化的 sticker/reaction 元数据预热小 blob 字节缓存与完整 sticker set 缓存。
 // SeedMedia 在已有数据时会跳过导入；该方法保证普通 server 重启后历史 sticker 首次渲染也不是冷缓存。
 func (s *Service) WarmCaches(ctx context.Context) (WarmStats, error) {
+	return s.warmCaches(ctx, true)
+}
+
+// WarmBlobCaches 只预热不可变的 blob 元数据和小文件字节，可在对外服务后并发执行。
+// 它不填充可被用户编辑的贴纸集快照，避免后台预热覆盖运行期的新缓存。
+func (s *Service) WarmBlobCaches(ctx context.Context) (WarmStats, error) {
+	return s.warmCaches(ctx, false)
+}
+
+func (s *Service) warmCaches(ctx context.Context, warmStickerSets bool) (WarmStats, error) {
 	var stats WarmStats
 	// 第一阶段：收集所有待预热文档（贴纸集 + reaction），按 doc ID 去重。
 	seenDocs := make(map[int64]struct{})
@@ -47,7 +57,9 @@ func (s *Service) WarmCaches(ctx context.Context) (WarmStats, error) {
 				return stats, err
 			}
 			ordered := orderDocuments(setDocs, set.DocumentIDs)
-			s.stickerSetCache.put(set, ordered)
+			if warmStickerSets {
+				s.stickerSetCache.put(set, ordered)
+			}
 			stats.StickerSets++
 			for _, doc := range ordered {
 				collect(doc)

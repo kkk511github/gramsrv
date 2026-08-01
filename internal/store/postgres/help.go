@@ -15,13 +15,16 @@ import (
 
 // HelpStore 用 PostgreSQL 实现 store.AppConfigStore 和 store.CountryStore。
 type HelpStore struct {
-	q *sqlcgen.Queries
+	db sqlcgen.DBTX
+	q  *sqlcgen.Queries
 }
 
 // NewHelpStore 基于 pgx 连接池（或事务）创建 HelpStore。
 func NewHelpStore(db sqlcgen.DBTX) *HelpStore {
-	return &HelpStore{q: sqlcgen.New(db)}
+	return &HelpStore{db: db, q: sqlcgen.New(db)}
 }
+
+const countriesSeedStateKey = "help:countries:v1"
 
 func (s *HelpStore) GetAppConfig(ctx context.Context, client string) (domain.AppConfig, bool, error) {
 	row, err := s.q.GetAppConfig(ctx, client)
@@ -82,6 +85,15 @@ func (s *HelpStore) ListCountries(ctx context.Context, _ string) (domain.Countri
 }
 
 func (s *HelpStore) UpsertCountries(ctx context.Context, countries []domain.Country) error {
+	seedHash := fmt.Sprintf("%08x", uint32(countriesHash(countries)))
+	var storedHash string
+	if err := s.db.QueryRow(ctx, `SELECT content_hash FROM seed_states WHERE key = $1`, countriesSeedStateKey).Scan(&storedHash); err == nil {
+		if storedHash == seedHash {
+			return nil
+		}
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("read countries seed state: %w", err)
+	}
 	for i, country := range countries {
 		if err := s.q.UpsertCountry(ctx, sqlcgen.UpsertCountryParams{
 			Iso2:        country.ISO2,
@@ -113,6 +125,14 @@ func (s *HelpStore) UpsertCountries(ctx context.Context, countries []domain.Coun
 				return fmt.Errorf("upsert country code %q/%q: %w", country.ISO2, code.CountryCode, err)
 			}
 		}
+	}
+	if _, err := s.db.Exec(ctx, `
+INSERT INTO seed_states (key, content_hash)
+VALUES ($1, $2)
+ON CONFLICT (key) DO UPDATE SET
+  content_hash = EXCLUDED.content_hash,
+  updated_at = now()`, countriesSeedStateKey, seedHash); err != nil {
+		return fmt.Errorf("record countries seed state: %w", err)
 	}
 	return nil
 }

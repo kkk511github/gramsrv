@@ -59,3 +59,41 @@ func TestCollectorRestoresCountersAfterFlushFailure(t *testing.T) {
 		t.Fatalf("push delivered after failed flush = %d, want 1", got)
 	}
 }
+
+func TestCollectorTracksConnectionSummaryCounters(t *testing.T) {
+	collector := New(&captureExecutor{}, zaptest.NewLogger(t))
+	collector.ConnOpened()
+	collector.ConnOpened()
+	collector.ConnClosed()
+	collector.HandshakeDone(40 * time.Millisecond)
+	collector.HandshakeDone(60 * time.Millisecond)
+	collector.RPCHandled("help.getConfig", time.Millisecond, errors.New("rpc failed"))
+	collector.InboundRPCStarted("help.getConfig", 10*time.Millisecond)
+	collector.InboundRPCDropped("help.getConfig", "queue_timeout")
+	collector.OutboundResend(2, nil)
+	collector.OutboundDropped("queue_full")
+	collector.OutboundQueueWait(10, 10)
+	collector.ConnectionIntake("mux_sniff", "error", time.Second)
+
+	if got := collector.connectionsActive.Load(); got != 1 {
+		t.Fatalf("active connections = %d, want 1", got)
+	}
+	if got := collector.handshakeNanos.Load(); got != int64(100*time.Millisecond) {
+		t.Fatalf("handshake duration = %s, want 100ms", time.Duration(got))
+	}
+	if got := collector.handshakeMaxNanos.Load(); got != int64(60*time.Millisecond) {
+		t.Fatalf("max handshake duration = %s, want 60ms", time.Duration(got))
+	}
+	if got := collector.rpcErrors.Load(); got != 1 {
+		t.Fatalf("rpc errors = %d, want 1", got)
+	}
+	if got := collector.inboundDropped.Load(); got != 1 {
+		t.Fatalf("inbound dropped = %d, want 1", got)
+	}
+	if got := collector.outboundResent.Load(); got != 2 {
+		t.Fatalf("outbound resent = %d, want 2", got)
+	}
+	if got := collector.intakeErrors.Load(); got != 1 {
+		t.Fatalf("intake errors = %d, want 1", got)
+	}
+}
