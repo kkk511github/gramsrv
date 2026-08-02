@@ -507,6 +507,9 @@ func tgPrivateMessageUpdates(event domain.UpdateEvent, msg domain.Message, rando
 		Pts:      event.Pts,
 		PtsCount: event.PtsCount,
 	})
+	if balance := tgGiftStarsBalanceUpdate(msg); balance != nil {
+		updates = append(updates, balance)
+	}
 	date := event.Date
 	if date == 0 {
 		date = msg.Date
@@ -543,6 +546,18 @@ func tgPrivateShortSentMessage(event domain.UpdateEvent, msg domain.Message) *tg
 		Entities:  tgMessageEntities(msg.Entities),
 		TTLPeriod: msg.TTLPeriod,
 	}
+}
+
+func tgGiftStarsBalanceUpdate(msg domain.Message) tg.UpdateClass {
+	if msg.Out || msg.Media == nil || msg.Media.ServiceAction == nil ||
+		msg.Media.ServiceAction.Kind != domain.MessageServiceActionGiftStars {
+		return nil
+	}
+	action := msg.Media.ServiceAction.GiftStars
+	if action == nil || action.BalanceAfter < 0 {
+		return nil
+	}
+	return &tg.UpdateStarsBalance{Balance: &tg.StarsAmount{Amount: action.BalanceAfter}}
 }
 
 // tgPrivateSendResultUpdates returns a complete send acknowledgement for exact

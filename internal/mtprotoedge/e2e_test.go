@@ -77,11 +77,12 @@ func TestTelegramClientEndToEnd(t *testing.T) {
 			t.Errorf("config.ThisDC = %d, want %d", cfg.ThisDC, dc)
 		}
 		if len(cfg.DCOptions) != 1 {
-			t.Fatalf("config.DCOptions = %+v, want one advertised DC", cfg.DCOptions)
-		}
-		dcOption := cfg.DCOptions[0]
-		if dcOption.ID != dc || dcOption.IPAddress != tcpAddr.IP.String() || dcOption.Port != tcpAddr.Port || !dcOption.TCPObfuscatedOnly || !dcOption.Static || !dcOption.ThisPortOnly {
-			t.Errorf("config.DCOptions[0] = %+v, want static tcpo %s for dc%d", dcOption, tcpAddr.String(), dc)
+			t.Errorf("config.DCOptions = %+v, want one reconnect route", cfg.DCOptions)
+		} else {
+			option := cfg.DCOptions[0]
+			if option.ID != dc || option.IPAddress != tcpAddr.IP.String() || option.Port != tcpAddr.Port || option.Ipv6 || option.MediaOnly || option.CDN {
+				t.Errorf("config.DCOptions[0] = %+v, want dc=%d at %s", option, dc, tcpAddr)
+			}
 		}
 		return nil
 	}); err != nil {

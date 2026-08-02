@@ -44,6 +44,11 @@ type captureAuthService struct {
 	signInWithEmailPhone  string
 	signInWithEmailHash   string
 	signInWithEmailCode   string
+	resetAvailable        bool
+}
+
+func (s *captureAuthService) LoginEmailResetAvailable() bool {
+	return s.resetAvailable
 }
 
 type blockingUserAuthService struct {
