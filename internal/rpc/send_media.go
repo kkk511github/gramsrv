@@ -171,6 +171,7 @@ func (r *Router) sendOutgoing(ctx context.Context, userID int64, peer domain.Pee
 		Date:                   int(r.clock.Now().Unix()),
 		OriginAuthKeyID:        authKeyID,
 		OriginSessionID:        sessionID,
+		OriginClientSession:    clientSessionMetadataFromContext(ctx),
 		RecipientBlocked:       recipientBlocked,
 		IdempotencyFingerprint: p.idempotencyFingerprint,
 		IdempotencyPreflighted: p.idempotencyPreflighted,
@@ -1156,6 +1157,8 @@ func mediaUploadErr(err error) error {
 		return photoInvalidErr()
 	case errors.Is(err, domain.ErrDocumentInvalid):
 		return mediaInvalidErr()
+	case errors.Is(err, domain.ErrStorageFull):
+		return storageFullErr()
 	default:
 		return internalErr()
 	}

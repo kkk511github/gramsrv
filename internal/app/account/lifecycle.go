@@ -13,6 +13,7 @@ import (
 
 	"telesrv/internal/branding"
 	"telesrv/internal/domain"
+	"telesrv/internal/links"
 	"telesrv/internal/otpdelivery"
 	"telesrv/internal/store"
 )
@@ -80,7 +81,7 @@ func (s *Service) DeleteAccount(ctx context.Context, userID int64, authKeyID [8]
 	}
 	executeAt := now.Add(accountDeletionDelay)
 	message := fmt.Sprintf(
-		"A request was made to delete your "+branding.ProductName+" account. If this wasn't you, cancel the request: "+branding.AppScheme+"://confirmphone?phone=%s&hash=%s",
+		"A request was made to delete your "+branding.ProductName()+" account. If this wasn't you, cancel the request: "+links.DefaultAppScheme+"://confirmphone?phone=%s&hash=%s",
 		url.QueryEscape(snapshot.User.Phone), url.QueryEscape(rawToken),
 	)
 	pending, _, err := s.lifecycle.ScheduleAccountDeletion(ctx, domain.ScheduleAccountDeletion{

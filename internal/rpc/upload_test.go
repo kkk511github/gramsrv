@@ -10,6 +10,13 @@ import (
 	"telesrv/internal/domain"
 )
 
+func TestFileSaveErrMapsStorageCapacityWithoutFloodWait(t *testing.T) {
+	err := fileSaveErr(domain.ErrStorageFull)
+	if !tgerr.Is(err, "STORAGE_FULL") {
+		t.Fatalf("fileSaveErr = %v, want STORAGE_FULL", err)
+	}
+}
+
 func TestStorageFileTypePrefersMagicOverMime(t *testing.T) {
 	webp := []byte{'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'E', 'B', 'P'}
 	if _, ok := storageFileType("image/jpeg", webp).(*tg.StorageFileWebp); !ok {

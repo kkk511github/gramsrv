@@ -1,6 +1,11 @@
 package domain
 
-import "telesrv/internal/branding"
+import (
+	"strings"
+	"sync/atomic"
+
+	"telesrv/internal/branding"
+)
 
 const (
 	// OfficialSystemUserID 是 Telegram 兼容客户端识别的官方系统账号。
@@ -43,7 +48,65 @@ const (
 	// VerifierBotAccessHash is fixed and double-written with the seed row in
 	// migration 0156; the two must never drift.
 	VerifierBotAccessHash int64 = 6913402578811563729
+
+	// PremiumBotUserID is the stable identity of the built-in @premiumbot.
+	PremiumBotUserID     int64 = 1250000015
+	PremiumBotAccessHash int64 = 5841763291047652381
+
+	// GifBotUserID is intentionally distinct from PremiumBotUserID. The
+	// upstream dev implementation reused 1250000015; that would overwrite the
+	// retained Premium storefront in this project.
+	GifBotUserID     int64 = 1250000017
+	GifBotAccessHash int64 = 7233282977235616768
 )
+
+var configuredPremiumBotUserID atomic.Int64
+var configuredPremiumBotUsername atomic.Value
+
+// ConfigurePremiumBotUserID installs the deployment's reserved Premium bot ID
+// before stores and RPC services are constructed.
+func ConfigurePremiumBotUserID(id int64) bool {
+	if !ValidPremiumBotUserID(id) {
+		return false
+	}
+	configuredPremiumBotUserID.Store(id)
+	return true
+}
+
+func ConfigurePremiumBotUsername(username string) bool {
+	username = strings.TrimPrefix(strings.TrimSpace(username), "@")
+	if !ValidBotUsername(username) {
+		return false
+	}
+	configuredPremiumBotUsername.Store(username)
+	return true
+}
+
+func ValidPremiumBotUserID(id int64) bool {
+	if id <= 0 {
+		return false
+	}
+	switch id {
+	case OfficialSystemUserID, BotFatherUserID, StickersBotUserID, ChatBotUserID,
+		VerifyBotUserID, VerifierBotUserID, GifBotUserID:
+		return false
+	}
+	return true
+}
+
+func PremiumBotConfiguredUserID() int64 {
+	if id := configuredPremiumBotUserID.Load(); id > 0 {
+		return id
+	}
+	return PremiumBotUserID
+}
+
+func PremiumBotConfiguredUsername() string {
+	if username, ok := configuredPremiumBotUsername.Load().(string); ok && username != "" {
+		return username
+	}
+	return "premiumbot"
+}
 
 // OfficialSystemUser 返回第一阶段内置的官方系统账号。
 func OfficialSystemUser() User {
@@ -51,8 +114,8 @@ func OfficialSystemUser() User {
 		ID:         OfficialSystemUserID,
 		AccessHash: 6599886787491911851,
 		Phone:      "42777",
-		FirstName:  branding.ProductName,
-		Username:   branding.ProductUsername,
+		FirstName:  branding.ProductName(),
+		Username:   branding.ProductUsername(),
 		Verified:   true,
 		Support:    true,
 	}
@@ -129,9 +192,38 @@ func VerifierBotUser() User {
 	}
 }
 
+// PremiumBotUser returns the built-in Premium storefront and payment peer.
+func PremiumBotUser() User {
+	return User{
+		ID:             PremiumBotConfiguredUserID(),
+		AccessHash:     PremiumBotAccessHash,
+		FirstName:      "Premium Bot",
+		Username:       PremiumBotConfiguredUsername(),
+		Verified:       true,
+		Bot:            true,
+		BotInfoVersion: 1,
+	}
+}
+
+// GifBotUser returns the built-in inline-only @gif catalog bot.
+func GifBotUser() User {
+	return User{
+		ID:             GifBotUserID,
+		AccessHash:     GifBotAccessHash,
+		FirstName:      "GIF",
+		Username:       "gif",
+		Verified:       true,
+		Bot:            true,
+		BotInfoVersion: 1,
+	}
+}
+
 // SystemUserByID 返回内置系统账号；非系统账号返回 ok=false。
 // 所有对 777000 的硬编码注入点统一经此函数，新增内置账号只改这里。
 func SystemUserByID(id int64) (User, bool) {
+	if id == PremiumBotConfiguredUserID() {
+		return PremiumBotUser(), true
+	}
 	switch id {
 	case OfficialSystemUserID:
 		return OfficialSystemUser(), true
@@ -145,6 +237,8 @@ func SystemUserByID(id int64) (User, bool) {
 		return VerifyBotUser(), true
 	case VerifierBotUserID:
 		return VerifierBotUser(), true
+	case GifBotUserID:
+		return GifBotUser(), true
 	}
 	return User{}, false
 }
@@ -167,7 +261,22 @@ func SystemUserIDs() []int64 {
 		ChatBotUserID,
 		VerifyBotUserID,
 		VerifierBotUserID,
+		PremiumBotConfiguredUserID(),
+		GifBotUserID,
 	}
+}
+
+// SystemUserByUsername resolves reserved short handles such as @gif that do
+// not satisfy the ordinary 4/5-character account creation rules.
+func SystemUserByUsername(username string) (User, bool) {
+	username = strings.TrimPrefix(strings.TrimSpace(username), "@")
+	for _, id := range SystemUserIDs() {
+		u, ok := SystemUserByID(id)
+		if ok && strings.EqualFold(u.Username, username) {
+			return u, true
+		}
+	}
+	return User{}, false
 }
 
 func SystemUserByPhone(phone string) (User, bool) {

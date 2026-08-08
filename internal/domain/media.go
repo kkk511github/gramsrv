@@ -12,12 +12,14 @@ import (
 // 字段带 json tag 是为了 store 层可直接 json.Marshal 落 JSONB（消息 media 快照、
 // 文档/照片元数据）。它们是协议无关的纯数据，不是 tg 生成类型。
 
-// MediaBackend 标识 blob 字节实际存放后端。第一阶段只有本地磁盘。
+// MediaBackend 标识 blob 字节实际存放的唯一永久后端。
 type MediaBackend string
 
 const (
 	// MediaBackendLocalFS 表示 blob 字节存在本地磁盘（object_key 为相对路径）。
 	MediaBackendLocalFS MediaBackend = "localfs"
+	// MediaBackendS3 表示 blob 字节存在配置的 S3/MinIO bucket。
+	MediaBackendS3 MediaBackend = "s3"
 )
 
 // FileBlob 是一个可下载的二进制对象的索引项：location_key → 后端/对象键/大小/mime。
@@ -419,6 +421,7 @@ const (
 	MessageMediaKindStory    MessageMediaKind = "story"
 	MessageMediaKindWebPage  MessageMediaKind = "web_page"
 	MessageMediaKindGiveaway MessageMediaKind = "giveaway"
+	MessageMediaKindInvoice  MessageMediaKind = "invoice"
 )
 
 // MessageGiveaway is the immutable launch-card snapshot shown in the boost
@@ -594,6 +597,7 @@ const (
 	MessageServiceActionStarGiftUnique        MessageServiceActionKind = "star_gift_unique"
 	MessageServiceActionStarGiftOffer         MessageServiceActionKind = "star_gift_offer"
 	MessageServiceActionStarGiftOfferDeclined MessageServiceActionKind = "star_gift_offer_declined"
+	MessageServiceActionGiftPremium           MessageServiceActionKind = "gift_premium"
 )
 
 // MessagePhoneCallAction 是 messageActionPhoneCall 的协议中立载荷。
@@ -681,6 +685,16 @@ type MessageServiceAction struct {
 	StarGiftUnique        *MessageStarGiftUniqueAction        `json:"star_gift_unique,omitempty"`
 	StarGiftOffer         *MessageStarGiftOfferAction         `json:"star_gift_offer,omitempty"`
 	StarGiftOfferDeclined *MessageStarGiftOfferDeclinedAction `json:"star_gift_offer_declined,omitempty"`
+	GiftPremium           *MessageGiftPremiumAction           `json:"gift_premium,omitempty"`
+}
+
+// MessageGiftPremiumAction is projected as
+// messageActionGiftPremium#48e91302 at the RPC boundary.
+type MessageGiftPremiumAction struct {
+	Currency string             `json:"currency"`
+	Amount   int64              `json:"amount"`
+	Days     int                `json:"days"`
+	Message  PremiumGiftMessage `json:"message,omitempty"`
 }
 
 // MessageGiftStarsAction is the immutable service-message projection. The
@@ -781,6 +795,7 @@ type MessageMedia struct {
 	Story          *MessageStory         `json:"story,omitempty"`
 	WebPage        *MessageWebPage       `json:"web_page,omitempty"`
 	Giveaway       *MessageGiveaway      `json:"giveaway,omitempty"`
+	Invoice        *PremiumInvoice       `json:"invoice,omitempty"`
 	Spoiler        bool                  `json:"spoiler,omitempty"`
 	TTLSeconds     int                   `json:"ttl_seconds,omitempty"`
 	Nopremium      bool                  `json:"nopremium,omitempty"`

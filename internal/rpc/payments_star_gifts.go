@@ -70,7 +70,7 @@ func (r *Router) devStarsFiatPaymentForm(
 		Title:  title, Description: description,
 		Invoice: tg.Invoice{
 			Test: true, Currency: form.Currency,
-			Prices: []tg.LabeledPrice{{Label: branding.StarsName, Amount: form.Amount}},
+			Prices: []tg.LabeledPrice{{Label: branding.StarsName(), Amount: form.Amount}},
 		},
 		ProviderID: domain.OfficialSystemUserID,
 		URL: r.publicLinkQuery("payments/dev-stars", url.Values{
@@ -375,6 +375,17 @@ func (r *Router) onPaymentsGetPaymentForm(ctx context.Context, req *tg.PaymentsG
 		return nil, internalErr()
 	}
 
+	switch inv := req.Invoice.(type) {
+	case *tg.InputInvoicePremiumGiftStars, *tg.InputInvoicePremiumGiftCode, *tg.InputInvoiceMessage:
+		return r.premiumPaymentForm(ctx, userID, inv)
+	case *tg.InputInvoiceStars:
+		if inv != nil {
+			if _, ok := inv.Purpose.(*tg.InputStorePaymentPremiumSubscription); ok {
+				return r.premiumPaymentForm(ctx, userID, inv)
+			}
+		}
+	}
+
 	if inv, ok := req.Invoice.(*tg.InputInvoiceStars); ok {
 		if purpose, gift := starsGiftPurpose(inv); gift {
 			return r.starsGiftPaymentForm(ctx, userID, purpose)
@@ -482,6 +493,12 @@ func (r *Router) onPaymentsValidateRequestedInfo(ctx context.Context, req *tg.Pa
 	if err != nil {
 		return nil, internalErr()
 	}
+	if inv, ok := req.Invoice.(*tg.InputInvoicePremiumGiftCode); ok {
+		if _, err := r.resolvePremiumInvoice(ctx, userID, inv); err != nil {
+			return nil, err
+		}
+		return &tg.PaymentsValidatedRequestedInfo{}, nil
+	}
 	inv, ok := req.Invoice.(*tg.InputInvoiceStars)
 	if !ok || inv == nil {
 		return nil, notImplementedErr()
@@ -550,6 +567,17 @@ func (r *Router) onPaymentsSendStarsForm(ctx context.Context, req *tg.PaymentsSe
 	userID, _, err := r.currentUserID(ctx)
 	if err != nil {
 		return nil, internalErr()
+	}
+
+	switch inv := req.Invoice.(type) {
+	case *tg.InputInvoicePremiumGiftStars, *tg.InputInvoiceMessage:
+		return r.sendPremiumStarsForm(ctx, userID, req.FormID, inv)
+	case *tg.InputInvoiceStars:
+		if inv != nil {
+			if _, ok := inv.Purpose.(*tg.InputStorePaymentPremiumSubscription); ok {
+				return r.sendPremiumStarsForm(ctx, userID, req.FormID, inv)
+			}
+		}
 	}
 
 	if _, ok := req.Invoice.(*tg.InputInvoiceStars); ok {
@@ -666,10 +694,6 @@ func (r *Router) onPaymentsSendPaymentForm(ctx context.Context, req *tg.Payments
 	if err != nil {
 		return nil, internalErr()
 	}
-	inv, ok := req.Invoice.(*tg.InputInvoiceStars)
-	if !ok {
-		return nil, notImplementedErr()
-	}
 	if !validDevStarsPaymentCredentials(req.Credentials, req.FormID) {
 		return nil, tgerr.New(400, "PAYMENT_CREDENTIALS_INVALID")
 	}
@@ -681,6 +705,13 @@ func (r *Router) onPaymentsSendPaymentForm(ctx context.Context, req *tg.Payments
 	}
 	if _, present := req.GetTipAmount(); present || req.TipAmount != 0 {
 		return nil, tgerr.New(400, "TIP_AMOUNT_INVALID")
+	}
+	if inv, ok := req.Invoice.(*tg.InputInvoicePremiumGiftCode); ok {
+		return r.sendPremiumStarsForm(ctx, userID, req.FormID, inv)
+	}
+	inv, ok := req.Invoice.(*tg.InputInvoiceStars)
+	if !ok {
+		return nil, notImplementedErr()
 	}
 	if purpose, ok := starsGiftPurpose(inv); ok {
 		return r.sendStarsGiftPurchase(ctx, userID, req.FormID, purpose)
@@ -855,7 +886,7 @@ func (r *Router) starsTopupPaymentForm(ctx context.Context, userID int64, purpos
 		return nil, starsPurchaseErr(err)
 	}
 	return r.devStarsFiatPaymentForm(userID, form,
-		branding.StarsName, branding.ProductName+" dev Stars top-up",
+		branding.StarsName(), branding.ProductName()+" dev Stars top-up",
 		[]domain.User{domain.OfficialSystemUser()}), nil
 }
 
@@ -1402,7 +1433,7 @@ func (r *Router) tgSavedStarGiftsResponse(ctx context.Context, viewerUserID int6
 		Gifts: projected,
 		Chats: []tg.ChatClass{},
 	}
-	if ids := savedStarGiftUserIDs(gifts); len(ids) > 0 {
+	if ids := savedStarGiftUserIDs(viewerUserID, gifts); len(ids) > 0 {
 		out.Users = tgUsersForViewer(viewerUserID, r.domainUsersForIDs(ctx, viewerUserID, ids))
 	} else {
 		out.Users = []tg.UserClass{}
@@ -1645,7 +1676,7 @@ func tgSavedStarGifts(viewerUserID int64, gifts []domain.SavedStarGift, catalog 
 		if g.Unsaved {
 			item.Unsaved = true
 		}
-		if g.FromUserID != 0 && !g.NameHidden {
+		if g.FromUserID != 0 && savedStarGiftOriginalDetailsVisible(viewerUserID, g) {
 			item.SetFromID(&tg.PeerUser{UserID: g.FromUserID})
 		}
 		if g.Owner.Type == domain.PeerTypeUser && g.MsgID > 0 {
@@ -1657,7 +1688,7 @@ func tgSavedStarGifts(viewerUserID int64, gifts []domain.SavedStarGift, catalog 
 		if g.ConvertStars > 0 {
 			item.SetConvertStars(g.ConvertStars)
 		}
-		if g.Message != "" {
+		if g.Message != "" && savedStarGiftOriginalDetailsVisible(viewerUserID, g) {
 			item.SetMessage(tg.TextWithEntities{Text: g.Message})
 		}
 		if g.UniqueGiftID == 0 {
@@ -1739,11 +1770,18 @@ func tgSavedStarGiftGift(g domain.SavedStarGift, catalog map[int64]domain.StarGi
 	}
 }
 
-func savedStarGiftUserIDs(gifts []domain.SavedStarGift) []int64 {
+func savedStarGiftOriginalDetailsVisible(viewerUserID int64, gift domain.SavedStarGift) bool {
+	if !gift.NameHidden {
+		return true
+	}
+	return gift.Owner.Type == domain.PeerTypeUser && gift.Owner.ID == viewerUserID
+}
+
+func savedStarGiftUserIDs(viewerUserID int64, gifts []domain.SavedStarGift) []int64 {
 	seen := make(map[int64]struct{}, len(gifts))
 	ids := make([]int64, 0, len(gifts))
 	for _, g := range gifts {
-		if g.FromUserID == 0 || g.NameHidden {
+		if g.FromUserID == 0 || !savedStarGiftOriginalDetailsVisible(viewerUserID, g) {
 			continue
 		}
 		if _, ok := seen[g.FromUserID]; ok {

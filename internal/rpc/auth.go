@@ -2,7 +2,9 @@ package rpc
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -320,7 +322,7 @@ func (r *Router) authLoginTokenSuccess(ctx context.Context, a domain.Authorizati
 		return nil, internalErr()
 	}
 	return &tg.AuthLoginTokenSuccess{
-		Authorization: &tg.AuthAuthorization{User: r.tgSelfUser(u)},
+		Authorization: &tg.AuthAuthorization{User: r.tgSelfUserWithUsernames(ctx, u)},
 	}, nil
 }
 
@@ -375,9 +377,25 @@ func (r *Router) onAuthSendCode(ctx context.Context, req *tg.AuthSendCodeRequest
 			errors.Is(err, auth.ErrSystemUserLoginForbidden) {
 			return nil, phoneNumberInvalidErr()
 		}
+		// The public MTProto error intentionally stays opaque, but operators need
+		// the wrapped store/provider cause to repair an update-related failure.
+		// Hash the normalized phone so neither the number nor the OTP reaches logs.
+		phoneDigest := sha256.Sum256([]byte(domain.NormalizePhone(req.PhoneNumber)))
+		fields := append(r.contextLogFields(ctx),
+			zap.Int("api_id", req.APIID),
+			zap.String("phone_digest", hex.EncodeToString(phoneDigest[:8])),
+			zap.Error(err),
+		)
+		r.log.Error("auth.sendCode failed", fields...)
 		return nil, internalErr()
 	}
-	return r.tgSentCodeForHash(ctx, hash)
+	sent, err := r.tgSentCodeForHash(ctx, hash)
+	if err != nil {
+		fields := append(r.contextLogFields(ctx), zap.Error(err))
+		r.log.Error("auth.sendCode delivery lookup failed", fields...)
+		return nil, err
+	}
+	return sent, nil
 }
 
 func (r *Router) onAuthReportMissingCode(ctx context.Context, req *tg.AuthReportMissingCodeRequest) (bool, error) {
@@ -529,7 +547,7 @@ func (r *Router) finishAuthSignIn(ctx context.Context, u domain.User, needSignUp
 	}
 	r.bindSessionUser(ctx, u.ID)
 	r.pushSignInServiceNotificationToOthers(ctx, u)
-	return &tg.AuthAuthorization{User: r.tgSelfUser(u)}, nil
+	return &tg.AuthAuthorization{User: r.tgSelfUserWithUsernames(ctx, u)}, nil
 }
 
 func (r *Router) onAuthResendCode(ctx context.Context, req *tg.AuthResendCodeRequest) (tg.AuthSentCodeClass, error) {
@@ -641,7 +659,7 @@ func (r *Router) onAuthCheckPassword(ctx context.Context, password tg.InputCheck
 	if pending {
 		r.pushSignInServiceNotificationToOthers(ctx, u)
 	}
-	return &tg.AuthAuthorization{User: r.tgSelfUser(u)}, nil
+	return &tg.AuthAuthorization{User: r.tgSelfUserWithUsernames(ctx, u)}, nil
 }
 
 func (r *Router) onAuthRequestPasswordRecovery(ctx context.Context) (*tg.AuthPasswordRecovery, error) {
@@ -682,7 +700,7 @@ func (r *Router) onAuthRecoverPassword(ctx context.Context, req *tg.AuthRecoverP
 	if err != nil {
 		return nil, internalErr()
 	}
-	return &tg.AuthAuthorization{User: r.tgSelfUser(u)}, nil
+	return &tg.AuthAuthorization{User: r.tgSelfUserWithUsernames(ctx, u)}, nil
 }
 
 func (r *Router) onAuthCheckRecoveryPassword(ctx context.Context, code string) (bool, error) {
@@ -813,7 +831,7 @@ func (r *Router) onAuthFinishPasskeyLogin(ctx context.Context, req *tg.AuthFinis
 		r.setAuthUserCache(id, u.ID, true)
 	}
 	r.bindSessionUser(ctx, u.ID)
-	return &tg.AuthAuthorization{User: r.tgSelfUser(u)}, nil
+	return &tg.AuthAuthorization{User: r.tgSelfUserWithUsernames(ctx, u)}, nil
 }
 
 func emailVerificationCode(v tg.EmailVerificationClass) string {
@@ -844,7 +862,7 @@ func (r *Router) onAuthImportBotAuthorization(ctx context.Context, req *tg.AuthI
 		r.setAuthUserCache(id, u.ID, true)
 	}
 	r.bindSessionUser(ctx, u.ID)
-	return &tg.AuthAuthorization{User: r.tgSelfUser(u)}, nil
+	return &tg.AuthAuthorization{User: r.tgSelfUserWithUsernames(ctx, u)}, nil
 }
 
 // onAuthSignUp 处理 auth.signUp：创建用户并绑定授权。
@@ -858,7 +876,7 @@ func (r *Router) onAuthSignUp(ctx context.Context, req *tg.AuthSignUpRequest) (t
 	}
 	r.bindSessionUser(ctx, u.ID)
 	r.enqueueLoginMessageBootstrap(ctx, loginMessage)
-	return &tg.AuthAuthorization{User: r.tgSelfUser(u)}, nil
+	return &tg.AuthAuthorization{User: r.tgSelfUserWithUsernames(ctx, u)}, nil
 }
 
 // onAuthLogOut 处理 auth.logOut：解绑当前 auth_key 的授权。

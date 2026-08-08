@@ -60,10 +60,11 @@ func (r *Router) onMessagesSendWebViewData(ctx context.Context, req *tg.Messages
 				},
 			},
 		},
-		Date:             int(r.clock.Now().Unix()),
-		OriginAuthKeyID:  rawAuthKeyIDForOrigin(ctx),
-		OriginSessionID:  sessionID,
-		RecipientBlocked: recipientBlocked,
+		Date:                int(r.clock.Now().Unix()),
+		OriginAuthKeyID:     rawAuthKeyIDForOrigin(ctx),
+		OriginSessionID:     sessionID,
+		OriginClientSession: clientSessionMetadataFromContext(ctx),
+		RecipientBlocked:    recipientBlocked,
 	})
 	if err != nil {
 		return nil, messageSendErr(err)
@@ -168,10 +169,11 @@ func (r *Router) onMessagesSendBotRequestedPeer(ctx context.Context, req *tg.Mes
 				},
 			},
 		},
-		Date:             int(r.clock.Now().Unix()),
-		OriginAuthKeyID:  rawAuthKeyIDForOrigin(ctx),
-		OriginSessionID:  sessionID,
-		RecipientBlocked: recipientBlocked,
+		Date:                int(r.clock.Now().Unix()),
+		OriginAuthKeyID:     rawAuthKeyIDForOrigin(ctx),
+		OriginSessionID:     sessionID,
+		OriginClientSession: clientSessionMetadataFromContext(ctx),
+		RecipientBlocked:    recipientBlocked,
 	})
 	if err != nil {
 		return nil, internalErr()
@@ -455,6 +457,7 @@ func (r *Router) onMessagesGetPreparedInlineMessage(ctx context.Context, req *tg
 			out.Users = append(out.Users, r.tgUser(u))
 		}
 	}
+	r.applyPeerReadModels(ctx, userID, out.Users, nil)
 	return out, nil
 }
 

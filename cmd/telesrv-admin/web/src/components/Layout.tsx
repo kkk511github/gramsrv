@@ -5,19 +5,25 @@ import {
   Bot,
   ChevronDown,
   CircleCheck,
+  Database,
+  Film,
   Gift,
   LayoutDashboard,
   LogOut,
   Menu,
   MessageSquareText,
+  Megaphone,
   PanelLeftClose,
   PanelLeftOpen,
+  Phone,
+  BadgeDollarSign,
   RefreshCw,
   Send,
   ShieldAlert,
   ShieldCheck,
   Smile,
   Stamp,
+  Sticker,
   Trophy,
   UserRound,
   Users,
@@ -26,7 +32,7 @@ import {
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../api";
 import { LanguageSwitch, useI18n } from "../i18n";
-import { permissionBotVerificationReview, permissionVerificationReview, useCan } from "../permissions";
+import { permissionBotVerificationReview, permissionPremiumManage, permissionVerificationReview, useCan } from "../permissions";
 import { type Navigate, type RouteState, routeSubtitle, routeTitle } from "../routing";
 import { ThemeSwitch } from "../theme";
 import { AppLink } from "./AppLink";
@@ -67,6 +73,7 @@ export function Shell({
   // Same reasoning for the third-party queue, which has its own right: the two
   // sections are granted independently, so one entry can be visible without the other.
   const canReviewBotVerification = useCan(permissionBotVerificationReview);
+  const canManagePremium = useCan(permissionPremiumManage);
   const messagesActive = route.path.startsWith("/messages");
   const [messagesOpen, setMessagesOpen] = useState(messagesActive);
   const [collapsed, setCollapsed] = useState(false);
@@ -121,6 +128,13 @@ export function Shell({
           <NavLink icon={<Users size={18} />} href="/accounts" route={route} navigate={navigate} title={t("layout.accounts")}>{t("layout.accounts")}</NavLink>
           <NavLink icon={<ShieldCheck size={18} />} href="/channels" route={route} navigate={navigate} title={t("layout.channels")}>{t("layout.channels")}</NavLink>
           <NavLink icon={<Bot size={18} />} href="/bots" route={route} navigate={navigate} title={t("layout.bots")}>{t("layout.bots")}</NavLink>
+          <NavLink icon={<Megaphone size={18} />} href="/broadcasts" route={route} navigate={navigate} title={t("layout.broadcasts")}>{t("layout.broadcasts")}</NavLink>
+          {canManagePremium && (
+            <NavLink icon={<BadgeDollarSign size={18} />} href="/monetization" route={route} navigate={navigate} title={t("layout.premium")}
+              activeWhen={(path) => path.startsWith("/monetization") || path.startsWith("/premium")}>
+              {t("layout.premium")}
+            </NavLink>
+          )}
           <NavLink icon={<ShieldAlert size={18} />} href="/moderation" route={route} navigate={navigate} title={t("layout.moderation")}>{t("layout.moderation")}</NavLink>
           {canReviewVerification && (
             <NavLink icon={<BadgeCheck size={18} />} href="/verification" route={route} navigate={navigate} title={t("layout.verification")}>{t("layout.verification")}</NavLink>
@@ -129,10 +143,14 @@ export function Shell({
             <NavLink icon={<Stamp size={18} />} href="/bot-verification" route={route} navigate={navigate} title={t("layout.botVerification")}>{t("layout.botVerification")}</NavLink>
           )}
           <NavLink icon={<AtSign size={18} />} href="/collectible-usernames" route={route} navigate={navigate} title={t("layout.collectibleUsernames")}>{t("layout.collectibleUsernames")}</NavLink>
+          <NavLink icon={<Phone size={18} />} href="/collectible-phones" route={route} navigate={navigate} title={t("layout.collectiblePhones")}>{t("layout.collectiblePhones")}</NavLink>
           <NavLink icon={<Trophy size={18} />} href="/account-ratings" route={route} navigate={navigate} title={t("layout.accountRatings")}>{t("layout.accountRatings")}</NavLink>
+          <NavLink icon={<Database size={18} />} href="/storage" route={route} navigate={navigate} title={t("layout.storage")}>{t("layout.storage")}</NavLink>
           <NavLink icon={<Gift size={18} />} href="/gifts" route={route} navigate={navigate} title={t("layout.gifts")}>{t("layout.gifts")}</NavLink>
           <NavLink icon={<Send size={18} />} href="/give-gifts" route={route} navigate={navigate} title={t("layout.giveGifts")}>{t("layout.giveGifts")}</NavLink>
+          <NavLink icon={<Sticker size={18} />} href="/stickers" route={route} navigate={navigate} title={t("layout.stickers")}>{t("layout.stickers")}</NavLink>
           <NavLink icon={<Smile size={18} />} href="/emoji" route={route} navigate={navigate} title={t("layout.emoji")}>{t("layout.emoji")}</NavLink>
+          <NavLink icon={<Film size={18} />} href="/gif-catalog" route={route} navigate={navigate} title={t("layout.gifCatalog")}>{t("layout.gifCatalog")}</NavLink>
           <div className={`nav-section ${messagesActive ? "active" : ""} ${messagesOpen ? "open" : ""}`}>
             <button
               className="nav-section-toggle"

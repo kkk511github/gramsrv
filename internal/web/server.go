@@ -19,6 +19,7 @@ import (
 	"go.uber.org/zap"
 
 	"telesrv/internal/brand"
+	"telesrv/internal/branding"
 	"telesrv/internal/domain"
 	"telesrv/internal/links"
 )
@@ -147,7 +148,7 @@ func newHandler(cfg Config, logger *zap.Logger) (http.Handler, error) {
 		cfg.WebBaseURL = links.DefaultWebBaseURL
 	}
 	if strings.TrimSpace(cfg.AppName) == "" {
-		cfg.AppName = links.DefaultAppName
+		cfg.AppName = branding.ProductName()
 	}
 	if cfg.PublicBaseURL, err = links.ValidateBaseURL(cfg.PublicBaseURL); err != nil {
 		return nil, fmt.Errorf("public base URL: %w", err)

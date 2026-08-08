@@ -970,6 +970,7 @@ func (r *Router) onAccountSetGlobalPrivacySettings(ctx context.Context, settings
 			return nil, internalErr()
 		}
 		r.accountSettings.Store(userID, saved)
+		r.invalidateRPCProjectionForUser(userID)
 		return tgGlobalPrivacySettings(saved.GlobalPrivacy), nil
 	}
 	return &settings, nil
@@ -1097,13 +1098,15 @@ func (r *Router) tgAccountPrivacyRules(ctx context.Context, viewerUserID int64, 
 			return nil, internalErr()
 		}
 	}
-	return &tg.AccountPrivacyRules{
+	out := &tg.AccountPrivacyRules{
 		Rules: tgPrivacyRules(rules.Rules),
 		// viewer 可能把自己（inputUserSelf）写进隐私名单，须带 self 标志，否则下发的
 		// self=false user 会被 DrKLO putUsers 覆盖账号缓存。
 		Users: tgUsersForViewer(viewerUserID, users),
 		Chats: []tg.ChatClass{},
-	}, nil
+	}
+	r.applyPeerReadModels(ctx, viewerUserID, out.Users, out.Chats)
+	return out, nil
 }
 
 func (r *Router) domainPrivacyRulesFromInput(ctx context.Context, userID int64, in []tg.InputPrivacyRuleClass) ([]domain.PrivacyRule, error) {
@@ -1393,6 +1396,15 @@ func tgGlobalPrivacySettings(gp domain.GlobalPrivacy) *tg.GlobalPrivacySettings 
 	if gp.NoncontactPeersPaidStars > 0 {
 		out.SetNoncontactPeersPaidStars(gp.NoncontactPeersPaidStars)
 	}
+	if !gp.DisallowedGifts.Zero() {
+		out.SetDisallowedGifts(tg.DisallowedGiftsSettings{
+			DisallowUnlimitedStargifts:    gp.DisallowedGifts.UnlimitedStargifts,
+			DisallowLimitedStargifts:      gp.DisallowedGifts.LimitedStargifts,
+			DisallowUniqueStargifts:       gp.DisallowedGifts.UniqueStargifts,
+			DisallowPremiumGifts:          gp.DisallowedGifts.PremiumGifts,
+			DisallowStargiftsFromChannels: gp.DisallowedGifts.StargiftsFromChannel,
+		})
+	}
 	return out
 }
 
@@ -1407,6 +1419,15 @@ func domainGlobalPrivacy(settings tg.GlobalPrivacySettings) domain.GlobalPrivacy
 	}
 	if v, ok := settings.GetNoncontactPeersPaidStars(); ok && v > 0 {
 		gp.NoncontactPeersPaidStars = v
+	}
+	if gifts, ok := settings.GetDisallowedGifts(); ok {
+		gp.DisallowedGifts = domain.DisallowedGifts{
+			UnlimitedStargifts:   gifts.DisallowUnlimitedStargifts,
+			LimitedStargifts:     gifts.DisallowLimitedStargifts,
+			UniqueStargifts:      gifts.DisallowUniqueStargifts,
+			PremiumGifts:         gifts.DisallowPremiumGifts,
+			StargiftsFromChannel: gifts.DisallowStargiftsFromChannels,
+		}
 	}
 	return gp
 }
@@ -1531,8 +1552,7 @@ func (r *Router) onAccountUpdateProfile(ctx context.Context, req *tg.AccountUpda
 		return nil, profileErr(err)
 	}
 	r.invalidateRPCProjectionForUser(u.ID)
-	r.pushUsernameUpdate(ctx, u)
-	return r.tgSelfUser(u), nil
+	return r.pushUsernameUpdate(ctx, u), nil
 }
 
 func (r *Router) onAccountCheckUsername(ctx context.Context, username string) (bool, error) {
@@ -1565,8 +1585,7 @@ func (r *Router) onAccountUpdateUsername(ctx context.Context, username string) (
 		return nil, usernameErr(err)
 	}
 	r.invalidateRPCProjectionForUser(u.ID)
-	r.pushUsernameUpdate(ctx, u)
-	return r.tgSelfUser(u), nil
+	return r.pushUsernameUpdate(ctx, u), nil
 }
 
 // onAccountReorderUsernames rewrites the caller's active username order
@@ -1727,12 +1746,13 @@ func (r *Router) onAccountUpdateEmojiStatus(ctx context.Context, status tg.Emoji
 	}
 	r.invalidateRPCProjectionForUser(u.ID)
 	update := &tg.UpdateUserEmojiStatus{UserID: u.ID, EmojiStatus: tgUserEmojiStatusValue(value)}
+	self := r.tgSelfUserWithUsernames(ctx, u)
 	if durableWrite {
 		if sessionID != 0 {
 			r.bookkeepAuxPtsForCurrentSession(ctx, event)
 		}
 		r.pushUserUpdatesIfNoReliableDispatch(ctx, u.ID, &tg.Updates{
-			Updates: []tg.UpdateClass{update}, Users: []tg.UserClass{r.tgSelfUser(u)}, Date: event.Date,
+			Updates: []tg.UpdateClass{update}, Users: []tg.UserClass{self}, Date: event.Date,
 		})
 	} else if updates, ok := r.deps.Updates.(UserEmojiStatusUpdatesService); ok {
 		event, _, recordErr := updates.RecordUserEmojiStatus(ctx, authKeyID, userID, value, rawAuthKeyIDForOrigin(ctx), sessionID)
@@ -1743,13 +1763,13 @@ func (r *Router) onAccountUpdateEmojiStatus(ctx context.Context, status tg.Emoji
 			r.bookkeepAuxPtsForCurrentSession(ctx, event)
 		}
 		r.pushUserUpdatesIfNoReliableDispatch(ctx, u.ID, &tg.Updates{
-			Updates: []tg.UpdateClass{update}, Users: []tg.UserClass{r.tgSelfUser(u)}, Date: event.Date,
+			Updates: []tg.UpdateClass{update}, Users: []tg.UserClass{self}, Date: event.Date,
 		})
 	} else {
 		// Lightweight test deployments without the durable extension retain the
 		// previous online-only behavior; production wiring implements it.
 		r.pushUserUpdates(ctx, u.ID, &tg.Updates{
-			Updates: []tg.UpdateClass{update}, Users: []tg.UserClass{r.tgSelfUser(u)}, Date: int(r.clock.Now().Unix()),
+			Updates: []tg.UpdateClass{update}, Users: []tg.UserClass{self}, Date: int(r.clock.Now().Unix()),
 		})
 	}
 	return true, nil
@@ -1823,7 +1843,7 @@ func (r *Router) onAccountUpdateColor(ctx context.Context, req *tg.AccountUpdate
 	r.invalidateRPCProjectionForUser(u.ID)
 	r.pushUserUpdates(ctx, u.ID, &tg.Updates{
 		Updates: []tg.UpdateClass{&tg.UpdateUser{UserID: u.ID}},
-		Users:   []tg.UserClass{r.tgSelfUser(u)},
+		Users:   []tg.UserClass{r.tgSelfUserWithUsernames(ctx, u)},
 		Date:    int(r.clock.Now().Unix()),
 	})
 	return true, nil
@@ -1928,18 +1948,22 @@ func (r *Router) onAccountGetCollectibleEmojiStatuses(ctx context.Context, hash 
 	return &tg.AccountEmojiStatuses{Hash: catalogHash, Statuses: statuses}, nil
 }
 
-func (r *Router) pushUsernameUpdate(ctx context.Context, u domain.User) {
-	if u.ID == 0 {
-		return
-	}
+func (r *Router) pushUsernameUpdate(ctx context.Context, u domain.User) *tg.User {
 	// updateUserName carries the vector clients persist, so it has to be the full
 	// registry list when one exists. One peer, one registry read; the overlay
 	// degrades to tgUsernames(u.Username) whenever the registry is unavailable.
+	// Keep the RPC result and pushed update as distinct tg.User objects: TL Encode
+	// recomputes flags, so sharing one pointer across response and push delivery
+	// would make otherwise independent encoders mutate the same object.
 	self := r.tgSelfUser(u)
-	users := []tg.UserClass{self}
+	pushedSelf := r.tgSelfUser(u)
+	users := []tg.UserClass{self, pushedSelf}
 	r.applyUsernamesToPeerObjects(ctx, users, nil)
+	if u.ID == 0 {
+		return self
+	}
 	usernames := tgUsernames(u.Username)
-	if vector, ok := self.GetUsernames(); ok && len(vector) > 0 {
+	if vector, ok := pushedSelf.GetUsernames(); ok && len(vector) > 0 {
 		usernames = vector
 	}
 	r.pushUserUpdates(ctx, u.ID, &tg.Updates{
@@ -1949,9 +1973,10 @@ func (r *Router) pushUsernameUpdate(ctx context.Context, u domain.User) {
 			LastName:  u.LastName,
 			Usernames: usernames,
 		}},
-		Users: users,
+		Users: []tg.UserClass{pushedSelf},
 		Date:  int(r.clock.Now().Unix()),
 	})
+	return self
 }
 
 func (r *Router) pushSelfUserChangedUpdate(ctx context.Context, u domain.User) {
@@ -1960,7 +1985,7 @@ func (r *Router) pushSelfUserChangedUpdate(ctx context.Context, u domain.User) {
 	}
 	r.pushUserUpdates(ctx, u.ID, &tg.Updates{
 		Updates: []tg.UpdateClass{&tg.UpdateUser{UserID: u.ID}},
-		Users:   []tg.UserClass{r.tgSelfUser(u)},
+		Users:   []tg.UserClass{r.tgSelfUserWithUsernames(ctx, u)},
 		Date:    int(r.clock.Now().Unix()),
 	})
 }
@@ -2024,13 +2049,13 @@ func authorizationAppName(a domain.Authorization) string {
 	client := strings.ToLower(strings.TrimSpace(a.Platform + " " + a.DeviceModel + " " + a.SystemVersion + " " + a.AppVersion))
 	switch {
 	case strings.Contains(client, "iphone"), strings.Contains(client, "ipad"), strings.Contains(client, "ios"):
-		return branding.IOSAppName
+		return branding.Current().IOSAppName
 	case strings.Contains(client, "android"), androidSDKVersionRE.MatchString(client):
-		return branding.AndroidAppName
+		return branding.Current().AndroidAppName
 	case strings.Contains(client, "macos"), strings.Contains(client, "mac os"):
-		return branding.MacOSAppName
+		return branding.Current().MacOSAppName
 	case strings.Contains(client, "tdesktop"), strings.Contains(client, "desktop"), strings.Contains(client, "windows"), strings.Contains(client, "macos"), strings.Contains(client, "linux"):
-		return branding.DesktopAppName
+		return branding.Current().DesktopAppName
 	default:
 		return branding.ClientAppName(a.Platform)
 	}

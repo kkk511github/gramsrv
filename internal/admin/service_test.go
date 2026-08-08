@@ -634,6 +634,10 @@ func (f *fakeBotService) DeleteBot(_ context.Context, botUserID int64) (domain.U
 	return domain.User{ID: botUserID, Bot: true, Deleted: true}, nil
 }
 
+func (f *fakeBotService) AdminExportBotToken(_ context.Context, _ int64) (string, error) {
+	return f.token, nil
+}
+
 type fakeRestrictionStore struct {
 	items    map[int64]domain.AccountFreeze
 	setCalls int
@@ -863,6 +867,31 @@ func (f *fakeUsersService) UpdateEmojiStatus(_ context.Context, userID int64, st
 	return u, nil
 }
 
+func (f *fakeUsersService) UpdateProfile(_ context.Context, userID int64, update domain.UserProfileUpdate) (domain.User, error) {
+	u, ok := f.users[userID]
+	if !ok {
+		return domain.User{}, domain.ErrUserNotFound
+	}
+	if update.HasFirstName {
+		u.FirstName = update.FirstName
+	}
+	if update.HasLastName {
+		u.LastName = update.LastName
+	}
+	f.users[userID] = u
+	return u, nil
+}
+
+func (f *fakeUsersService) SetPhone(_ context.Context, userID int64, phone string) (domain.User, error) {
+	u, ok := f.users[userID]
+	if !ok {
+		return domain.User{}, domain.ErrUserNotFound
+	}
+	u.Phone = phone
+	f.users[userID] = u
+	return u, nil
+}
+
 type fakeStarsService struct {
 	balances    map[int64]domain.StarsBalance
 	creditCalls int
@@ -1002,6 +1031,17 @@ func (f *fakeChannelsService) AdminSetEmojiStatus(_ context.Context, channelID i
 		return domain.Channel{}, domain.ErrChannelInvalid
 	}
 	ch.EmojiStatus = status
+	f.channels[channelID] = ch
+	return ch, nil
+}
+
+func (f *fakeChannelsService) AdminSetPhoto(_ context.Context, channelID int64, photo domain.Photo) (domain.Channel, error) {
+	ch, ok := f.channels[channelID]
+	if !ok {
+		return domain.Channel{}, domain.ErrChannelInvalid
+	}
+	ch.PhotoID = photo.ID
+	ch.PhotoDCID = photo.DCID
 	f.channels[channelID] = ch
 	return ch, nil
 }
@@ -1183,7 +1223,7 @@ func TestImportOfficialStarGiftPublishesThroughRealGiftService(t *testing.T) {
 		SourceJSON:     []byte(`{"id":6003643167683903930,"title":"Party Sparkler"}`),
 		Gift: officialgifts.Gift{
 			ID: 6003643167683903930, Title: "Party Sparkler", Stars: 15, ConvertStars: 13,
-			UpgradeStars: 25, AvailabilityTotal: 400000, DocumentID: 1,
+			UpgradeStars: 25, UpgradeVariants: 8, DocumentID: 1,
 		},
 		BaseDocument: document(1, "gift.json"),
 		Collectible: &officialgifts.CollectibleSet{
@@ -1219,7 +1259,7 @@ func TestImportOfficialStarGiftPublishesThroughRealGiftService(t *testing.T) {
 		t.Fatalf("catalog=%+v err=%v, want one imported gift", catalog, err)
 	}
 	preview, ok, err := giftService.CollectiblePreview(ctx, catalog[0].ID)
-	if err != nil || !ok || len(preview.Models) != 2 || len(preview.Patterns) != 2 {
+	if err != nil || !ok || preview.SupplyTotal != 8 || len(preview.Models) != 2 || len(preview.Patterns) != 2 {
 		t.Fatalf("preview=%+v ok=%v err=%v", preview, ok, err)
 	}
 	model := preview.Models[0].Document
