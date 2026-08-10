@@ -1,21 +1,19 @@
 export const KINDS = Object.freeze({ premium: "premium", stars: "stars", number: "number", username: "username" });
 
 const fixed = Object.freeze([
-  { kind: KINDS.premium, code: "premium_1m", title: "Premium — 1 month", description: "Premium subscription for one month", starsPrice: 20, months: 1 },
-  { kind: KINDS.premium, code: "premium_3m", title: "Premium — 3 months", description: "Premium subscription for three months", starsPrice: 40, months: 3 },
-  { kind: KINDS.number, code: "num_short", title: "Anonymous +888 8 XXX", description: "Short collectible anonymous number", starsPrice: 50, numberFormat: "short" },
-  { kind: KINDS.number, code: "num_long", title: "Anonymous +888 0XXX XXXX", description: "Anonymous +888 number", starsPrice: 25, numberFormat: "long" },
-  { kind: KINDS.username, code: "uname_10", title: "Collectible username — 10 TON", description: "Mint a collectible username", starsPrice: 10, bid: 10 },
-  { kind: KINDS.username, code: "uname_100", title: "Collectible username — 100 TON", description: "Mint a collectible username", starsPrice: 20, bid: 100 },
-  { kind: KINDS.username, code: "uname_1000", title: "Collectible username — 1000 TON", description: "Mint a collectible username", starsPrice: 40, bid: 1000 },
+  { kind: KINDS.premium, code: "premium_1m", title: "SafeLink Premium - 1 个月", description: "为指定 SafeLink 账号开通 1 个月 Premium", starsPrice: 20, months: 1 },
+  { kind: KINDS.premium, code: "premium_3m", title: "SafeLink Premium - 3 个月", description: "为指定 SafeLink 账号开通 3 个月 Premium", starsPrice: 40, months: 3 },
+  { kind: KINDS.username, code: "uname_10", title: "收藏用户名 - 10 TON", description: "铸造 SafeLink 收藏用户名", starsPrice: 10, bid: 10 },
+  { kind: KINDS.username, code: "uname_100", title: "收藏用户名 - 100 TON", description: "铸造 SafeLink 收藏用户名", starsPrice: 20, bid: 100 },
+  { kind: KINDS.username, code: "uname_1000", title: "收藏用户名 - 1000 TON", description: "铸造 SafeLink 收藏用户名", starsPrice: 40, bid: 1000 },
 ]);
 
 export function catalog(starsRate = 20) {
   const starPackages = [1, 5, 10, 25, 50, 100].map((price) => ({
     kind: KINDS.stars,
     code: `stars_${price}`,
-    title: `${price * starsRate} Stars`,
-    description: `${price * starsRate} server Stars for ${price} Telegram Stars`,
+    title: `${price * starsRate} SafeLink Stars`,
+    description: `支付 ${price} Stars，获得 ${price * starsRate} SafeLink Stars`,
     starsPrice: price,
     starsAmount: price * starsRate,
   }));
@@ -31,8 +29,8 @@ export function findProduct(code, starsRate = 20) {
   return {
     kind: KINDS.stars,
     code: `stars_${starsPrice}`,
-    title: `${starsPrice * starsRate} Stars`,
-    description: `${starsPrice * starsRate} server Stars for ${starsPrice} Telegram Stars`,
+    title: `${starsPrice * starsRate} SafeLink Stars`,
+    description: `支付 ${starsPrice} Stars，获得 ${starsPrice * starsRate} SafeLink Stars`,
     starsPrice,
     starsAmount: starsPrice * starsRate,
   };

@@ -20,17 +20,17 @@ export class GramsrvClient {
     return { command_id: `bot-${digest}`, actor: this.config.gramsrvActor, reason, dry_run: false, ...fields };
   }
 
-  grantStars(userID, amount, reason = "Telegram bot purchase", idempotencyKey = "") {
+  grantStars(userID, amount, reason = "SafeLink bot purchase", idempotencyKey = "") {
     return this.post("/v1/accounts/grant-stars", this.command(reason, { user_id: userID, amount }, idempotencyKey));
   }
 
-  grantPremium(userID, months, reason = "Telegram bot purchase", idempotencyKey = "") {
+  grantPremium(userID, months, reason = "SafeLink bot purchase", idempotencyKey = "") {
     return this.post("/v1/accounts/grant-premium", this.command(reason, { user_id: userID, months }, idempotencyKey));
   }
 
   mintUsername(userID, username, bidTON, idempotencyKey = "") {
     const amount = (BigInt(bidTON) * 1_000_000_000n).toString();
-    return this.post("/v1/collectible-usernames/mint", this.command("Telegram bot purchase", {
+    return this.post("/v1/collectible-usernames/mint", this.command("SafeLink bot purchase", {
       username,
       owner_user_id: String(userID),
       currency: "TON",

@@ -45,7 +45,7 @@ export class BotDatabase {
     this.db.exec(`
 CREATE TABLE IF NOT EXISTS users (
   telegram_id INTEGER PRIMARY KEY, chat_id INTEGER NOT NULL, username TEXT NOT NULL DEFAULT '', first_name TEXT NOT NULL DEFAULT '', server_user_id INTEGER NOT NULL DEFAULT 0,
-  language TEXT NOT NULL DEFAULT 'ru', notifications INTEGER NOT NULL DEFAULT 1, bonus INTEGER NOT NULL DEFAULT 0,
+  language TEXT NOT NULL DEFAULT 'zh', notifications INTEGER NOT NULL DEFAULT 1, bonus INTEGER NOT NULL DEFAULT 0,
   referred_by INTEGER REFERENCES users(telegram_id), referral_count INTEGER NOT NULL DEFAULT 0, daily_day TEXT NOT NULL DEFAULT '',
   spin_day TEXT NOT NULL DEFAULT '', spin_day_count INTEGER NOT NULL DEFAULT 0, spin_week TEXT NOT NULL DEFAULT '', spin_week_count INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
@@ -103,7 +103,7 @@ INSERT OR IGNORE INTO settings(key,value) VALUES('stars_rate','20');
   close() { this.db.close(); }
   tx(work) { this.db.exec("BEGIN IMMEDIATE"); try { const value = work(); this.db.exec("COMMIT"); return value; } catch (error) { this.db.exec("ROLLBACK"); throw error; } }
 
-  upsertUser(from, chatID, language = "ru", referrerID = 0, referralBonus = 0) {
+  upsertUser(from, chatID, language = "zh", referrerID = 0, referralBonus = 0) {
     const timestamp = now();
     return this.tx(() => {
       const existing = this.db.prepare("SELECT * FROM users WHERE telegram_id=?").get(from.id);

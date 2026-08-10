@@ -1,23 +1,34 @@
-# grammY authentication and store bot
+# SafeLink grammY service bot
 
 This service replaces the former JSON/Python bot with one grammY process and a
 transactional SQLite database. It deliberately runs independently from
 `cmd/telesrv`; a bot outage cannot stop MTProto.
 
-## Included functionality
+## Production functionality
 
-- automatic persistent number and initial code on `/start`;
-- delivery and storage of real login codes through authenticated `POST /code`;
-- free replacement numbers and paid anonymous `+888` numbers;
-- Premium, server Stars and collectible username purchases through Telegram Stars;
-- arbitrary Stars invoices, payment deduplication and a durable sales journal;
-- account target IDs and three recent recipients;
-- daily bonuses, referrals and a weighted wheel;
+- Chinese-first SafeLink service menu and `safelink.chat` referral links;
+- SafeLink account ID binding, daily rewards, referrals and a weighted wheel;
 - promo codes and button-based giveaways;
-- support tickets;
+- support tickets and owner replies;
+- owner-only statistics, broadcasts, Stars/Premium/bonus grants and Stars-rate controls;
+- optional delivery of real login codes through authenticated `POST /code`;
+- a dedicated, least-privilege Admin API token for Stars, Premium and collectible
+  username grants;
+- all Bot API calls routed to the local SafeLink Bot API, never to an external
+  public Bot API.
+
+The source also contains an invoice-backed Premium, Stars and collectible
+username store. Keep `PAYMENTS_ENABLED=false` until SafeLink Bot API implements
+durable invoice creation, pre-checkout state, successful-payment updates and
+refunds. The public menu hides the store while disabled. Locally generated
+anonymous numbers are also intentionally hidden because they do not provision a
+real SafeLink account.
+
+## Additional stored capabilities
+
+- account target IDs and three recent recipients;
 - language and notification settings;
-- owner-only statistics, broadcasts, Stars/Premium/bonus grants, invoices,
-  payment refunds, login-code access, support replies, sales and Stars-rate controls;
+- payment deduplication and a durable sales journal for the future payment path;
 - optional required-channel membership gate.
 
 The bot token and Admin API token must never be committed. `.env.example`
@@ -36,13 +47,14 @@ npm test
 npm start
 ```
 
-Set `BOT_PUBLIC_USERNAME` so referral links are available before the first
-`getMe`. `OWNER_IDS` accepts comma-separated Telegram IDs. Users set their
-gramsrv account ID under Settings; Telegram IDs are not assumed to equal server
-account IDs.
+Set `BOT_API_ROOT=http://127.0.0.1:8081` and
+`PUBLIC_BASE_URL=https://safelink.chat`. `BOT_PUBLIC_USERNAME` makes referral
+links available before the first `getMe`. `OWNER_IDS` accepts comma-separated
+bot user IDs. Users set their SafeLink account ID under Settings; the bot user
+ID is not assumed to equal the SafeLink account ID.
 
 `PRODUCT_NAME` controls user-facing product text and defaults to `SafeLink`.
-Deployment-specific branding belongs in the service environment, not in source.
+`DEFAULT_LANGUAGE=zh` is the production default.
 
 ## Migrating the former Python bot
 
@@ -57,7 +69,7 @@ npm run migrate:legacy -- /path/to/legacy.sqlite3 /path/to/new.sqlite3
 The command refuses to overwrite its source or an existing destination. It
 preserves users, bonus balances, referrals, numbers, current login codes and
 support messages. Keep the legacy database backup for historical orders and
-broadcast drafts, which have no equivalent in the new Telegram Stars journal.
+broadcast drafts, which have no equivalent in the new payment journal.
 
 ## Login-code webhook
 
@@ -80,7 +92,7 @@ For example, the body contains:
 
 The endpoint is loopback-only by default. It rejects requests without the
 HMAC secret, stores each delivery idempotently and returns HTTP 202 immediately;
-Telegram delivery then runs asynchronously for the number owner and explicitly
+SafeLink bot delivery then runs asynchronously for the number owner and explicitly
 granted support viewers. A slow Bot API therefore cannot turn `auth.sendCode`
 into a server-side timeout. `/healthz` is read-only.
 
@@ -91,7 +103,7 @@ sudo useradd --system --home /var/lib/safelink-grammy-bot --shell /usr/sbin/nolo
 sudo install -d -o safelink-bot -g safelink-bot -m 0750 /opt/safelink-grammy-bot /var/lib/safelink-grammy-bot
 sudo cp -a package.json package-lock.json src /opt/safelink-grammy-bot/
 cd /opt/safelink-grammy-bot
-sudo npm ci --omit=dev
+/opt/safelink-node/bin/npm ci --omit=dev
 sudo cp .env.example /etc/safelink-grammy-bot.env
 sudo chmod 0600 /etc/safelink-grammy-bot.env
 sudo cp deploy/safelink-grammy-bot.service /etc/systemd/system/
@@ -105,5 +117,6 @@ Back up the database with SQLite's online backup command or while the service is
 stopped; include `/etc/safelink-grammy-bot.env` in a separate encrypted secret
 backup.
 
-The systemd unit intentionally has no hosting-specific values. Do not deploy it
-until the local branch has been reviewed and merged.
+The systemd unit uses `/opt/safelink-node/bin/node`; deploy a supported Node.js
+runtime there before enabling the service. The unit intentionally has no
+hosting-specific values.

@@ -1,5 +1,5 @@
 [Unit]
-Description=SafeLink grammY store and authentication bot
+Description=SafeLink service assistant
 After=network-online.target slerv.service
 Wants=network-online.target
 
@@ -9,7 +9,8 @@ User=safelink-bot
 Group=safelink-bot
 WorkingDirectory=/opt/safelink-grammy-bot
 EnvironmentFile=/etc/safelink-grammy-bot.env
-ExecStart=/usr/bin/node /opt/safelink-grammy-bot/src/index.js
+Environment=NODE_NO_WARNINGS=1
+ExecStart=/opt/safelink-node/bin/node /opt/safelink-grammy-bot/src/index.js
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=20

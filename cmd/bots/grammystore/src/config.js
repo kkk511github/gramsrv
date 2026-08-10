@@ -14,11 +14,19 @@ function integer(name, fallback, { min = Number.MIN_SAFE_INTEGER } = {}) {
   return value;
 }
 
+function boolean(name, fallback = false) {
+  const raw = (process.env[name] ?? "").trim().toLowerCase();
+  if (!raw) return fallback;
+  if (["1", "true", "yes", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "off"].includes(raw)) return false;
+  throw new Error(`${name} must be true or false`);
+}
+
 function ownerIDs() {
   const ids = new Set();
   for (const raw of required("OWNER_IDS").split(",")) {
     const id = Number(raw.trim());
-    if (!Number.isSafeInteger(id) || id <= 0) throw new Error("OWNER_IDS contains an invalid Telegram user ID");
+    if (!Number.isSafeInteger(id) || id <= 0) throw new Error("OWNER_IDS contains an invalid bot user ID");
     ids.add(id);
   }
   return ids;
@@ -29,13 +37,14 @@ export function loadConfig() {
   if (webhookSecret.length < 24) throw new Error("CODE_WEBHOOK_SECRET must contain at least 24 characters");
   return Object.freeze({
     botToken: required("BOT_TOKEN"),
+    botApiRoot: (process.env.BOT_API_ROOT ?? "http://127.0.0.1:8081").replace(/\/+$/, ""),
     productName: (process.env.PRODUCT_NAME ?? "SafeLink").trim() || "SafeLink",
     ownerIDs: ownerIDs(),
     publicUsername: (process.env.BOT_PUBLIC_USERNAME ?? "").replace(/^@/, "").trim(),
     gramsrvAPI: (process.env.GRAMSRV_API ?? "http://127.0.0.1:2399").replace(/\/+$/, ""),
     gramsrvToken: required("GRAMSRV_TOKEN"),
     gramsrvActor: (process.env.GRAMSRV_ACTOR ?? "safelink-grammy-bot").trim(),
-    publicBaseURL: (process.env.PUBLIC_BASE_URL ?? "https://example.com").replace(/\/+$/, ""),
+    publicBaseURL: (process.env.PUBLIC_BASE_URL ?? "https://safelink.chat").replace(/\/+$/, ""),
     dbPath: path.resolve(process.env.BOT_DB_PATH ?? "./data/bot.sqlite3"),
     codeHost: (process.env.CODE_HTTP_HOST ?? "127.0.0.1").trim(),
     codePort: integer("CODE_HTTP_PORT", 2800, { min: 1 }),
@@ -43,7 +52,8 @@ export function loadConfig() {
     requiredChannel: (process.env.REQUIRED_CHANNEL ?? "").trim(),
     requiredChannelURL: (process.env.REQUIRED_CHANNEL_URL ?? "").trim(),
     supportUsername: (process.env.SUPPORT_USERNAME ?? "").replace(/^@/, "").trim(),
-    defaultLanguage: (process.env.DEFAULT_LANGUAGE ?? "ru").toLowerCase() === "en" ? "en" : "ru",
+    defaultLanguage: (process.env.DEFAULT_LANGUAGE ?? "zh").toLowerCase() === "en" ? "en" : "zh",
+    paymentsEnabled: boolean("PAYMENTS_ENABLED", false),
     defaultNumberCountry: (process.env.DEFAULT_NUMBER_COUNTRY ?? "RU").toUpperCase() === "US" ? "US" : "RU",
     referralBonus: integer("REFERRAL_BONUS", 100, { min: 0 }),
     dailyBonus: integer("DAILY_BONUS", 15, { min: 0 }),

@@ -62,6 +62,12 @@ const (
 	// PermissionPremiumManage guards grants, revocations and refunds. It is kept
 	// separate from Stars grants because a Premium refund mutates both ledgers.
 	PermissionPremiumManage = "premium.manage"
+	// PermissionStarsManage permits issuing Stars without opening the rest of the
+	// legacy administration surface to an automation token.
+	PermissionStarsManage = "stars.manage"
+	// PermissionCollectibleUsernameManage permits minting usernames. Transfers,
+	// revocations and deletes remain master-only operations.
+	PermissionCollectibleUsernameManage = "collectible_usernames.manage"
 	// PermissionBotTokenRead is intentionally narrower than unrestricted admin
 	// access because it reveals a live credential.
 	PermissionBotTokenRead = "bots.token.read"

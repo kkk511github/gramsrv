@@ -14,13 +14,13 @@ function escapeHTML(value) { return String(value ?? "").replaceAll("&", "&amp;")
 function json(response, status, body) { response.writeHead(status, { "content-type": "application/json; charset=utf-8" }); response.end(JSON.stringify(body)); }
 
 async function deliverLoginCode(recipient, code, chatIDs) {
-  const message = `🔐 <b>Код входа ${escapeHTML(config.productName)}</b>\n\n📞 <code>${escapeHTML(recipient)}</code>\n🔑 <code>${escapeHTML(code)}</code>\n\nНикому не сообщайте этот код.`;
+  const message = `🔐 <b>${escapeHTML(config.productName)} 登录验证码</b>\n\n📞 <code>${escapeHTML(recipient)}</code>\n🔑 <code>${escapeHTML(code)}</code>\n\n请勿向任何人透露此验证码。`;
   let delivered = 0;
   for (const chatID of chatIDs) {
     try { await bot.api.sendMessage(chatID, message, { parse_mode: "HTML" }); delivered++; }
     catch (error) { console.error("OTP delivery failed", chatID, error); }
   }
-  if (!delivered) for (const owner of config.ownerIDs) await bot.api.sendMessage(owner, `${message}\n\n⚠️ Номер не привязан.`, { parse_mode: "HTML" }).catch(() => {});
+  if (!delivered) for (const owner of config.ownerIDs) await bot.api.sendMessage(owner, `${message}\n\n⚠️ 未找到已关联的接收者。`, { parse_mode: "HTML" }).catch(() => {});
 }
 
 const server = http.createServer((request, response) => {
@@ -35,7 +35,7 @@ const server = http.createServer((request, response) => {
       if (!verifyTelesrvSignature(config.codeWebhookSecret, request.headers, raw)) return json(response, 401, { accepted: false, error_code: "SIGNATURE_INVALID", retryable: false });
       const { recipient, code, deliveryID, expiresAt, fingerprint } = parseTelesrvDelivery(raw, request.headers);
       const delivery = db.acceptLoginCodeDelivery(deliveryID, fingerprint, recipient, code, expiresAt);
-      // Authentication must not depend on Telegram Bot API latency. Persist the
+      // Authentication must not depend on SafeLink Bot API latency. Persist the
       // code, acknowledge gramsrv immediately, then fan it out asynchronously.
       json(response, 202, { accepted: true, message_id: `grammy:${deliveryID}` });
       if (!delivery.duplicate) void deliverLoginCode(recipient, code, delivery.chatIDs).catch((error) => console.error("OTP dispatch failed", error));
@@ -53,9 +53,9 @@ const me = await bot.api.getMe();
 bot.botInfo = me;
 console.log(`Starting @${me.username}`);
 await bot.api.setMyCommands([
-  { command: "start", description: "Открыть главное меню" },
-  { command: "menu", description: "Главное меню" },
-  { command: "promo_code", description: "Активировать промокод" },
+  { command: "start", description: "打开 SafeLink 服务中心" },
+  { command: "menu", description: "主菜单" },
+  { command: "promo_code", description: "兑换优惠码" },
 ]);
 
 let stopping = false;
@@ -66,4 +66,6 @@ async function shutdown(signal) {
 process.once("SIGINT", () => shutdown("SIGINT"));
 process.once("SIGTERM", () => shutdown("SIGTERM"));
 
-await bot.start({ allowed_updates: ["message", "callback_query", "pre_checkout_query"], onStart: () => console.log("Bot polling started") });
+const allowedUpdates = ["message", "callback_query"];
+if (config.paymentsEnabled) allowedUpdates.push("pre_checkout_query");
+await bot.start({ allowed_updates: allowedUpdates, onStart: () => console.log("SafeLink bot polling started") });

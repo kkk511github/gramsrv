@@ -428,6 +428,76 @@ func TestAdminAPIGrantStars(t *testing.T) {
 	}
 }
 
+type storeBotScopedCaptureService struct {
+	fakeService
+	actors []string
+}
+
+func (s *storeBotScopedCaptureService) GrantStars(_ context.Context, req admin.GrantStarsRequest) (admin.CommandResult, error) {
+	s.actors = append(s.actors, req.Actor)
+	return admin.CommandResult{CommandID: req.CommandID, Status: "completed", DryRun: req.DryRun}, nil
+}
+
+func (s *storeBotScopedCaptureService) GrantPremium(_ context.Context, req admin.GrantPremiumRequest) (admin.CommandResult, error) {
+	s.actors = append(s.actors, req.Actor)
+	return admin.CommandResult{CommandID: req.CommandID, Status: "completed", DryRun: req.DryRun}, nil
+}
+
+func (s *storeBotScopedCaptureService) MintCollectibleUsername(_ context.Context, req admin.MintCollectibleUsernameRequest) (admin.CommandResult, error) {
+	s.actors = append(s.actors, req.Actor)
+	return admin.CommandResult{CommandID: req.CommandID, Status: "completed", DryRun: req.DryRun}, nil
+}
+
+func TestAdminAPIStoreBotScopedPermissions(t *testing.T) {
+	svc := &storeBotScopedCaptureService{}
+	srv := &Server{
+		token: "master",
+		scoped: []ScopedToken{
+			{Name: "store-bot", Token: "store-token", Permissions: []string{
+				PermissionStarsManage, PermissionPremiumManage, PermissionCollectibleUsernameManage,
+			}},
+			{Name: "premium-only", Token: "premium-token", Permissions: []string{PermissionPremiumManage}},
+		},
+		svc: svc,
+	}
+	tests := []struct {
+		name string
+		path string
+		body string
+	}{
+		{"stars", "/v1/accounts/grant-stars", `{"command_id":"store-stars","reason":"reward","dry_run":true,"user_id":1001,"amount":5}`},
+		{"premium", "/v1/accounts/grant-premium", `{"command_id":"store-premium","reason":"reward","dry_run":true,"user_id":1001,"months":1}`},
+		{"username", "/v1/collectible-usernames/mint", `{"command_id":"store-username","reason":"purchase","dry_run":true,"username":"safelinkuser","owner_user_id":"1001","currency":"TON","amount":"1000000000","crypto_currency":"TON","crypto_amount":"1000000000","url":"https://safelink.chat/nft/username/safelinkuser","purchase_date":1700000000}`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, test.path, strings.NewReader(test.body))
+			req.Header.Set("Authorization", "Bearer store-token")
+			rec := httptest.NewRecorder()
+			srv.routes().ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+	if len(svc.actors) != len(tests) {
+		t.Fatalf("actors=%v, want one audit actor per store command", svc.actors)
+	}
+	for _, actor := range svc.actors {
+		if actor != "store-bot" {
+			t.Fatalf("actor=%q, want scoped token name", actor)
+		}
+	}
+
+	forbidden := httptest.NewRequest(http.MethodPost, "/v1/accounts/grant-stars", strings.NewReader(tests[0].body))
+	forbidden.Header.Set("Authorization", "Bearer premium-token")
+	forbiddenRec := httptest.NewRecorder()
+	srv.routes().ServeHTTP(forbiddenRec, forbidden)
+	if forbiddenRec.Code != http.StatusForbidden || !strings.Contains(forbiddenRec.Body.String(), PermissionStarsManage) {
+		t.Fatalf("forbidden status=%d body=%s", forbiddenRec.Code, forbiddenRec.Body.String())
+	}
+}
+
 func TestAdminAPISetChannelVerified(t *testing.T) {
 	srv := &Server{token: "secret", svc: fakeService{}}
 	req := httptest.NewRequest(http.MethodPost, "/v1/channels/set-verified", strings.NewReader(`{"command_id":"c3","actor":"ops","reason":"official","dry_run":true,"channel_id":2001,"verified":true}`))

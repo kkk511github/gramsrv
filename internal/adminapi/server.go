@@ -211,7 +211,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /v1/premium/plans/upsert", s.authorized(PermissionPremiumManage, s.handleUpsertPremiumPlan))
 	mux.HandleFunc("GET /v1/premium/users/{id}/entitlements", s.authorized(PermissionPremiumManage, s.handlePremiumEntitlements))
 	mux.HandleFunc("GET /v1/premium/payments/{id}", s.authorized(PermissionPremiumManage, s.handlePremiumPayment))
-	mux.HandleFunc("POST /v1/accounts/grant-stars", s.authenticated(s.handleGrantStars))
+	mux.HandleFunc("POST /v1/accounts/grant-stars", s.authorized(PermissionStarsManage, s.handleGrantStars))
 	mux.HandleFunc("POST /v1/accounts/set-verified", s.authenticated(s.handleSetVerified))
 	mux.HandleFunc("POST /v1/accounts/set-flags", s.authenticated(s.handleSetUserFlags))
 	mux.HandleFunc("POST /v1/accounts/set-support", s.authenticated(s.handleSetSupport))
@@ -271,7 +271,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /v1/moderation/cases/{id}/decide", s.authenticated(s.handleDecideModerationCase))
 	mux.HandleFunc("POST /v1/moderation/cases/{id}/appeals", s.authenticated(s.handleSubmitModerationAppeal))
 	mux.HandleFunc("POST /v1/moderation/cases/{id}/appeals/{appeal_id}/review", s.authenticated(s.handleReviewModerationAppeal))
-	mux.HandleFunc("POST /v1/collectible-usernames/mint", s.authenticated(s.handleMintCollectibleUsername))
+	mux.HandleFunc("POST /v1/collectible-usernames/mint", s.authorized(PermissionCollectibleUsernameManage, s.handleMintCollectibleUsername))
 	mux.HandleFunc("POST /v1/collectible-usernames/transfer", s.authenticated(s.handleTransferCollectibleUsername))
 	mux.HandleFunc("POST /v1/collectible-usernames/revoke", s.authenticated(s.handleRevokeCollectibleUsername))
 	mux.HandleFunc("POST /v1/collectible-usernames/delete", s.authenticated(s.handleDeleteCollectibleUsername))
@@ -453,6 +453,7 @@ func (s *Server) handleGrantStars(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
+	s.applyVerificationPrincipal(r, &req.CommandMeta)
 	result, err := s.svc.GrantStars(r.Context(), req)
 	writeCommandResult(w, result, err)
 }
@@ -1586,6 +1587,7 @@ func (s *Server) handleMintCollectibleUsername(w http.ResponseWriter, r *http.Re
 	if !decodeJSON(w, r, &req) {
 		return
 	}
+	s.applyVerificationPrincipal(r, &req.CommandMeta)
 	result, err := s.svc.MintCollectibleUsername(r.Context(), req)
 	writeCommandResult(w, result, err)
 }
