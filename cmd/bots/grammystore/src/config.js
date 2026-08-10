@@ -29,12 +29,12 @@ export function loadConfig() {
   if (webhookSecret.length < 24) throw new Error("CODE_WEBHOOK_SECRET must contain at least 24 characters");
   return Object.freeze({
     botToken: required("BOT_TOKEN"),
-    productName: (process.env.PRODUCT_NAME ?? "Telesrv").trim() || "Telesrv",
+    productName: (process.env.PRODUCT_NAME ?? "SafeLink").trim() || "SafeLink",
     ownerIDs: ownerIDs(),
     publicUsername: (process.env.BOT_PUBLIC_USERNAME ?? "").replace(/^@/, "").trim(),
     gramsrvAPI: (process.env.GRAMSRV_API ?? "http://127.0.0.1:2399").replace(/\/+$/, ""),
     gramsrvToken: required("GRAMSRV_TOKEN"),
-    gramsrvActor: (process.env.GRAMSRV_ACTOR ?? "telesrv-grammy-bot").trim(),
+    gramsrvActor: (process.env.GRAMSRV_ACTOR ?? "safelink-grammy-bot").trim(),
     publicBaseURL: (process.env.PUBLIC_BASE_URL ?? "https://example.com").replace(/\/+$/, ""),
     dbPath: path.resolve(process.env.BOT_DB_PATH ?? "./data/bot.sqlite3"),
     codeHost: (process.env.CODE_HTTP_HOST ?? "127.0.0.1").trim(),

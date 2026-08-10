@@ -846,3 +846,29 @@ worker 正常启动，管理后台可以读取真实审核案件。后续上游�
 
 部署后至少确认：迁移为 `169 | false`、RSA 指纹未变化、消息特效数量大于 `0`、APNs
 仍启用、`2398` 可连接，以及官网、邀请链接和 Web 均返回 `200`。
+
+## 2026-08-10 礼物消息实体与 grammY 商店机器人
+
+上游新增原始迁移 `0174_star_gift_message_entities`，与 SafeLink 已发布的
+`0174_premium_plan_management` 重号，合并时必须映射为：
+
+- `0180_star_gift_message_entities`
+
+生产库应从 `179 | false` 升级为 `180 | false`。该迁移为普通礼物、唯一礼物及购买表单
+持久化附言实体，保证粗体、链接和自定义 Emoji 在发送消息、已保存礼物和资料页投影中一致。
+不得把文件改回上游原编号，否则服务会因重复迁移版本拒绝启动。
+
+本次还引入了独立的 grammY 商店与登录验证码机器人。SafeLink 分支默认产品名、systemd
+服务名和安装路径均使用 `SafeLink`；`TELESRV_*` 环境变量及 `X-Telesrv-Signature` 仍是
+现有服务端兼容接口，不能只改机器人一侧。生产部署 `slerv` 时不要自动启用
+`safelink-grammy-bot.service`：必须先单独配置 Bot Token、Admin API Token、Webhook HMAC
+密钥和 SQLite 备份策略，并完成端到端验证码及支付测试后再启用。
+
+部署顺序：先备份 PostgreSQL，替换并重启 `slerv` 让 migration `0180` 完成，再确认：
+
+```sql
+SELECT version, dirty FROM schema_migrations;
+```
+
+期望结果为 `180 | false`。随后验证 `slerv`、`safelink-admin`、阿里云 OSS、APNs、官网、
+邀请链接和 Web；本次没有管理后台资源变更，无需单独替换管理后台二进制。

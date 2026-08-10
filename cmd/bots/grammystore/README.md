@@ -41,7 +41,7 @@ Set `BOT_PUBLIC_USERNAME` so referral links are available before the first
 gramsrv account ID under Settings; Telegram IDs are not assumed to equal server
 account IDs.
 
-`PRODUCT_NAME` controls user-facing product text and defaults to `Telesrv`.
+`PRODUCT_NAME` controls user-facing product text and defaults to `SafeLink`.
 Deployment-specific branding belongs in the service environment, not in source.
 
 ## Migrating the former Python bot
@@ -87,22 +87,22 @@ into a server-side timeout. `/healthz` is read-only.
 ## Linux install
 
 ```bash
-sudo useradd --system --home /var/lib/gramsrv-grammy-bot --shell /usr/sbin/nologin telesrv-bot || true
-sudo install -d -o telesrv-bot -g telesrv-bot -m 0750 /opt/gramsrv-grammy-bot /var/lib/gramsrv-grammy-bot
-sudo cp -a package.json package-lock.json src /opt/gramsrv-grammy-bot/
-cd /opt/gramsrv-grammy-bot
+sudo useradd --system --home /var/lib/safelink-grammy-bot --shell /usr/sbin/nologin safelink-bot || true
+sudo install -d -o safelink-bot -g safelink-bot -m 0750 /opt/safelink-grammy-bot /var/lib/safelink-grammy-bot
+sudo cp -a package.json package-lock.json src /opt/safelink-grammy-bot/
+cd /opt/safelink-grammy-bot
 sudo npm ci --omit=dev
-sudo cp .env.example /etc/telesrv-grammy-bot.env
-sudo chmod 0600 /etc/telesrv-grammy-bot.env
-sudo cp deploy/telesrv-grammy-bot.service /etc/systemd/system/
+sudo cp .env.example /etc/safelink-grammy-bot.env
+sudo chmod 0600 /etc/safelink-grammy-bot.env
+sudo cp deploy/safelink-grammy-bot.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now telesrv-grammy-bot
-sudo journalctl -u telesrv-grammy-bot -f
+sudo systemctl enable --now safelink-grammy-bot
+sudo journalctl -u safelink-grammy-bot -f
 ```
 
-Use `BOT_DB_PATH=/var/lib/gramsrv-grammy-bot/bot.sqlite3` in the production env.
+Use `BOT_DB_PATH=/var/lib/safelink-grammy-bot/bot.sqlite3` in the production env.
 Back up the database with SQLite's online backup command or while the service is
-stopped; include `/etc/telesrv-grammy-bot.env` in a separate encrypted secret
+stopped; include `/etc/safelink-grammy-bot.env` in a separate encrypted secret
 backup.
 
 The systemd unit intentionally has no hosting-specific values. Do not deploy it

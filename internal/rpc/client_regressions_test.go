@@ -63,7 +63,7 @@ func TestStarGiftCustomEmojiEntitiesSurviveAllProjections(t *testing.T) {
 		t.Fatalf("action message = %+v", message)
 	}
 	custom, ok := message.Entities[0].(*tg.MessageEntityCustomEmoji)
-	if !ok || custom.DocumentID != entity.DocumentID {
+	if !ok || custom.DocumentID != clientDocumentIDFromServerID(entity.DocumentID) {
 		t.Fatalf("action custom emoji = %#v", message.Entities[0])
 	}
 

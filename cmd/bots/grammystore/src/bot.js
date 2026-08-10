@@ -22,7 +22,7 @@ const text = {
 
 function escapeHTML(value) { return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;"); }
 function language(db, id, fallback) { return db.user(id)?.language ?? fallback; }
-function t(db, id, fallback, key, productName = "Telesrv") { return text[language(db, id, fallback)][key].replaceAll("{product}", productName); }
+function t(db, id, fallback, key, productName = "SafeLink") { return text[language(db, id, fallback)][key].replaceAll("{product}", productName); }
 function isOwner(config, id) { return config.ownerIDs.has(id); }
 function userName(from) { return from.username ? `@${from.username}` : [from.first_name, from.last_name].filter(Boolean).join(" "); }
 function initialLanguage(from, fallback) { const code = String(from?.language_code ?? "").toLowerCase(); return code.startsWith("ru") ? "ru" : code ? "en" : fallback; }

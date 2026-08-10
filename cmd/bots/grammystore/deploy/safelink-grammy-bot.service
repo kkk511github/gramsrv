@@ -1,0 +1,23 @@
+[Unit]
+Description=SafeLink grammY store and authentication bot
+After=network-online.target slerv.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=safelink-bot
+Group=safelink-bot
+WorkingDirectory=/opt/safelink-grammy-bot
+EnvironmentFile=/etc/safelink-grammy-bot.env
+ExecStart=/usr/bin/node /opt/safelink-grammy-bot/src/index.js
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/safelink-grammy-bot
+
+[Install]
+WantedBy=multi-user.target
