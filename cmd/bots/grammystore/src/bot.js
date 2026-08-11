@@ -130,6 +130,19 @@ export function commandList(language) {
   ];
 }
 
+export async function registerCommands(api, defaultLanguage) {
+  await api.setMyCommands(commandList(defaultLanguage));
+  for (const language of ["zh", "ru", "en"]) {
+    try {
+      await api.setMyCommands(commandList(language), { language_code: language });
+    } catch (error) {
+      const detail = String(error?.description ?? error?.message ?? error);
+      if (!detail.includes("BOT_COMMAND_SCOPE_UNSUPPORTED")) throw error;
+      console.warn(`SafeLink Bot API does not support localized command scope: ${language}`);
+    }
+  }
+}
+
 async function editOrReply(ctx, message, keyboard = undefined) {
   const options = { parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup: keyboard };
   if (ctx.callbackQuery?.message) {

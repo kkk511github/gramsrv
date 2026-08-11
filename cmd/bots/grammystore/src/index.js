@@ -2,7 +2,7 @@ import http from "node:http";
 import { loadConfig } from "./config.js";
 import { BotDatabase } from "./db.js";
 import { GramsrvClient } from "./gramsrv.js";
-import { commandList, createBot } from "./bot.js";
+import { createBot, registerCommands } from "./bot.js";
 import { normalizeLanguage, translate } from "./i18n.js";
 import { parseTelesrvDelivery, verifyTelesrvSignature } from "./otp.js";
 
@@ -79,10 +79,7 @@ server.listen(config.codePort, config.codeHost, () => console.log(`OTP webhook l
 const me = await bot.api.getMe();
 bot.botInfo = me;
 console.log(`Starting @${me.username}`);
-await bot.api.setMyCommands(commandList(config.defaultLanguage));
-await bot.api.setMyCommands(commandList("zh"), { language_code: "zh" });
-await bot.api.setMyCommands(commandList("ru"), { language_code: "ru" });
-await bot.api.setMyCommands(commandList("en"), { language_code: "en" });
+await registerCommands(bot.api, config.defaultLanguage);
 
 let stopping = false;
 async function shutdown(signal) {

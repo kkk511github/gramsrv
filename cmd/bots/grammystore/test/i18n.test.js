@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { adminKeyboard, commandList, isStartCommand, mainKeyboard, settingsKeyboard, shopKeyboard } from "../src/bot.js";
+import { adminKeyboard, commandList, isStartCommand, mainKeyboard, registerCommands, settingsKeyboard, shopKeyboard } from "../src/bot.js";
 import { catalog, findProduct, localizeProduct } from "../src/catalog.js";
 import { messages, normalizeLanguage, translate, translateError } from "../src/i18n.js";
 
@@ -51,6 +51,24 @@ test("language normalization, commands and errors follow the selected language",
   assert.equal(translate("en", "languageChanged"), "Language switched to English.");
   assert.match(translateError("en", new Error("already claimed")), /already claimed/i);
   assert.match(translateError("ru", new Error("already claimed")), /уже получили/i);
+});
+
+test("localized command registration tolerates an older SafeLink Bot API", async () => {
+  const calls = [];
+  const api = {
+    async setMyCommands(commands, options = {}) {
+      calls.push({ commands, options });
+      if (options.language_code) {
+        const error = new Error("localized command scope is unsupported");
+        error.description = "BOT_COMMAND_SCOPE_UNSUPPORTED";
+        throw error;
+      }
+    },
+  };
+  await registerCommands(api, "zh");
+  assert.equal(calls.length, 4);
+  assert.equal(calls[0].commands[0].description, "打开主菜单");
+  assert.deepEqual(calls.slice(1).map((call) => call.options.language_code), ["zh", "ru", "en"]);
 });
 
 test("start commands are recognized before the generic user middleware", () => {
