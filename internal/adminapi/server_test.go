@@ -428,6 +428,28 @@ func TestAdminAPIGrantStars(t *testing.T) {
 	}
 }
 
+type captureDebitStarsService struct {
+	fakeService
+	req admin.DebitStarsRequest
+}
+
+func (s *captureDebitStarsService) DebitStars(_ context.Context, req admin.DebitStarsRequest) (admin.CommandResult, error) {
+	s.req = req
+	return admin.CommandResult{CommandID: req.CommandID, Status: "completed", DryRun: req.DryRun}, nil
+}
+
+func TestAdminAPIDebitStars(t *testing.T) {
+	svc := &captureDebitStarsService{}
+	srv := &Server{token: "secret", svc: svc}
+	req := httptest.NewRequest(http.MethodPost, "/v1/accounts/debit-stars", strings.NewReader(`{"command_id":"refund-1","actor":"bot","reason":"refund","user_id":1001,"amount":20}`))
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	srv.routes().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || svc.req.UserID != 1001 || svc.req.Amount != 20 || svc.req.CommandID != "refund-1" {
+		t.Fatalf("status=%d request=%+v body=%s", rec.Code, svc.req, rec.Body.String())
+	}
+}
+
 type storeBotScopedCaptureService struct {
 	fakeService
 	actors []string
@@ -438,12 +460,22 @@ func (s *storeBotScopedCaptureService) GrantStars(_ context.Context, req admin.G
 	return admin.CommandResult{CommandID: req.CommandID, Status: "completed", DryRun: req.DryRun}, nil
 }
 
+func (s *storeBotScopedCaptureService) DebitStars(_ context.Context, req admin.DebitStarsRequest) (admin.CommandResult, error) {
+	s.actors = append(s.actors, req.Actor)
+	return admin.CommandResult{CommandID: req.CommandID, Status: "completed", DryRun: req.DryRun}, nil
+}
+
 func (s *storeBotScopedCaptureService) GrantPremium(_ context.Context, req admin.GrantPremiumRequest) (admin.CommandResult, error) {
 	s.actors = append(s.actors, req.Actor)
 	return admin.CommandResult{CommandID: req.CommandID, Status: "completed", DryRun: req.DryRun}, nil
 }
 
 func (s *storeBotScopedCaptureService) MintCollectibleUsername(_ context.Context, req admin.MintCollectibleUsernameRequest) (admin.CommandResult, error) {
+	s.actors = append(s.actors, req.Actor)
+	return admin.CommandResult{CommandID: req.CommandID, Status: "completed", DryRun: req.DryRun}, nil
+}
+
+func (s *storeBotScopedCaptureService) RevokeCollectibleUsername(_ context.Context, req admin.RevokeCollectibleUsernameRequest) (admin.CommandResult, error) {
 	s.actors = append(s.actors, req.Actor)
 	return admin.CommandResult{CommandID: req.CommandID, Status: "completed", DryRun: req.DryRun}, nil
 }
@@ -465,9 +497,11 @@ func TestAdminAPIStoreBotScopedPermissions(t *testing.T) {
 		path string
 		body string
 	}{
-		{"stars", "/v1/accounts/grant-stars", `{"command_id":"store-stars","reason":"reward","dry_run":true,"user_id":1001,"amount":5}`},
+		{"grant stars", "/v1/accounts/grant-stars", `{"command_id":"store-stars","reason":"reward","dry_run":true,"user_id":1001,"amount":5}`},
+		{"debit stars", "/v1/accounts/debit-stars", `{"command_id":"store-debit","reason":"refund","dry_run":true,"user_id":1001,"amount":5}`},
 		{"premium", "/v1/accounts/grant-premium", `{"command_id":"store-premium","reason":"reward","dry_run":true,"user_id":1001,"months":1}`},
-		{"username", "/v1/collectible-usernames/mint", `{"command_id":"store-username","reason":"purchase","dry_run":true,"username":"safelinkuser","owner_user_id":"1001","currency":"TON","amount":"1000000000","crypto_currency":"TON","crypto_amount":"1000000000","url":"https://safelink.chat/nft/username/safelinkuser","purchase_date":1700000000}`},
+		{"mint username", "/v1/collectible-usernames/mint", `{"command_id":"store-username","reason":"purchase","dry_run":true,"username":"safelinkuser","owner_user_id":"1001","currency":"TON","amount":"1000000000","crypto_currency":"TON","crypto_amount":"1000000000","url":"https://safelink.chat/nft/username/safelinkuser","purchase_date":1700000000}`},
+		{"revoke username", "/v1/collectible-usernames/revoke", `{"command_id":"store-revoke","reason":"refund","dry_run":true,"username":"safelinkuser","expected_owner_user_id":"1001","burn":false}`},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

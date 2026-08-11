@@ -65,8 +65,8 @@ const (
 	// PermissionStarsManage permits issuing Stars without opening the rest of the
 	// legacy administration surface to an automation token.
 	PermissionStarsManage = "stars.manage"
-	// PermissionCollectibleUsernameManage permits minting usernames. Transfers,
-	// revocations and deletes remain master-only operations.
+	// PermissionCollectibleUsernameManage permits minting and revoking usernames.
+	// Transfers and deletes remain master-only operations.
 	PermissionCollectibleUsernameManage = "collectible_usernames.manage"
 	// PermissionBotTokenRead is intentionally narrower than unrestricted admin
 	// access because it reveals a live credential.

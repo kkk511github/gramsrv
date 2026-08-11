@@ -35,6 +35,7 @@ function ownerIDs() {
 export function loadConfig() {
   const webhookSecret = required("CODE_WEBHOOK_SECRET");
   if (webhookSecret.length < 24) throw new Error("CODE_WEBHOOK_SECRET must contain at least 24 characters");
+  const defaultLanguage = (process.env.DEFAULT_LANGUAGE ?? "zh").trim().toLowerCase();
   return Object.freeze({
     botToken: required("BOT_TOKEN"),
     botApiRoot: (process.env.BOT_API_ROOT ?? "http://127.0.0.1:8081").replace(/\/+$/, ""),
@@ -52,7 +53,7 @@ export function loadConfig() {
     requiredChannel: (process.env.REQUIRED_CHANNEL ?? "").trim(),
     requiredChannelURL: (process.env.REQUIRED_CHANNEL_URL ?? "").trim(),
     supportUsername: (process.env.SUPPORT_USERNAME ?? "").replace(/^@/, "").trim(),
-    defaultLanguage: (process.env.DEFAULT_LANGUAGE ?? "zh").toLowerCase() === "en" ? "en" : "zh",
+    defaultLanguage: ["zh", "ru", "en"].includes(defaultLanguage) ? defaultLanguage : "zh",
     paymentsEnabled: boolean("PAYMENTS_ENABLED", false),
     defaultNumberCountry: (process.env.DEFAULT_NUMBER_COUNTRY ?? "RU").toUpperCase() === "US" ? "US" : "RU",
     referralBonus: integer("REFERRAL_BONUS", 100, { min: 0 }),

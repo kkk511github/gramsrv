@@ -157,6 +157,13 @@ type collectiblePhoneService interface {
 	CollectiblePhoneTransfers(context.Context, int64, int) ([]domain.CollectiblePhoneTransfer, error)
 }
 
+// starsDebitService keeps the compensating-refund endpoint optional for older
+// lightweight Service implementations while the production admin service
+// provides it.
+type starsDebitService interface {
+	DebitStars(context.Context, admin.DebitStarsRequest) (admin.CommandResult, error)
+}
+
 func Start(ctx context.Context, cfg Config, svc Service, log *zap.Logger) (*http.Server, error) {
 	cfg.Addr = strings.TrimSpace(cfg.Addr)
 	if cfg.Addr == "" {
@@ -212,6 +219,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /v1/premium/users/{id}/entitlements", s.authorized(PermissionPremiumManage, s.handlePremiumEntitlements))
 	mux.HandleFunc("GET /v1/premium/payments/{id}", s.authorized(PermissionPremiumManage, s.handlePremiumPayment))
 	mux.HandleFunc("POST /v1/accounts/grant-stars", s.authorized(PermissionStarsManage, s.handleGrantStars))
+	mux.HandleFunc("POST /v1/accounts/debit-stars", s.authorized(PermissionStarsManage, s.handleDebitStars))
 	mux.HandleFunc("POST /v1/accounts/set-verified", s.authenticated(s.handleSetVerified))
 	mux.HandleFunc("POST /v1/accounts/set-flags", s.authenticated(s.handleSetUserFlags))
 	mux.HandleFunc("POST /v1/accounts/set-support", s.authenticated(s.handleSetSupport))
@@ -273,7 +281,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /v1/moderation/cases/{id}/appeals/{appeal_id}/review", s.authenticated(s.handleReviewModerationAppeal))
 	mux.HandleFunc("POST /v1/collectible-usernames/mint", s.authorized(PermissionCollectibleUsernameManage, s.handleMintCollectibleUsername))
 	mux.HandleFunc("POST /v1/collectible-usernames/transfer", s.authenticated(s.handleTransferCollectibleUsername))
-	mux.HandleFunc("POST /v1/collectible-usernames/revoke", s.authenticated(s.handleRevokeCollectibleUsername))
+	mux.HandleFunc("POST /v1/collectible-usernames/revoke", s.authorized(PermissionCollectibleUsernameManage, s.handleRevokeCollectibleUsername))
 	mux.HandleFunc("POST /v1/collectible-usernames/delete", s.authenticated(s.handleDeleteCollectibleUsername))
 	mux.HandleFunc("GET /v1/collectible-usernames", s.authenticated(s.handleCollectibleUsernames))
 	mux.HandleFunc("GET /v1/collectible-usernames/{id}", s.authenticated(s.handleCollectibleUsername))
@@ -455,6 +463,21 @@ func (s *Server) handleGrantStars(w http.ResponseWriter, r *http.Request) {
 	}
 	s.applyVerificationPrincipal(r, &req.CommandMeta)
 	result, err := s.svc.GrantStars(r.Context(), req)
+	writeCommandResult(w, result, err)
+}
+
+func (s *Server) handleDebitStars(w http.ResponseWriter, r *http.Request) {
+	var req admin.DebitStarsRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	s.applyVerificationPrincipal(r, &req.CommandMeta)
+	svc, ok := s.svc.(starsDebitService)
+	if !ok {
+		writeError(w, http.StatusNotImplemented, "stars debit is not configured")
+		return
+	}
+	result, err := svc.DebitStars(r.Context(), req)
 	writeCommandResult(w, result, err)
 }
 
@@ -1606,6 +1629,7 @@ func (s *Server) handleRevokeCollectibleUsername(w http.ResponseWriter, r *http.
 	if !decodeJSON(w, r, &req) {
 		return
 	}
+	s.applyVerificationPrincipal(r, &req.CommandMeta)
 	result, err := s.svc.RevokeCollectibleUsername(r.Context(), req)
 	writeCommandResult(w, result, err)
 }

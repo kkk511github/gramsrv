@@ -6,29 +6,21 @@ transactional SQLite database. It deliberately runs independently from
 
 ## Production functionality
 
-- Chinese-first SafeLink service menu and `safelink.chat` referral links;
-- SafeLink account ID binding, daily rewards, referrals and a weighted wheel;
-- promo codes and button-based giveaways;
-- support tickets and owner replies;
-- owner-only statistics, broadcasts, Stars/Premium/bonus grants and Stars-rate controls;
-- optional delivery of real login codes through authenticated `POST /code`;
-- a dedicated, least-privilege Admin API token for Stars, Premium and collectible
-  username grants;
-- all Bot API calls routed to the local SafeLink Bot API, never to an external
-  public Bot API.
-
-The source also contains an invoice-backed Premium, Stars and collectible
-username store. Keep `PAYMENTS_ENABLED=false` until SafeLink Bot API implements
-durable invoice creation, pre-checkout state, successful-payment updates and
-refunds. The public menu hides the store while disabled. Locally generated
-anonymous numbers are also intentionally hidden because they do not provision a
-real SafeLink account.
-
-## Additional stored capabilities
-
+- delivery and storage of real login codes through authenticated `POST /code`;
+- Premium, SafeLink Stars and collectible username product workflows;
+- arbitrary Stars invoices, payment deduplication and a durable sales journal;
+- compensated refunds that revoke the exact Stars, Premium entitlement,
+  collectible username or paid number before returning payment Stars;
 - account target IDs and three recent recipients;
-- language and notification settings;
-- payment deduplication and a durable sales journal for the future payment path;
+- daily bonuses, referrals and a weighted wheel;
+- promo codes and button-based giveaways;
+- support tickets;
+- complete Chinese, Russian and English localization for menus, keyboards, invoices,
+  errors, login codes and Bot API command descriptions;
+- per-user language and notification settings; broadcasts skip disabled and
+  stale recipients;
+- owner-only statistics, broadcasts, Stars/Premium/bonus grants, invoices,
+  payment refunds, login-code access, support replies, sales and Stars-rate controls;
 - optional required-channel membership gate.
 
 The bot token and Admin API token must never be committed. `.env.example`
@@ -54,7 +46,24 @@ bot user IDs. Users set their SafeLink account ID under Settings; the bot user
 ID is not assumed to equal the SafeLink account ID.
 
 `PRODUCT_NAME` controls user-facing product text and defaults to `SafeLink`.
-`DEFAULT_LANGUAGE=zh` is the production default.
+Deployment-specific branding belongs in the service environment, not in source.
+`DEFAULT_LANGUAGE` is used until the client supplies or the user selects a
+supported language. The selection is stored in SQLite and is not overwritten by
+later client updates. Bot command descriptions are registered separately for
+`zh`, `ru` and `en` client locales.
+
+`PAYMENTS_ENABLED=false` is the production-safe default. It hides invoices,
+the store and legacy anonymous-number controls while the local SafeLink Bot API
+does not implement the full Stars payment and refund methods. The purchase and
+compensated-refund code remains available for a future compatible Bot API; do
+not enable it until `sendInvoice`, pre-checkout updates, successful-payment
+updates and `refundStarPayment` have been verified end to end.
+
+Each paid fulfillment is snapshotted in the sales journal. Refunds are phased and
+idempotent: if the Bot API is temporarily unavailable after the server-side product
+has been revoked, retrying the same transaction does not revoke it twice. Legacy
+Premium and anonymous-number purchases without exact fulfillment metadata fail
+safe and require manual review instead of touching unrelated account state.
 
 ## Migrating the former Python bot
 
