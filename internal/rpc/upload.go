@@ -88,7 +88,10 @@ func (r *Router) onUploadGetFile(ctx context.Context, req *tg.UploadGetFileReque
 	if r.deps.Files == nil {
 		return nil, notImplementedErr()
 	}
-	keys, ok := fileLocationKeys(req.Location)
+	keys, ok, err := r.authorizedFileLocationKeys(ctx, req.Location)
+	if err != nil {
+		return nil, err
+	}
 	if !ok {
 		return nil, locationInvalidErr()
 	}
@@ -110,6 +113,34 @@ func (r *Router) onUploadGetFile(ctx context.Context, req *tg.UploadGetFileReque
 		}
 	}
 	return nil, locationInvalidErr()
+}
+
+// authorizedFileLocationKeys applies authorization checks before returning compatible
+// storage keys for a wire location.
+// These checks cannot be expressed by a plain location-key conversion. Secret-chat blobs are addressed internally by
+// id, but the wire capability is the pair (id, access_hash); accepting id alone would let any
+// authenticated caller who learned or guessed an id download ciphertext which was never
+// delivered to that caller.
+func (r *Router) authorizedFileLocationKeys(ctx context.Context, location tg.InputFileLocationClass) ([]string, bool, error) {
+	loc, encrypted := location.(*tg.InputEncryptedFileLocation)
+	if !encrypted {
+		keys, ok := fileLocationKeys(location)
+		return keys, ok, nil
+	}
+	if loc.ID == 0 || loc.AccessHash == 0 || r.deps.SecretChats == nil {
+		return nil, false, nil
+	}
+	if _, err := r.secretChatRequireUser(ctx); err != nil {
+		return nil, false, err
+	}
+	ref, found, err := r.deps.SecretChats.GetEncryptedFile(ctx, loc.ID, loc.AccessHash)
+	if err != nil {
+		return nil, false, internalErr()
+	}
+	if !found || ref.ID != loc.ID || ref.AccessHash != loc.AccessHash {
+		return nil, false, nil
+	}
+	return []string{fmt.Sprintf("enc:%d", loc.ID)}, true, nil
 }
 
 // onUploadGetGroupCallStream 处理 RTMP 直播观众拉流：按 time_ms/scale 取一段打包好的
@@ -239,15 +270,9 @@ func fileLocationKeys(location tg.InputFileLocationClass) ([]string, bool) {
 		return singleFileLocationKey(stickerSetThumbLocationKey(loc.Stickerset))
 	case *tg.InputStickerSetThumbLegacy:
 		return singleFileLocationKey(stickerSetThumbLocationKey(loc.Stickerset))
-	case *tg.InputEncryptedFileLocation:
-		// 密聊文件（P2）：盲 blob，location_key "enc:<id>"。access_hash 不强校验
-		// （沿用现有媒体 dev 姿态，依赖不可枚举 id）。
-		if loc.ID == 0 {
-			return nil, false
-		}
-		return []string{fmt.Sprintf("enc:%d", loc.ID)}, true
 	default:
-		// secure / takeout 等本阶段不生成对应资源。
+		// Encrypted files require access-hash authorization above; secure/takeout
+		// locations are not materialized by this service.
 		return nil, false
 	}
 }

@@ -571,14 +571,20 @@ func tgChannelFull(view domain.ChannelView, publicBaseURL ...string) *tg.Channel
 		CanViewParticipants: channelMemberIsAdmin(view.Self) || !ch.MembersListAdminOnly(),
 		CanSetUsername:      view.Self.Role == domain.ChannelRoleCreator,
 		CanDeleteChannel:    view.Self.Role == domain.ChannelRoleCreator,
-		ID:                  ch.ID,
-		About:               channelAboutWithModerationWarning(ch),
-		ReadInboxMaxID:      view.Dialog.ReadInboxMaxID,
-		ReadOutboxMaxID:     view.Dialog.ReadOutboxMaxID,
-		UnreadCount:         view.Dialog.UnreadCount,
-		ChatPhoto:           tgChannelChatPhotoFull(ch),
-		NotifySettings:      *tdesktop.NotifySettings(),
-		Pts:                 ch.Pts,
+		// TDesktop only exposes the Statistics entry after channelFull.can_view_stats.
+		// The stats RPCs enforce the same creator/admin boundary, so project the
+		// capability from the membership instead of leaving a reachable service
+		// hidden behind a permanently false wire flag. Monoforum is an internal
+		// direct-message container and has no independent statistics surface.
+		CanViewStats:    !ch.Monoforum && channelMemberIsAdmin(view.Self),
+		ID:              ch.ID,
+		About:           channelAboutWithModerationWarning(ch),
+		ReadInboxMaxID:  view.Dialog.ReadInboxMaxID,
+		ReadOutboxMaxID: view.Dialog.ReadOutboxMaxID,
+		UnreadCount:     view.Dialog.UnreadCount,
+		ChatPhoto:       tgChannelChatPhotoFull(ch),
+		NotifySettings:  *tdesktop.NotifySettings(),
+		Pts:             ch.Pts,
 	}
 	if ch.ParticipantsCount > 0 {
 		full.SetParticipantsCount(ch.ParticipantsCount)
@@ -679,6 +685,23 @@ func tgChannelFull(view domain.ChannelView, publicBaseURL ...string) *tg.Channel
 		full.SetPaidReactionsAvailable(true)
 	}
 	return full
+}
+
+// applyChannelStatsCapability completes the config-dependent half of the
+// channelFull statistics capability. TDLib deliberately clears
+// can_view_stats when stats_dc is absent or invalid, so these fields must be
+// projected as one invariant rather than as independent optional hints.
+// A manually constructed zero-value Router config is treated as unavailable;
+// production config validation requires a positive canonical DC.
+func (r *Router) applyChannelStatsCapability(full *tg.ChannelFull) {
+	if full == nil || !full.CanViewStats {
+		return
+	}
+	if r.cfg.DC <= 0 {
+		full.CanViewStats = false
+		return
+	}
+	full.SetStatsDC(r.cfg.DC)
 }
 
 func channelMemberIsAdmin(member domain.ChannelMember) bool {

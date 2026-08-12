@@ -40,6 +40,10 @@ type fakeFiles struct {
 	webPagePreviewOn   bool
 	getDocumentsCalls  int
 	createUploadCalls  int
+	getFileRequest     domain.FileDownloadRequest
+	getFileChunk       domain.FileChunk
+	getFileFound       bool
+	getFileCalls       int
 }
 
 type fakeProfilePhotoKey struct {
@@ -63,10 +67,12 @@ func (f *fakeFiles) SaveBigFilePart(context.Context, int64, int64, int, int, []b
 	return true, nil
 }
 func (f *fakeFiles) GetFile(_ context.Context, req domain.FileDownloadRequest) (domain.FileChunk, bool, error) {
+	f.getFileCalls++
+	f.getFileRequest = req
 	if f.getFileFn != nil {
 		return f.getFileFn(req)
 	}
-	return domain.FileChunk{}, false, nil
+	return f.getFileChunk, f.getFileFound, nil
 }
 func (f *fakeFiles) CreateEncryptedFileFromUpload(context.Context, domain.UploadedFileRef, int) (domain.EncryptedFileRef, error) {
 	return domain.EncryptedFileRef{ID: 9001, AccessHash: 9002, Size: 16, DCID: 2, KeyFingerprint: 7}, nil
