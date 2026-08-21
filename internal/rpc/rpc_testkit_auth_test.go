@@ -34,6 +34,7 @@ type captureAuthService struct {
 	pendingPasswordUserID int64
 	pendingPassword       bool
 	completedPasswordKey  [8]byte
+	completedPasswordUser int64
 	completePasswordCount int
 	codeDelivery          domain.AuthCodeDelivery
 	signInCount           int
@@ -167,7 +168,7 @@ func (s *blockingUserAuthService) PendingPasswordUserID(context.Context, [8]byte
 	return 0, false, nil
 }
 
-func (s *blockingUserAuthService) CompletePasswordSignIn(context.Context, [8]byte) error {
+func (s *blockingUserAuthService) CompletePasswordSignIn(context.Context, [8]byte, int64) error {
 	return nil
 }
 
@@ -373,8 +374,9 @@ func (s *captureAuthService) PendingPasswordUserID(context.Context, [8]byte) (in
 	return s.pendingPasswordUserID, s.pendingPassword, nil
 }
 
-func (s *captureAuthService) CompletePasswordSignIn(_ context.Context, authKeyID [8]byte) error {
+func (s *captureAuthService) CompletePasswordSignIn(_ context.Context, authKeyID [8]byte, userID int64) error {
 	s.completedPasswordKey = authKeyID
+	s.completedPasswordUser = userID
 	s.completePasswordCount++
 	return nil
 }

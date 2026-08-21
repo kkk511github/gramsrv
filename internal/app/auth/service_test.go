@@ -346,6 +346,59 @@ func TestAuthorizationBindRejectsTemporaryProtocolKey(t *testing.T) {
 	}
 }
 
+func TestDeletedUserCannotCrossAuthorizationBoundaries(t *testing.T) {
+	ctx := context.Background()
+	users := memory.NewUserStore()
+	authz := memory.NewAuthorizationStore()
+	deleted, err := users.Create(ctx, domain.User{
+		Deleted:        true,
+		DeletedAt:      time.Now().Unix(),
+		DeletionSource: domain.AccountDeletionManual,
+	})
+	if err != nil {
+		t.Fatalf("create deleted user: %v", err)
+	}
+	svc := NewService(users, authz, memory.NewCodeStore(), nil, nil, "12345")
+
+	passkeyAuthKeyID := [8]byte{0x91}
+	if _, err := svc.BindVerifiedLogin(ctx, domain.Authorization{AuthKeyID: passkeyAuthKeyID}, deleted.ID); !errors.Is(err, ErrSystemUserLoginForbidden) {
+		t.Fatalf("BindVerifiedLogin deleted user err = %v, want ErrSystemUserLoginForbidden", err)
+	}
+	if _, found, err := authz.ByAuthKey(ctx, passkeyAuthKeyID); err != nil || found {
+		t.Fatalf("deleted passkey authorization found=%v err=%v, want absent", found, err)
+	}
+
+	qrAuthKeyID := [8]byte{0x92}
+	if _, err := svc.AcceptLoginToken(ctx, domain.Authorization{AuthKeyID: qrAuthKeyID}, deleted.ID); !errors.Is(err, ErrSystemUserLoginForbidden) {
+		t.Fatalf("AcceptLoginToken deleted user err = %v, want ErrSystemUserLoginForbidden", err)
+	}
+	if _, found, err := authz.ByAuthKey(ctx, qrAuthKeyID); err != nil || found {
+		t.Fatalf("deleted QR authorization found=%v err=%v, want absent", found, err)
+	}
+
+	staleAuthKeyID := [8]byte{0x93}
+	if err := authz.Bind(ctx, domain.Authorization{AuthKeyID: staleAuthKeyID, UserID: deleted.ID}); err != nil {
+		t.Fatalf("seed stale authorization: %v", err)
+	}
+	if userID, found, err := svc.UserID(ctx, staleAuthKeyID); err != nil || found || userID != 0 {
+		t.Fatalf("UserID stale tombstone = %d found=%v err=%v, want unauthorized", userID, found, err)
+	}
+	if _, found, err := authz.ByAuthKey(ctx, staleAuthKeyID); err != nil || found {
+		t.Fatalf("stale tombstone authorization found=%v err=%v, want retired", found, err)
+	}
+
+	pendingAuthKeyID := [8]byte{0x94}
+	if err := authz.Bind(ctx, domain.Authorization{AuthKeyID: pendingAuthKeyID, UserID: deleted.ID, PasswordPending: true}); err != nil {
+		t.Fatalf("seed stale pending authorization: %v", err)
+	}
+	if err := svc.CompletePasswordSignIn(ctx, pendingAuthKeyID, deleted.ID); !errors.Is(err, ErrSystemUserLoginForbidden) {
+		t.Fatalf("CompletePasswordSignIn deleted user err = %v, want ErrSystemUserLoginForbidden", err)
+	}
+	if _, found, err := authz.ByAuthKey(ctx, pendingAuthKeyID); err != nil || found {
+		t.Fatalf("stale pending tombstone authorization found=%v err=%v, want retired", found, err)
+	}
+}
+
 func TestPhoneCodeAcceptsTDesktopDigitsOnlySignIn(t *testing.T) {
 	ctx := context.Background()
 	users := memory.NewUserStore()
@@ -807,7 +860,10 @@ func TestSignInExistingTwoFactorAccountNeedsPassword(t *testing.T) {
 		t.Fatalf("PendingPasswordUserID = %d pending=%v err=%v, want %d", pendingUID, pending, err, u.ID)
 	}
 	// 两步验证通过后转为完全授权。
-	if err := svc.CompletePasswordSignIn(ctx, key); err != nil {
+	if err := svc.CompletePasswordSignIn(ctx, key, 0); !errors.Is(err, store.ErrAuthorizationStateChanged) {
+		t.Fatalf("CompletePasswordSignIn without expected user err=%v, want authorization state changed", err)
+	}
+	if err := svc.CompletePasswordSignIn(ctx, key, u.ID); err != nil {
 		t.Fatalf("CompletePasswordSignIn: %v", err)
 	}
 	bound, found, err = svc.UserID(ctx, key)

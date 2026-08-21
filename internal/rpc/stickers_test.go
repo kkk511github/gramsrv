@@ -1085,6 +1085,9 @@ func TestMessagesGetCustomEmojiDocumentsUsesDomainIDs(t *testing.T) {
 				AccessHash: 1,
 				DCID:       2,
 				MimeType:   "application/x-tgsticker",
+				Thumbs: []domain.PhotoSize{{
+					Kind: domain.PhotoSizeKindCached, Type: "m", W: 128, H: 128, Bytes: []byte("png"),
+				}},
 			},
 		},
 	}}}
@@ -1102,6 +1105,13 @@ func TestMessagesGetCustomEmojiDocumentsUsesDomainIDs(t *testing.T) {
 	}
 	if doc.ID != documentID {
 		t.Fatalf("doc id = %d, want %d", doc.ID, documentID)
+	}
+	if len(doc.Thumbs) != 1 {
+		t.Fatalf("doc thumbs = %#v, want one downloadable preview", doc.Thumbs)
+	}
+	thumb, ok := doc.Thumbs[0].(*tg.PhotoSize)
+	if !ok || thumb.Type != "m" || thumb.W != 128 || thumb.H != 128 || thumb.Size != 3 {
+		t.Fatalf("doc thumb = %#v, want downloadable m 128x128 size=3", doc.Thumbs[0])
 	}
 
 	clientID := clientDocumentIDFromServerID(documentID)

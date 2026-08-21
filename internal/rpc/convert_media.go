@@ -373,8 +373,8 @@ func tgDocumentThumbs(mimeType string, sizes []domain.PhotoSize) []tg.PhotoSizeC
 }
 
 func isSeedSyntheticTGStickerPreviewThumb(mimeType string, s domain.PhotoSize) bool {
-	// Older seed imports gave TGS documents without thumbnails a 1x1 transparent
-	// "m" PNG. Clients can prefer that unusable preview and render blank stickers.
+	// Older seed imports used a transparent 1x1 PNG that clients may prefer
+	// over the actual animated sticker, leaving the sticker visibly blank.
 	return mimeType == mimeApplicationXTGSticker &&
 		s.Kind == domain.PhotoSizeKindCached &&
 		s.Type == "m" &&

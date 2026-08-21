@@ -1,5 +1,9 @@
 # SafeLink 服务端配置参数手册
 
+> Status: operation.
+> Scope: Configuration reference.
+
+
 英文版：[configuration.en.md](configuration.en.md)
 
 本文覆盖 `internal/config` 实际读取的全部配置。默认值和校验行为以 `internal/config/config.go` 为权威来源。所有配置修改都需要重启进程；SafeLink 服务端当前不支持配置热加载。
@@ -63,8 +67,8 @@ live expanded buffer 释放后会归还进程内存，但不会返还该 frame �
 | `TELESRV_ADMIN_UI_PASSWORD` | secret string / 空 | Admin UI 登录密码；它与 `TELESRV_ADMIN_UI_TOKEN` 至少配置一个。 |
 | `TELESRV_ADMIN_UI_TOKEN` | secret string / 空 | Admin UI 替代登录凭证；管理写调用仍使用独立的 `TELESRV_ADMIN_API_TOKEN`。 |
 | `TELESRV_ADMIN_SESSION_KEY` | secret string / 空 | 加密/签名 Admin UI session cookie；生产至少使用 32 字节随机值，修改会使已有会话失效。 |
-| `TELESRV_ADMIN_UI_PERMISSIONS` | 逗号分隔列表 / `*` | 使用 `TELESRV_ADMIN_UI_PASSWORD` / `_TOKEN` 登录的 Admin UI 会话权限集合。`*` 表示全部权限且是默认值。 |
-| `TELESRV_ADMIN_SCOPED_TOKENS` | 用 `;` 分隔的 `name:token:perm1,perm2` 条目 / 空 | 额外的 Admin API bearer token，每个 token 只携带指定权限，供集成服务按最小权限访问。 |
+| `TELESRV_ADMIN_UI_PERMISSIONS` | 逗号分隔列表 / `*` | 使用 `TELESRV_ADMIN_UI_PASSWORD` / `_TOKEN` 登录的 Admin UI 会话权限集合。`*` 表示全部权限且是默认值。读取托管 bot token 需要显式 `bots.token.read` 权限；token 只在命令响应中返回，不会持久化到审计结果。权限名只允许字母、数字和 `._:-`，最多 64 字符，可用 `namespace.*` 授权整个命名空间。空列表或无法解析的权限名会让启动失败。 |
+| `TELESRV_ADMIN_SCOPED_TOKENS` | 用 `;` 分隔的 `name:token:perm1,perm2` 条目 / 空 | 额外的 Admin API bearer token，每个 token 只携带指定权限，供集成服务按最小权限访问。token 不能包含 `:` 或空白字符，每个条目必须至少列出一个权限，name/token 必须唯一，且禁止复用 `TELESRV_ADMIN_API_TOKEN`。任何格式错误都会让启动失败。 |
 | `TELESRV_PUBLIC_BASE_URL` | HTTP(S) URL / `https://safelink.chat` | 客户端可见的公开链接根地址；允许 path，禁止 credentials、query、fragment。本地例：`http://127.0.0.1:2401`。 |
 | `TELESRV_BRAND_PRODUCT_NAME` | string / `SafeLink` | 母品牌显示名，系统账号、登录通知、邀请、WebAuthn、内置 bot 与客户端可见文案共用。 |
 | `TELESRV_BRAND_PRODUCT_USERNAME` | username / `safelink` | 777000 系统账号的公开 username。 |
@@ -85,7 +89,7 @@ live expanded buffer 释放后会归还进程内存，但不会返还该 frame �
 | `TELESRV_PUBLIC_APP_NAME` | string / `SafeLink` | 公开落地页产品名；trim 后非空、无控制字符、最多 64 个 Unicode 字符。 |
 | `TELESRV_SCAM_WARNING` | string / 空 | 覆盖 SCAM 用户或频道资料页中注入的警告文案；为空时使用内置英文文案。不会覆盖数据库中的原始简介，每次读取时根据标记重新附加。 |
 | `TELESRV_FAKE_WARNING` | string / 空 | 与 `TELESRV_SCAM_WARNING` 相同，用于 FAKE 用户或频道。 |
-| `TELESRV_PUBLIC_LINK_WEB_ADDR` | nullable address / 空 | username/avatar/sticker/emoji/chatlist/collectible gift 落地页及仅在 URL fragment 中携带令牌的账号申诉表单监听；空值关闭。生产应 loopback + nginx 精确反代。关闭监听时，无法生成可访问申诉链接的 `freeze_account` 操作会直接拒绝执行；`.env.example` 为开发启用 `127.0.0.1:2401`。 |
+| `TELESRV_PUBLIC_LINK_WEB_ADDR` | nullable address / 空 | username/avatar/sticker/emoji/chatlist/collectible gift 落地页、hash-only 账号申诉，以及 unique gift / channel revenue 短期令牌确认页监听；空值关闭，并使账号冻结申诉、本地礼物导出与频道收益领取 fail-closed。公开落地页保持只读，只有精确 token POST 可提交对应操作。生产应 loopback + nginx 精确反代并关闭 token 路径 access log；`.env.example` 为开发启用 `127.0.0.1:2401`。 |
 | `TELESRV_TELEGRAM_LOGIN_ENABLE` | bool / `false` | 在 `TELESRV_PUBLIC_LINK_WEB_ADDR` 上挂载自建 SafeLink Login/OIDC Provider；启用时必须同时配置该 listener 与下列全部密钥文件。 |
 | `TELESRV_TELEGRAM_LOGIN_ISSUER` | 绝对 origin URL / `TELESRV_PUBLIC_BASE_URL` | discovery 与 token 使用的精确公开 issuer；默认必须 HTTPS，禁止 path、credentials、query、fragment。开启下一项后可直接配置任意 HTTP 域名/IP。 |
 | `TELESRV_TELEGRAM_LOGIN_ALLOW_HTTP` | bool / `false` | 开启后允许任意合法 HTTP issuer、BotFather Web origin、redirect URI 和 native HTTP callback，不限制为 loopback，也不限制 IP 网段或端口。关闭时这些 Web URL 仍必须 HTTPS。 |

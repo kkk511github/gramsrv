@@ -24,7 +24,7 @@ type AuthService interface {
 	ResolveAuthKey(ctx context.Context, authKeyID [8]byte) ([8]byte, bool, error)
 	UserID(ctx context.Context, authKeyID [8]byte) (int64, bool, error)
 	PendingPasswordUserID(ctx context.Context, authKeyID [8]byte) (int64, bool, error)
-	CompletePasswordSignIn(ctx context.Context, authKeyID [8]byte) error
+	CompletePasswordSignIn(ctx context.Context, authKeyID [8]byte, expectedUserID int64) error
 	SendCode(ctx context.Context, phone string) (string, error)
 	CodeDelivery(ctx context.Context, phoneCodeHash string) (domain.AuthCodeDelivery, bool, error)
 	ResendCode(ctx context.Context, phone, phoneCodeHash string) (string, error)
@@ -291,10 +291,18 @@ type TelegramLoginService interface {
 
 // BatchViewerUsersResolver 是 UsersService 的可选能力：跨多个 viewer 一次性投影同一组 user
 // （fan-out 模板化，把 per-recipient 的 ByIDs(=ForViewer) 折叠成 O(owner) 查询）。结果按 viewer
-// 与 ByIDs(viewer, ids) 字节等价（personal photo overlay 除外，见 users.ByIDsForViewers）。
-// 未实现时 fan-out 预热静默跳过，回退逐 viewer 解析（行为不变，仅退化为旧的 O(viewer) 成本）。
+// 与 ByIDs(viewer, ids) 字节等价，包含 viewer-specific personal photo overlay。
+// 声明需要 fan-out 预热的路径必须具备该能力；缺失或失败时在线 fan-out fail-closed，
+// 不得在同一请求里改走逐 recipient 查询。
 type BatchViewerUsersResolver interface {
 	ByIDsForViewers(ctx context.Context, viewerUserIDs []int64, userIDs []int64) (map[int64][]domain.User, error)
+}
+
+// SparseBatchViewerUsersResolver projects only the explicitly supplied
+// viewer->user edges. Local Durable Outbox uses this instead of widening one
+// claim into viewers x union(users).
+type SparseBatchViewerUsersResolver interface {
+	ByIDsForViewerUserIDs(ctx context.Context, userIDsByViewer map[int64][]int64) (map[int64][]domain.User, error)
 }
 
 // BotsService 抽象 bot 元数据查询与管理（bots.* RPC + userFull.bot_info hydrate）。
@@ -413,6 +421,7 @@ type AccountService interface {
 	GetPasswordSettings(ctx context.Context, userID int64, check domain.PasswordCheck) (domain.PrivatePasswordSettings, error)
 	UpdatePasswordSettings(ctx context.Context, userID int64, check domain.PasswordCheck, input domain.PasswordInputSettings) error
 	CheckPassword(ctx context.Context, userID int64, check domain.PasswordCheck) error
+	RevenueWithdrawalPasswordState(ctx context.Context, userID int64) (domain.RevenueWithdrawalPasswordState, error)
 	RequestPasswordRecovery(ctx context.Context, userID int64) (string, error)
 	CheckRecoveryPassword(ctx context.Context, userID int64, code string) error
 	RecoverPassword(ctx context.Context, userID int64, code string, input *domain.PasswordInputSettings) error
