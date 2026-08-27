@@ -145,6 +145,18 @@ try {
     Pop-Location
 }
 
+if ([string]::IsNullOrWhiteSpace($Database)) {
+    switch ($branch) {
+        "main" { $Database = "telesrv_main" }
+        "v2" { $Database = "telesrv_v2" }
+        default {
+            Add-Failure "branch '$branch' has no implicit local PostgreSQL database; pass -Database"
+            $Database = "telesrv"
+        }
+    }
+}
+Write-Host "database=$Database"
+
 Write-Step "Process and Port"
 $listeners = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
 if ($listeners.Count -eq 0) {

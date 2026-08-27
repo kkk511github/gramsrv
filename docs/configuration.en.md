@@ -284,12 +284,14 @@ parties. Start or restart `slerv`, then verify the public endpoints:
 curl.exe http://192.0.2.25:2401/.well-known/openid-configuration
 curl.exe http://192.0.2.25:2401/.well-known/jwks.json
 curl.exe -I http://192.0.2.25:2401/js/telegram-login.js
+curl.exe -I 'http://192.0.2.25:2401/js/telegram-widget.js?23'
 ```
 
 The discovery `issuer` must equal the configured value, and its `authorization_endpoint`,
 `token_endpoint`, and `jwks_uri` must be reachable by the relying party. A reverse proxy must pass
 through `/.well-known/openid-configuration`, `/.well-known/jwks.json`, `/auth`, `/auth/status`,
-`/token`, `/crossapp`, `/inapp`, `/telegram-login.js`, and `/js/telegram-login.js` unchanged.
+`/token`, `/crossapp`, `/inapp`, `/telegram-login.js`, `/js/telegram-login.js`,
+`/telegram-widget.js`, `/js/telegram-widget.js`, and `POST /telegram-widget/resolve` unchanged.
 
 #### 3. Create an OIDC Client with the local `@BotFather`
 
@@ -352,6 +354,37 @@ The standard flow is Authorization Code with PKCE S256:
 Supported scopes are `openid`, `profile`, `phone`, and `telegram:bot_access`. The provider does not
 currently expose UserInfo, refresh tokens, or an introspection endpoint. Browser applications may
 load `<issuer>/js/telegram-login.js` for the local JS SDK. A Client Secret must remain server-side.
+
+For an existing frontend that uses Telegram's attribute-based Login Widget, replace only the widget
+script source; do not use `https://telegram.org/js/telegram-widget.js` for a bot that exists only in
+telesrv:
+
+```html
+<script async src="https://<telesrv-issuer>/js/telegram-widget.js?23"
+  data-telegram-login="BotName"
+  data-size="large"
+  data-radius="10"
+  data-request-access="write"
+  data-lang="en"
+  data-onauth="onTelegramAuth(result)"></script>
+<script>
+  function onTelegramAuth(result) {
+    // telesrv SDK result: { id_token, user }, or { error }
+  }
+</script>
+```
+
+`data-client-id="<numeric bot user id>"` is preferred when supplied. With only
+`data-telegram-login`, the shim resolves the current local bot username only if its Login client is
+enabled and the browser's exact Origin is registered for that bot. `data-size` and `data-radius`
+style the simple local button, `data-lang` is forwarded to the Login SDK, and
+`data-request-access="write"` requests `openid profile telegram:bot_access`; without it the shim
+requests `openid profile`. The `data-onauth` callback receives the existing telesrv SDK result
+`{id_token, user}` rather than a fabricated official-widget payload.
+
+Mini Apps are a separate surface and must continue to load the official
+`https://telegram.org/js/telegram-web-app.js`. The telesrv `telegram-widget.js` shim does not replace
+the Mini App script or alter Mini App behavior.
 
 #### 5. Verify the complete path with the Bedolaga demo
 
@@ -538,7 +571,7 @@ The following fallback keys are accepted from the **process environment only**. 
 | Setting | Type / code default | Description and constraints |
 |---|---|---|
 | `TELESRV_OUTBOX_WORKERS` | int / `4` | Concurrent outbox workers. Stable logical sharding preserves per-user pts order. |
-| `TELESRV_OUTBOX_BATCH` | int / `100` | Maximum rows claimed per poll. Larger batches improve throughput but increase DB/push bursts. |
+| `TELESRV_OUTBOX_BATCH` | int / `10` | Maximum rows claimed per poll. The default bounds simultaneous user-lane fences during completion and avoids cross-user lock convoys. |
 | `TELESRV_OUTBOX_INTERVAL` | duration / `200ms` | Delay between outbox claims. |
 | `TELESRV_OUTBOX_LEASE_TIMEOUT` | duration / `30s` | Time before a `dispatching` row can be reclaimed. Must exceed worst-case batch delivery time. |
 | `TELESRV_OUTBOX_POISON_RETENTION` | duration / `1m` | Diagnostic retention for terminal failed delivery heads; durable update events remain recoverable through difference. |

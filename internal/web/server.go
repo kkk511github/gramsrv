@@ -236,6 +236,9 @@ func newHandler(cfg Config, logger *zap.Logger) (http.Handler, error) {
 		mux.Handle("POST /token", cfg.TelegramLogin)
 		mux.Handle("GET /telegram-login.js", cfg.TelegramLogin)
 		mux.Handle("GET /js/telegram-login.js", cfg.TelegramLogin)
+		mux.Handle("GET /telegram-widget.js", cfg.TelegramLogin)
+		mux.Handle("GET /js/telegram-widget.js", cfg.TelegramLogin)
+		mux.Handle("POST /telegram-widget/resolve", cfg.TelegramLogin)
 	}
 	mux.HandleFunc("GET /c/{channelID}/{messageID}", h.privateMessage)
 	mux.HandleFunc("GET /call/{slug}", h.call)

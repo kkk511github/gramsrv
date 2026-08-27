@@ -752,8 +752,8 @@ func TestLoadProductionBackpressureDefaults(t *testing.T) {
 	if cfg.OutboxWorkers != 4 {
 		t.Fatalf("OutboxWorkers = %d, want 4", cfg.OutboxWorkers)
 	}
-	if cfg.OutboxBatch != 100 {
-		t.Fatalf("OutboxBatch = %d, want 100", cfg.OutboxBatch)
+	if cfg.OutboxBatch != 10 {
+		t.Fatalf("OutboxBatch = %d, want 10", cfg.OutboxBatch)
 	}
 	if cfg.OutboxInterval != 200*time.Millisecond {
 		t.Fatalf("OutboxInterval = %v, want 200ms", cfg.OutboxInterval)

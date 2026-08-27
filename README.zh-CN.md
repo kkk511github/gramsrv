@@ -6,8 +6,8 @@
 
 协议栈基于已发布的
 [`github.com/iamxvbaba/td`](https://github.com/iamxvbaba/td) module
-（`v1.1.0`），使用 canonical Layer 228 schema，并通过 sparse `tlprofile`
-提供 exact Layer 225-228 compatibility profiles。
+（`v1.3.1`），使用 canonical Layer 229 schema，并通过 sparse `tlprofile`
+提供 exact Layer 225-229 compatibility profiles。
 
 如果你正在搜索 **Telegram server 实现**、**MTProto server 实现**、
 **Telegram 后端**、**Telegram clone server**、**自建 Telegram-like 聊天服务器**，
@@ -51,20 +51,20 @@ SafeLink 提供 Desktop、Android、iOS 和 [Web](https://web.safelink.chat)
 
 | 状态 | 功能 | 当前已实现 |
 |---|---|---|
-| ✅ | MTProto server 接入层 | TCP transport、RSA key exchange、auth key、加密 session、salt、ack/resend、bad message、RPC dispatch、canonical Layer 228，以及 sparse exact Layer 225-228 compatibility profiles。 |
+| ✅ | MTProto server 接入层 | TCP transport、RSA key exchange、auth key、加密 session、salt、ack/resend、bad message、RPC dispatch、canonical Layer 229，以及 sparse exact Layer 225-229 compatibility profiles。 |
 | ✅ | 登录与账号 | 开发验证码登录、sign-in、sign-up、log-out、授权设备、账号设置、SRP/password 状态、email/passkey 相关路径。 |
-| ✅ | 用户与联系人 | 用户资料、username、头像、联系人导入/搜索、block/privacy 状态、presence、last seen。 |
+| ✅ | 用户与联系人 | 用户资料、username、头像、E.164 手机身份（包括收藏 `888` 号码）、联系人导入/搜索、block/privacy 状态、presence、last seen。 |
 | ✅ | 会话与同步 | dialog list、置顶、手动未读、folders/filters、草稿、read boundary、durable updates、在线 fan-out、离线 difference 恢复。 |
 | ✅ | Chatlists 与公开链接 | 聊天文件夹分享、chatlist invite links、加入/导入流程、撤销邀请处理、公开 username 落地页，以及统一公开链接落地页。 |
-| ✅ | 私聊消息 | send、history、read receipts、edit、delete、forward、reply、富文本实体、媒体/相册消息、reactions、scheduled/TTL 相关路径。 |
+| ✅ | 私聊消息 | 批量私聊发送、history、read receipts、edit、delete、forward、reply、富文本实体、媒体/相册消息、reactions、scheduled/TTL 相关路径。 |
 | ✅ | 富文本消息 | Telegram Desktop rich text message、富文本内容转换、send/edit/scheduled 流程、dialog/history 投影，以及 memory/PostgreSQL 持久化。 |
 | ✅ | AI 输入框与 ChatBot | 输入框改写/润色、默认和自定义 tone、addstyle 预览、本地与外部 provider 链、流式 `@ChatBot` 草稿回复、Business AI 回复钩子。 |
 | ✅ | 消息翻译 | Telegram `messages.translateText`、provider-backed 批量翻译、peer 语言设置、单账号限流，以及默认不记录正文的日志策略。 |
-| ✅ | 超级群与频道 | create、join、leave、邀请链接、成员、管理员、forum topics、关联讨论组 guest 访问、history、send/edit/delete/read、reactions、公开搜索和预览。 |
+| ✅ | 超级群与频道 | create、join、leave、新成员有界欢迎消息、邀请链接、成员、管理员、forum topics、关联讨论组 guest 访问、history、send/edit/delete/read、reactions、公开搜索和预览。 |
 | ✅ | 媒体与文件 | upload、download、本地 blob 存储、照片、文档、缩略图、规范 GIFv 转换、外链媒体抓取、网页预览、地图缩略图缓存、用户/频道头像。 |
 | ✅ | Stickers 与 Reactions | sticker/reaction catalog、seed 支持、saved GIFs、recent reactions、top reactions、default reactions、reaction moderation 相关路径。 |
 | ✅ | Gifts 与 Stars | 动态 star gift catalog、后台导入、收藏品/唯一礼物升级流程、预付升级跟踪，以及本地 stars ledger 基础。 |
-| ✅ | Stars 购买 Premium | 内置 `@premiumbot`、Layer 228 自购/赠送 invoice、原子 Stars 结算、到期 entitlement、退款，以及 Bot API `giftPremiumSubscription`。详见 [docs/premium-stars.md](docs/premium-stars.md)。 |
+| ✅ | Stars 购买 Premium | 内置 `@premiumbot`、Layer 229 自购/赠送 invoice、原子 Stars 结算、到期 entitlement、退款，以及 Bot API `giftPremiumSubscription`。详见 [docs/premium-stars.md](docs/premium-stars.md)。 |
 | ✅ | Bots 与 Mini Apps | bot 服务基础、callbacks、inline helpers、webview/mini-app 路径、适配 `python-telegram-bot` 等库的最小 Bot API gateway、持久化 `getUpdates` 投递队列和 demo 工具。 |
 | ✅ | 通话与直播 | 私聊通话信令基础、group call 状态、RTMP live stream、定时视频通话、频道 `join_as` 身份、SFU/TURN building blocks、liveness 与 expiry worker。 |
 | ✅ | 管理与运维 | Admin API/UI backend、PostgreSQL migrations、Redis 易失态、retention workers、pprof/debug hooks、load-test helpers。 |
@@ -388,7 +388,7 @@ TELESRV_PUBLIC_APP_NAME=YourApp
 
 - Telegram Desktop commit：`9caf32dffc90ddd9bb08ad5777b865f729fa167b`
 - Canonical TL layer：228
-- Exact compatibility profiles：Layer 225-228
+- Exact compatibility profiles：Layer 225-229
 - 本地 DC：`127.0.0.1:2398`，DC id `2`
 
 等 `gramsrv` 生成 `data/server_rsa.pem` 后，导出匹配的公钥：
