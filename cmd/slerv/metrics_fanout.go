@@ -124,3 +124,23 @@ func (m *runtimeMetricsFanout) OutboxFailed(err error) {
 	m.runtime.OutboxFailed(err)
 	m.operations.OutboxFailed(err)
 }
+
+func (m *runtimeMetricsFanout) PresenceLastSeenBatch(count int, d time.Duration, err error) {
+	m.runtime.PresenceLastSeenBatch(count, d, err)
+}
+
+func (m *runtimeMetricsFanout) PresenceLastSeenSubmitted() {
+	m.runtime.PresenceLastSeenSubmitted()
+}
+
+func (m *runtimeMetricsFanout) PresenceLastSeenPending(delta int) {
+	m.runtime.PresenceLastSeenPending(delta)
+}
+
+func (m *runtimeMetricsFanout) PresenceLastSeenOverflow() {
+	m.runtime.PresenceLastSeenOverflow()
+}
+
+func (m *runtimeMetricsFanout) PresenceLastSeenDrainDropped(count int) {
+	m.runtime.PresenceLastSeenDrainDropped(count)
+}

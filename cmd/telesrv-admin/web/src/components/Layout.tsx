@@ -8,6 +8,7 @@ import {
   Database,
   Film,
   Gift,
+  Gavel,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -148,6 +149,7 @@ export function Shell({
           <NavLink icon={<Database size={18} />} href="/storage" route={route} navigate={navigate} title={t("layout.storage")}>{t("layout.storage")}</NavLink>
           <NavLink icon={<Gift size={18} />} href="/gifts" route={route} navigate={navigate} title={t("layout.gifts")}>{t("layout.gifts")}</NavLink>
           <NavLink icon={<Send size={18} />} href="/give-gifts" route={route} navigate={navigate} title={t("layout.giveGifts")}>{t("layout.giveGifts")}</NavLink>
+          <NavLink icon={<Gavel size={18} />} href="/auctions" route={route} navigate={navigate} title={t("layout.auctions")}>{t("layout.auctions")}</NavLink>
           <NavLink icon={<Sticker size={18} />} href="/stickers" route={route} navigate={navigate} title={t("layout.stickers")}>{t("layout.stickers")}</NavLink>
           <NavLink icon={<Smile size={18} />} href="/emoji" route={route} navigate={navigate} title={t("layout.emoji")}>{t("layout.emoji")}</NavLink>
           <NavLink icon={<Film size={18} />} href="/gif-catalog" route={route} navigate={navigate} title={t("layout.gifCatalog")}>{t("layout.gifCatalog")}</NavLink>

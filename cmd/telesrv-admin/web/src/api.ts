@@ -35,6 +35,7 @@ import type {
   OverviewResponse,
   RuntimeStatusResponse,
   PremiumPlansResponse,
+  StarGiftAuctionListResponse,
   StarGiftCollectiblePreview,
   StarGiftListResponse,
   StickerSetListResponse,
@@ -237,6 +238,7 @@ export const api = {
       body: JSON.stringify(payload)
     }),
 	gifts: () => request<StarGiftListResponse>("/api/gifts"),
+	auctions: () => request<StarGiftAuctionListResponse>("/api/auctions"),
 	officialGifts: () => request<OfficialStarGiftListResponse>("/api/official-gifts"),
 	officialGiftAnimation: (id: string) => request<Record<string, unknown>>(`/api/official-gifts/${encodeURIComponent(id)}/animation`),
 	giftAnimation: (id: string) => request<Record<string, unknown>>(`/api/gifts/${encodeURIComponent(id)}/animation`),
