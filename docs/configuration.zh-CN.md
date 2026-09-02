@@ -49,7 +49,8 @@
 | `TELESRV_MTPROTO_INBOUND_FRAME_GLOBAL_MAX_BYTES` | int64 bytes / `536870912` | transport wire、最大解密明文以及每个 live outer/nested gzip 输出的进程级在途预算，均在对应 payload 分配前预留。 |
 | `TELESRV_MTPROTO_OUTBOUND_QUEUE_SIZE` | int / `128` | 单连接普通 outbound mailbox 容量。 |
 | `TELESRV_MTPROTO_OUTBOUND_CONTROL_QUEUE_SIZE` | int / `32` | 单连接控制消息 mailbox 容量。 |
-| `TELESRV_MTPROTO_OUTBOUND_TRACKED_GLOBAL_MAX_BYTES` | int64 bytes / `536870912` | 所有逻辑 session 未 ACK 出站 body 的唯一全局预算。物理连接重连复用同一份 `msg_id/seq_no/body`；ACK、destroy 或离线 6 分钟回收时释放，不再另建 RPC cache/spool 副本。 |
+| `TELESRV_MTPROTO_OUTBOUND_TRACKED_GLOBAL_MAX_BYTES` | int64 bytes / `536870912` | ordinary exact body 的进程级 hard cap，不是文件下载流控器。不可变 `upload.getFile` 首写后只按 descriptor 实际 retained charge 计入；文件 logical bytes 由单 session ACK window 控制。 |
+| `TELESRV_MTPROTO_OUTBOUND_CRITICAL_GLOBAL_MAX_BYTES` | int64 bytes / `67108864` | bootstrap/convergence RPC result 的独立 retained reserve；文件 bulk 不能借用，避免 `auth.bindTempAuthKey`、`help.getConfig`、`users.getUsers` 和 difference/state 被下载积压阻断。 |
 | `TELESRV_MTPROTO_OUTBOUND_WRITE_GLOBAL_MAX_BYTES` | int64 bytes / `536870912` | 并发加密 wire/codec/obfuscation scratch 的全局预算。 |
 
 nested gzip admission 不新增环境变量。代码硬限制为：每个
@@ -422,9 +423,9 @@ active key。不要手工编辑 manifest 或 PEM，不要在各实例上分别�
 
 | 参数 | 类型 / 代码默认值 | 说明与约束 |
 |---|---|---|
-| `TELESRV_POSTGRES_DSN` | secret DSN / `postgres://safelink:safelink@127.0.0.1:5432/safelink?sslmode=disable` | 主业务持久库；生产必须替换开发凭证与 TLS 策略。 |
-| `TELESRV_POSTGRES_MAX_CONNS` | int / `50` | pgxpool 最大连接数；`<=0` 使用 pgx 默认值，该默认通常不足以覆盖生产 outbox/RPC 并发。 |
-| `TELESRV_POSTGRES_MIN_CONNS` | int / `16` | pgxpool 预热最小连接数。 |
+| `TELESRV_POSTGRES_DSN` | secret DSN / `postgres://safelink:safelink@127.0.0.1:5432/safelink?sslmode=disable` | SafeLink 主业务持久库；生产必须替换开发凭证与 TLS 策略。 |
+| `TELESRV_POSTGRES_MAX_CONNS` | int / `50` | 单个 pgxpool 最大连接数；`<=0` 使用 pgx 默认值。实际新建 backend 还受同一 PostgreSQL 实例的 server-wide advisory admission 限制，不是各进程可相加的静态预算。 |
+| `TELESRV_POSTGRES_MIN_CONNS` | int / `16` | pgxpool 预热最小连接数；minimum 保留，超过 minimum 的 burst connection 在 5 秒 idle 后弹性归还全局 admission slot。 |
 | `TELESRV_REDIS_ADDR` | address / `127.0.0.1:6399` | 验证码、限流、共享更新/缓存易失态使用的 Redis。 |
 | `TELESRV_REDIS_PASSWORD` | secret string / 空 | Redis 密码。 |
 | `TELESRV_REDIS_DB` | int / `0` | Redis 逻辑库编号。 |

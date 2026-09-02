@@ -6,7 +6,7 @@
 
 协议栈基于已发布的
 [`github.com/iamxvbaba/td`](https://github.com/iamxvbaba/td) module
-（`v1.3.1`），使用 canonical Layer 229 schema，并通过 sparse `tlprofile`
+（`v1.3.3`），使用 canonical Layer 229 schema，并通过 sparse `tlprofile`
 提供 exact Layer 225-229 compatibility profiles。
 
 如果你正在搜索 **Telegram server 实现**、**MTProto server 实现**、
@@ -79,6 +79,10 @@ SafeLink 提供 Desktop、Android、iOS 和 [Web](https://web.safelink.chat)
 - Go 1.25 或更新版本
 - Docker Desktop 或带 Compose 的 Docker Engine
 - OpenSSL，如果要编译匹配的 Telegram Desktop 客户端
+
+本地隔离的 Docker 部署可在 Linux/macOS 执行
+`./scripts/start-docker.sh`，Windows 执行 `.\scripts\start-docker.ps1`。脚本会生成
+独立凭证并启动完整服务栈；验证本地源码修改时，再使用脚本说明里的本地构建参数。
 
 启动 PostgreSQL 和 Redis：
 

@@ -82,12 +82,12 @@ type Conn struct {
 	key              crypto.AuthKey
 	remoteIP         string
 
-	outbound        chan outboundOp
-	outboundControl chan outboundOp
+	outbound        chan *outboundOp
+	outboundControl chan *outboundOp
 	// Critical RPC results (session/difference convergence) and large bulk
 	// responses have independent bounded lanes. The actor remains the sole writer.
-	outboundCritical chan outboundOp
-	outboundBulk     chan outboundOp
+	outboundCritical chan *outboundOp
+	outboundBulk     chan *outboundOp
 	outboundStop     chan struct{}
 	outboundDone     chan struct{}
 	outboundClose    sync.Once
@@ -105,10 +105,14 @@ type Conn struct {
 	// Encoded MTProto service frames and control vectors use independent headroom: pong,
 	// new_session_created, bad_msg and msgs_ack must remain admissible when the body budget is
 	// full. Content-related control frames keep this budget while pending for resend.
-	outboundControlTrackedBudget *outboundTrackedBudget
-	outboundControlBudgetOnce    sync.Once
-	outboundScratchPool          *outboundScratchPool
-	outboundScratchOnce          sync.Once
+	outboundControlTrackedBudget  *outboundTrackedBudget
+	outboundControlBudgetOnce     sync.Once
+	outboundCriticalTrackedBudget *outboundTrackedBudget
+	outboundCriticalBudgetOnce    sync.Once
+	outboundScratchPool           *outboundScratchPool
+	outboundScratchOnce           sync.Once
+	outboundOpPool                *outboundOpPool
+	outboundReplayBodyPool        *outboundReplayBodyPool
 	// outboundState outlives this physical Conn generation. A replacement
 	// physical connection for the same auth key/session reuses it.
 	outboundState *outboundState

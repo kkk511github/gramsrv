@@ -7,7 +7,7 @@ practical community server.
 
 The protocol stack is built on the published
 [`github.com/iamxvbaba/td`](https://github.com/iamxvbaba/td) module
-(`v1.3.1`), using a canonical Layer 229 schema with sparse `tlprofile`
+(`v1.3.3`), using a canonical Layer 229 schema with sparse `tlprofile`
 exact Layer 225-229 compatibility profiles.
 
 If you are looking for a **Telegram server**, **MTProto server**,
@@ -48,6 +48,28 @@ by `gramsrv`.
 | ✅ | One program startup | One Go binary prepares RSA keys, runs migrations, seeds data, opens MTProto, serves RPC handlers, dispatches updates, and starts workers. |
 | ✅ | Fully open server code | Protocol edge, domain services, storage, compatibility handlers, media, updates, admin surfaces, and experiments are all in this repository. |
 
+## Validated performance
+
+Recent optimization work has focused on bounded concurrency, durable delivery,
+and descriptor-backed file transfer. The latest successful real-client load
+tests produced the following results:
+
+| Scenario | Validated result | Server-side metrics |
+|---|---|---|
+| `main` sustained concurrency | 10,000 online sessions; 309,349 successful operations; no reconnects or fatal errors | 1.64 GB peak heap; 30,528 peak goroutines; 48/50 peak PostgreSQL connections |
+| `main` account startup | 1,000/1,000 accounts ready; 314 ms average readiness | 904.5 MB peak heap; 509 peak goroutines; 8/50 peak PostgreSQL connections |
+| `v2` private messaging | 1,000 accounts at 1,000 messages/s; 59,211/59,211 delivered live; no loss or duplication | 1.75 s end-to-end p99; durable delivery queues returned to zero |
+| `main` 2,000-member mixed-file test | 20,000/20,000 downloads; 1,226.85 MiB/s | 516.9 MB peak heap, 17.1% below the previous validated run |
+| `v2` 2,000-member mixed-file test | 20,000/20,000 downloads; 840.92 MiB/s | 552.4 MB Edge peak heap allocation; 894,928 KiB peak RSS; 14.9% lower RSS; zero PostgreSQL connection rejections |
+
+After the validation recovery windows, sessions, tracked buffers, receipts,
+delivery queues, and durable delivery state returned to zero. The file-specific
+optimizations do not change normal text-message protocol or delivery behavior.
+
+These are single-host development-environment capacity results, not production
+multi-host service-level guarantees. In particular, the 10,000-session result
+applies to `main`; higher-scale `v2` account tests remain in progress.
+
 ## Feature Checklist
 
 Everything below is an implemented server-side capability in the open-source
@@ -86,6 +108,12 @@ Requirements:
 - Go 1.25 or newer
 - Docker Desktop or Docker Engine with Compose
 - OpenSSL, if you want to build a matching Telegram Desktop client
+
+For an isolated local Docker deployment, generate private credentials and start
+the complete stack with `./scripts/start-docker.sh` on Linux/macOS or
+`.\scripts\start-docker.ps1` on Windows. Pass the build option documented by the
+script when validating local source changes instead of the published upstream
+image.
 
 Start PostgreSQL and Redis:
 

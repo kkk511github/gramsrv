@@ -28,6 +28,7 @@ import (
 	"telesrv/internal/clientaddr"
 	"telesrv/internal/observability/dbtrace"
 	"telesrv/internal/postresponse"
+	"telesrv/internal/rpcresult"
 	"telesrv/internal/store"
 )
 
@@ -41,6 +42,7 @@ type connState struct {
 	createdFloor int64
 	seen         map[int64]clientMsgRecord // 已处理的 client msg_id，用于幂等和 msgs_state_req
 	order        []int64
+	orderHead    int
 	minSeen      int64
 	maxSeen      int64
 	// maxContentMsgID/maxContentSeqNo 是已接受 content 消息的 msg_id / seq_no 高水位，
@@ -909,7 +911,7 @@ func (s *Server) publishRPCResult(
 		priority := rpcResultPriority(method, encoded)
 		encoded.priority = priority
 		if metrics, ok := s.metrics.(RPCResultMetrics); ok {
-			metrics.RPCResultPrepared(method, priority.String(), encoded.uncompressedBytes, len(encoded.body), encoded.compressed)
+			metrics.RPCResultPrepared(method, priority.String(), encoded.uncompressedBytes, encoded.wireSize(), encoded.compressed)
 		}
 		visible := encoded.compressed || priority == outboundPriorityCritical || priority == outboundPriorityBulk
 		return priority, visible
@@ -921,21 +923,26 @@ func (s *Server) publishRPCResult(
 	// re-execution hidden behind a local capacity error.
 	retainForReplay := func(encoded *encodedOutboundMessage, admissionErr error) error {
 		if s == nil || s.rpcResults == nil || c == nil || encoded == nil || reqMsgID == 0 {
+			if encoded != nil {
+				encoded.releaseBulkCredit()
+			}
 			return errors.New("rpc result receipt ledger is unavailable")
 		}
 		priority, visible := prepareEncoded(encoded)
 		if owner != nil && !owner.HandOff() {
+			encoded.releaseBulkCredit()
 			return ErrRPCResultFlightInvalid
 		}
 		started := time.Now()
 		encoded.markReplayable()
+		encoded.releaseBulkCredit()
 		// Complete may expose terminal execution only after the old connection
 		// is irreversibly unable to accept another same-generation request.
 		c.fenceUndeliveredRPCResult()
 		s.completeRPCResult(c, reqMsgID, encoded, false)
 		latency := time.Since(started)
 		if metrics, ok := s.metrics.(RPCResultMetrics); ok {
-			metrics.RPCResultDelivered(method, latency, len(encoded.body), admissionErr)
+			metrics.RPCResultDelivered(method, latency, encoded.wireSize(), admissionErr)
 		}
 		resultLogLevel := zap.DebugLevel
 		if visible {
@@ -946,14 +953,15 @@ func (s *Server) publishRPCResult(
 				zap.String("method", method), zap.Int64("req_msg_id", reqMsgID),
 				zap.Int64("delivered_req_msg_id", encoded.writtenRequestID()),
 				zap.String("auth_key_id", c.authKeyHex), zap.Int64("session_id", c.sessionID),
-				zap.Int("wire_bytes", len(encoded.body)), zap.Bool("gzip", encoded.compressed),
+				zap.Int("wire_bytes", encoded.wireSize()), zap.Bool("gzip", encoded.compressed),
 				zap.String("priority", priority.String()), zap.Error(admissionErr))
 		}
 		return nil
 	}
 
-	encoded, reserved, retained, err := s.encodeRPCResultReservedWithHandoffContext(
-		prepareCtx, c, reqMsgID, result, retainForReplay,
+	methodPriority := rpcMethodPriority(method)
+	encoded, reserved, retained, err := s.encodeRPCResultReservedWithPriorityAndHandoffContext(
+		prepareCtx, c, reqMsgID, result, methodPriority, retainForReplay,
 	)
 	if retained {
 		return err
@@ -963,11 +971,14 @@ func (s *Server) publishRPCResult(
 		return err
 	}
 	if err != nil {
+		if provider, ok := result.(interface{ exactRPCBulkCredit() *outboundBulkCredit }); ok {
+			provider.exactRPCBulkCredit().release()
+		}
 		s.log.Warn("Encode RPC result failed; publishing INTERNAL",
 			zap.String("method", method), zap.Int64("req_msg_id", reqMsgID), zap.Error(err))
 		afterDelivered = nil
-		encoded, reserved, retained, err = s.encodeRPCResultReservedWithHandoffContext(
-			prepareCtx, c, reqMsgID, &mt.RPCError{ErrorCode: 500, ErrorMessage: "INTERNAL"}, retainForReplay,
+		encoded, reserved, retained, err = s.encodeRPCResultReservedWithPriorityAndHandoffContext(
+			prepareCtx, c, reqMsgID, &mt.RPCError{ErrorCode: 500, ErrorMessage: "INTERNAL"}, methodPriority, retainForReplay,
 		)
 		if retained {
 			return err
@@ -978,6 +989,9 @@ func (s *Server) publishRPCResult(
 		}
 	}
 	if encoded == nil || reserved == nil {
+		if provider, ok := result.(interface{ exactRPCBulkCredit() *outboundBulkCredit }); ok {
+			provider.exactRPCBulkCredit().release()
+		}
 		c.fenceUndeliveredRPCResult()
 		return errors.New("rpc result encode completed without tracked retention")
 	}
@@ -986,6 +1000,7 @@ func (s *Server) publishRPCResult(
 	defer reserved.release()
 	priority, _ := prepareEncoded(encoded)
 	if owner != nil && !owner.HandOff() {
+		encoded.releaseBulkCredit()
 		return ErrRPCResultFlightInvalid
 	}
 
@@ -994,7 +1009,7 @@ func (s *Server) publishRPCResult(
 		latency := time.Since(egressStarted)
 		deliveredReqMsgID := encoded.writtenRequestID()
 		if metrics, ok := s.metrics.(RPCResultMetrics); ok {
-			metrics.RPCResultDelivered(method, latency, len(encoded.body), deliveryErr)
+			metrics.RPCResultDelivered(method, latency, encoded.wireSize(), deliveryErr)
 		}
 		if deliveryErr != nil {
 			encoded.markReplayable()
@@ -1005,7 +1020,7 @@ func (s *Server) publishRPCResult(
 					zap.String("method", method), zap.Int64("req_msg_id", reqMsgID),
 					zap.Int64("delivered_req_msg_id", deliveredReqMsgID),
 					zap.String("auth_key_id", c.authKeyHex), zap.Int64("session_id", c.sessionID),
-					zap.Int("wire_bytes", len(encoded.body)), zap.Bool("gzip", encoded.compressed),
+					zap.Int("wire_bytes", encoded.wireSize()), zap.Bool("gzip", encoded.compressed),
 					zap.Error(deliveryErr))
 			}
 			return
@@ -1017,7 +1032,7 @@ func (s *Server) publishRPCResult(
 				zap.String("method", method), zap.Int64("req_msg_id", reqMsgID),
 				zap.Int64("delivered_req_msg_id", deliveredReqMsgID),
 				zap.String("auth_key_id", c.authKeyHex), zap.Int64("session_id", c.sessionID),
-				zap.Int("wire_bytes", len(encoded.body)), zap.Bool("gzip", encoded.compressed),
+				zap.Int("wire_bytes", encoded.wireSize()), zap.Bool("gzip", encoded.compressed),
 				zap.Duration("egress_latency", latency))
 		}
 	}
@@ -1031,7 +1046,7 @@ func (s *Server) publishRPCResult(
 	if checked := s.log.Check(zap.DebugLevel, "RPC result admitted"); checked != nil {
 		checked.Write(
 			zap.String("method", method), zap.Int64("req_msg_id", reqMsgID),
-			zap.Int("wire_bytes", len(encoded.body)), zap.Int("inner_bytes", encoded.uncompressedBytes),
+			zap.Int("wire_bytes", encoded.wireSize()), zap.Int("inner_bytes", encoded.uncompressedBytes),
 			zap.Bool("gzip", encoded.compressed), zap.String("priority", priority.String()))
 	}
 	return nil
@@ -1091,7 +1106,7 @@ func (s *Server) sendReplayedRPCResultWithHook(
 		c.fenceUndeliveredRPCResult()
 		return errors.New("nil replayed rpc_result")
 	}
-	attempt, reserved, err := c.cloneRPCResultForRequestReserved(encoded, encoded.reqMsgID, false)
+	attempt, reserved, err := c.cloneRPCResultForRequestReservedContext(ctx, encoded, encoded.reqMsgID, false)
 	if err != nil {
 		c.failOutboundBudget(err)
 		c.fenceUndeliveredRPCResult()
@@ -1228,6 +1243,19 @@ func (s *Server) encodeRPCResultReservedWithHandoffContext(
 	result bin.Encoder,
 	handoff rpcResultRetentionHandoff,
 ) (*encodedOutboundMessage, *outboundBodyReservation, bool, error) {
+	return s.encodeRPCResultReservedWithPriorityAndHandoffContext(
+		ctx, c, reqMsgID, result, outboundPriorityNormal, handoff,
+	)
+}
+
+func (s *Server) encodeRPCResultReservedWithPriorityAndHandoffContext(
+	ctx context.Context,
+	c *Conn,
+	reqMsgID int64,
+	result bin.Encoder,
+	priority outboundPriority,
+	handoff rpcResultRetentionHandoff,
+) (*encodedOutboundMessage, *outboundBodyReservation, bool, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -1242,7 +1270,10 @@ func (s *Server) encodeRPCResultReservedWithHandoffContext(
 		if err != nil {
 			return err
 		}
-		budget := c.outboundMessageBudget(encoded.typeID, false)
+		if priority != outboundPriorityNormal {
+			encoded.priority = priority
+		}
+		budget := c.outboundMessageBudgetForPriority(encoded.typeID, encoded.priority, false)
 		bytes := len(encoded.body)
 		if budget.reserve(bytes) {
 			reserved = &outboundBodyReservation{budget: budget, bytes: bytes}
@@ -1291,6 +1322,14 @@ func (s *Server) encodeRPCResultWithoutSlot(ctx context.Context, c *Conn, reqMsg
 			return nil, fmt.Errorf("bind exact layer rpc result: %w", err)
 		}
 	}
+	var replaySource rpcresult.ReplaySource
+	if provider, ok := result.(interface{ exactRPCReplaySource() rpcresult.ReplaySource }); ok {
+		replaySource = provider.exactRPCReplaySource()
+	}
+	var bulkCredit *outboundBulkCredit
+	if provider, ok := result.(interface{ exactRPCBulkCredit() *outboundBulkCredit }); ok {
+		bulkCredit = provider.exactRPCBulkCredit()
+	}
 	// Encode the ordinary exact/no-gzip path directly behind the rpc_result
 	// prefix. This avoids both the old generated Prepare snapshot and another
 	// full-body copy merely to prepend the 12-byte envelope.
@@ -1308,9 +1347,14 @@ func (s *Server) encodeRPCResultWithoutSlot(ctx context.Context, c *Conn, reqMsg
 		return nil, fmt.Errorf("%w: body=%d limit=%d", ErrOutboundMessageTooLarge, len(innerBody)+12, maxOutboundBodyBytes)
 	}
 
-	wireInner, compressed, err := encodeAdaptiveRPCResultInner(ctx, nil, innerBody)
-	if err != nil {
-		return nil, fmt.Errorf("compress rpc result: %w", err)
+	wireInner := innerBody
+	compressed := false
+	if replaySource == nil {
+		var err error
+		wireInner, compressed, err = encodeAdaptiveRPCResultInner(ctx, nil, innerBody)
+		if err != nil {
+			return nil, fmt.Errorf("compress rpc result: %w", err)
+		}
 	}
 	if len(wireInner) > maxOutboundBodyBytes-12 {
 		return nil, fmt.Errorf("%w: body=%d limit=%d", ErrOutboundMessageTooLarge, len(wireInner)+12, maxOutboundBodyBytes)
@@ -1327,6 +1371,7 @@ func (s *Server) encodeRPCResultWithoutSlot(ctx context.Context, c *Conn, reqMsg
 		typeID: proto.ResultTypeID, body: body, reqMsgID: reqMsgID,
 		compressed: compressed, uncompressedBytes: len(innerBody), delivery: newRPCResultDelivery(0),
 		layer: layerBinding, layerInvariant: layerInvariantResult,
+		replaySource: replaySource, innerDigest: sha256.Sum256(innerBody), logicalBytes: len(body), bulkCredit: bulkCredit,
 	}, nil
 }
 
@@ -1625,18 +1670,23 @@ func (cs *connState) trackInbound(msgID int64, seqNo int32, content, service boo
 			cs.maxContentSeqNo = seqNo
 		}
 	}
-	cs.order = append(cs.order, msgID)
+	var evicted int64
+	if len(cs.order) < maxTrackedClientMsgIDs {
+		cs.order = append(cs.order, msgID)
+	} else {
+		evicted = cs.order[cs.orderHead]
+		cs.order[cs.orderHead] = msgID
+		cs.orderHead = (cs.orderHead + 1) % len(cs.order)
+	}
 	if msgID < cs.minSeen {
 		cs.minSeen = msgID
 	}
 	if msgID > cs.maxSeen {
 		cs.maxSeen = msgID
 	}
-	if len(cs.order) > maxTrackedClientMsgIDs {
-		oldest := cs.order[0]
-		cs.order = cs.order[1:]
-		delete(cs.seen, oldest)
-		if oldest == cs.minSeen || oldest == cs.maxSeen {
+	if evicted != 0 {
+		delete(cs.seen, evicted)
+		if evicted == cs.minSeen || evicted == cs.maxSeen {
 			cs.recomputeRange()
 		}
 	}

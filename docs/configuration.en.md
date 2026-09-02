@@ -49,7 +49,8 @@ This document describes every setting loaded by `internal/config`. Defaults and 
 | `TELESRV_MTPROTO_INBOUND_FRAME_GLOBAL_MAX_BYTES` | int64 bytes / `536870912` | Process-wide reservation for transport wire bytes, maximum decrypted plaintext, and every live outer/nested gzip expansion, acquired before the corresponding payload allocation. |
 | `TELESRV_MTPROTO_OUTBOUND_QUEUE_SIZE` | int / `128` | Per-connection normal outbound mailbox capacity. |
 | `TELESRV_MTPROTO_OUTBOUND_CONTROL_QUEUE_SIZE` | int / `32` | Per-connection control-message mailbox capacity. |
-| `TELESRV_MTPROTO_OUTBOUND_TRACKED_GLOBAL_MAX_BYTES` | int64 bytes / `536870912` | Sole global budget for unacknowledged logical-session bodies. Reconnects reuse the same `msg_id/seq_no/body`; ACK, destroy, or six minutes offline releases it, with no second RPC cache/spool copy. |
+| `TELESRV_MTPROTO_OUTBOUND_TRACKED_GLOBAL_MAX_BYTES` | int64 bytes / `536870912` | Process-wide hard cap for retained ordinary exact bodies, not file-download flow control. Immutable `upload.getFile` frames retain only their descriptor charge after the first write; per-session ACK windows govern logical file bytes. |
+| `TELESRV_MTPROTO_OUTBOUND_CRITICAL_GLOBAL_MAX_BYTES` | int64 bytes / `67108864` | Independent retained reserve for bootstrap/convergence RPC results. File bulk cannot consume it, so `auth.bindTempAuthKey`, `help.getConfig`, `users.getUsers`, and difference/state remain admissible. |
 | `TELESRV_MTPROTO_OUTBOUND_WRITE_GLOBAL_MAX_BYTES` | int64 bytes / `536870912` | Global budget for concurrent encrypted wire/codec/obfuscation scratch. |
 
 Nested gzip admission adds no environment setting. Code-enforced ceilings are
@@ -440,9 +441,9 @@ key rings independently on different instances.
 
 | Setting | Type / code default | Description and constraints |
 |---|---|---|
-| `TELESRV_POSTGRES_DSN` | secret DSN / `postgres://safelink:safelink@127.0.0.1:5432/safelink?sslmode=disable` | Primary durable business database. Production must replace the development credentials and TLS policy. |
-| `TELESRV_POSTGRES_MAX_CONNS` | int / `50` | pgxpool maximum connections. `<=0` delegates to pgx defaults, which are usually too small for production outbox/RPC concurrency. |
-| `TELESRV_POSTGRES_MIN_CONNS` | int / `16` | pgxpool pre-warmed minimum connections. |
+| `TELESRV_POSTGRES_DSN` | secret DSN / `postgres://safelink:safelink@127.0.0.1:5432/safelink?sslmode=disable` | Primary durable SafeLink business database. Production must replace the development credentials and TLS policy. |
+| `TELESRV_POSTGRES_MAX_CONNS` | int / `50` | Maximum connections for one pgxpool. `<=0` delegates to pgx defaults. New backends are also fenced by server-wide advisory admission on the PostgreSQL instance, so per-process maxima are not additive static budgets. |
+| `TELESRV_POSTGRES_MIN_CONNS` | int / `16` | pgxpool pre-warmed minimum. The minimum is retained; burst connections above it return their global admission slots after five idle seconds. |
 | `TELESRV_REDIS_ADDR` | address / `127.0.0.1:6399` | Redis used for volatile codes, limits, and shared update/cache state. |
 | `TELESRV_REDIS_PASSWORD` | secret string / empty | Redis password. |
 | `TELESRV_REDIS_DB` | int / `0` | Redis logical database number. |
