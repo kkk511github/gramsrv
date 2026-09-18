@@ -2,10 +2,10 @@
 
 -- main and v2 intentionally have independent migration histories. Keep them
 -- in separate PostgreSQL databases even when they share the local container.
-SELECT 'CREATE DATABASE telesrv_main OWNER telesrv'
-WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'telesrv_main')
+SELECT 'CREATE DATABASE safelink_main OWNER safelink'
+WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'safelink_main')
 \gexec
 
-SELECT 'CREATE DATABASE telesrv_v2 OWNER telesrv'
-WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'telesrv_v2')
+SELECT 'CREATE DATABASE safelink_v2 OWNER safelink'
+WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'safelink_v2')
 \gexec

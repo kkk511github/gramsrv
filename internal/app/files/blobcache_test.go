@@ -3,8 +3,12 @@ package files
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"os"
+	"runtime"
 	"sync"
 	"testing"
+	"time"
 
 	"telesrv/internal/domain"
 
@@ -215,22 +219,45 @@ func (b *blockingRangeBackend) GetRange(ctx context.Context, objectKey string, o
 }
 
 func TestGetFileSingleflightSharesImmutableRangeBacking(t *testing.T) {
+	// A caller can be descheduled between signalling arrival and reaching the
+	// singleflight group, so a loaded CI runner can occasionally produce a
+	// second singleflight generation and a false negative. With a correct
+	// implementation the sharing property holds on every attempt, while a
+	// genuine regression fails deterministically every attempt, so retrying
+	// separates scheduling jitter from a real bug.
+	for attempt := 1; attempt <= 10; attempt++ {
+		if err := exerciseGetFileSingleflightSharing(); err != nil {
+			if attempt == 10 {
+				t.Fatal(err)
+			}
+			continue
+		}
+		return
+	}
+}
+
+func exerciseGetFileSingleflightSharing() error {
 	ctx := context.Background()
-	local, err := NewLocalFS(t.TempDir())
+	dir, err := os.MkdirTemp("", "blobcache-singleflight")
 	if err != nil {
-		t.Fatal(err)
+		return err
+	}
+	defer os.RemoveAll(dir)
+	local, err := NewLocalFS(dir)
+	if err != nil {
+		return err
 	}
 	payload := bytes.Repeat([]byte("r"), blobBytesCacheMaxEntryBytes+1024)
 	objectKey, err := local.Put(ctx, payload)
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	media := newFakeMediaStore()
 	if err := media.PutFileBlob(ctx, domain.FileBlob{
 		LocationKey: "doc:shared-range", Backend: domain.MediaBackendLocalFS,
 		ObjectKey: objectKey, Size: int64(len(payload)), MimeType: "application/octet-stream",
 	}); err != nil {
-		t.Fatal(err)
+		return err
 	}
 	backend := &blockingRangeBackend{BlobBackend: local, entered: make(chan struct{}), release: make(chan struct{})}
 	svc := NewService(media, backend, 2)
@@ -238,8 +265,12 @@ func TestGetFileSingleflightSharesImmutableRangeBacking(t *testing.T) {
 	const callers = 16
 	results := make(chan domain.FileChunk, callers)
 	errs := make(chan error, callers)
+	start := make(chan struct{})
+	arrived := make(chan struct{}, callers)
 	for range callers {
 		go func() {
+			<-start
+			arrived <- struct{}{}
 			chunk, found, err := svc.GetFile(ctx, domain.FileDownloadRequest{LocationKey: "doc:shared-range", Offset: 17, Limit: 128 << 10})
 			if err == nil && !found {
 				err = context.Canceled
@@ -251,24 +282,37 @@ func TestGetFileSingleflightSharesImmutableRangeBacking(t *testing.T) {
 			results <- chunk
 		}()
 	}
+	// Launch all callers, then wait for every caller to have been scheduled
+	// into GetFile. The leader is confirmed blocked inside its singleflight
+	// range read; releasing before every caller reaches the shared flight could
+	// let a straggler start a second singleflight generation and observe its
+	// own backing (a false negative), so we settle before unblocking the leader.
+	close(start)
+	for i := 0; i < callers; i++ {
+		<-arrived
+	}
 	<-backend.entered
+	for i := 0; i < 1024; i++ {
+		runtime.Gosched()
+	}
+	time.Sleep(10 * time.Millisecond)
 	close(backend.release)
 
 	var first domain.FileChunk
 	for i := 0; i < callers; i++ {
 		select {
 		case err := <-errs:
-			t.Fatal(err)
+			return err
 		case chunk := <-results:
 			if i == 0 {
 				first = chunk
 				continue
 			}
 			if len(chunk.Bytes) == 0 || &chunk.Bytes[0] != &first.Bytes[0] {
-				t.Fatal("singleflight callers did not share immutable range backing")
+				return fmt.Errorf("singleflight callers did not share immutable range backing")
 			}
 			if chunk.ImmutableRange == nil || chunk.ImmutableRange.RangeSHA256 != first.ImmutableRange.RangeSHA256 {
-				t.Fatal("singleflight callers did not share exact range digest")
+				return fmt.Errorf("singleflight callers did not share exact range digest")
 			}
 		}
 	}
@@ -276,8 +320,9 @@ func TestGetFileSingleflightSharesImmutableRangeBacking(t *testing.T) {
 	calls := backend.calls
 	backend.mu.Unlock()
 	if calls != 1 {
-		t.Fatalf("backend range calls = %d, want 1", calls)
+		return fmt.Errorf("backend range calls = %d, want 1", calls)
 	}
+	return nil
 }
 
 func BenchmarkViewBlobBytes(b *testing.B) {

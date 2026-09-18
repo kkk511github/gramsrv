@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"context"
-	"telesrv/internal/clientaddr"
 	"telesrv/internal/domain"
 )
 
@@ -17,7 +16,7 @@ func (r *Router) authzFromCtx(ctx context.Context) domain.Authorization {
 		a.AppVersion = ci.AppVersion
 		a.APIID = ci.APIID
 	}
-	if ip, ok := clientaddr.IPFrom(ctx); ok {
+	if ip, ok := ClientIPFrom(ctx); ok {
 		a.IP = ip
 	}
 	return a

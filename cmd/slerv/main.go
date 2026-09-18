@@ -40,6 +40,7 @@ import (
 	"telesrv/internal/app/dialogs"
 	ephemeralapp "telesrv/internal/app/ephemeral"
 	filesapp "telesrv/internal/app/files"
+	"telesrv/internal/app/files/botavatars"
 	groupcallsapp "telesrv/internal/app/groupcalls"
 	"telesrv/internal/app/help"
 	"telesrv/internal/app/langpack"
@@ -81,6 +82,7 @@ import (
 	pushpkg "telesrv/internal/push"
 	"telesrv/internal/rpc"
 	"telesrv/internal/seed/catalog"
+	freezeseed "telesrv/internal/seed/freeze"
 	"telesrv/internal/sfu"
 	storepkg "telesrv/internal/store"
 	"telesrv/internal/store/memory"
@@ -998,6 +1000,23 @@ func run(logger *zap.Logger) error {
 			zap.Int("blobs", stats.Blobs),
 		)
 	}
+	if stats, err := filesService.SeedFreezeEmoji(ctx); err != nil {
+		return fmt.Errorf("seed freeze emoji: %w", err)
+	} else if stats.Imported {
+		logger.Info("内置 freeze 表情种子导入完成",
+			zap.Int64("document_id", freezeseed.DocumentID),
+			zap.Int64("set_id", freezeseed.SetID),
+		)
+	}
+	if stats, err := filesService.WarmCaches(ctx); err != nil {
+		logger.Warn("媒体资源缓存预热失败", zap.Error(err))
+	} else if stats.StickerSets > 0 || stats.Documents > 0 || stats.Blobs > 0 {
+		logger.Info("媒体资源缓存预热完成",
+			zap.Int("sticker_sets", stats.StickerSets),
+			zap.Int("documents", stats.Documents),
+			zap.Int("blobs", stats.Blobs),
+		)
+	}
 	// 默认 emoji status 系统集：从 animated_emoji 精选合成（幂等，已 seed 的存量
 	// 库重启后自动补上）；缺失时 premium 用户的 status 选择器会是空的。
 	if count, created, err := filesService.EnsureDefaultEmojiStatusSet(ctx); err != nil {
@@ -1265,6 +1284,12 @@ func run(logger *zap.Logger) error {
 	premiumStore := postgres.NewPremiumStore(pool, messageStore, cfg.PremiumBotUserID)
 	if err := premiumStore.EnsurePremiumBotIdentity(ctx, cfg.PremiumBotUsername); err != nil {
 		return fmt.Errorf("configure Premium bot: %w", err)
+	}
+	// Assign embedded avatars to the built-in system account and bots (idempotent).
+	// Runs after EnsurePremiumBotIdentity so the configured Premium bot ID exists
+	// before the avatar is attached to it.
+	if err := botavatars.Seed(ctx, filesService, time.Now().Unix()); err != nil {
+		return fmt.Errorf("seed bot avatars: %w", err)
 	}
 	premiumService := premiumapp.NewService(premiumStore, premiumapp.Config{
 		BotUserID: cfg.PremiumBotUserID,
@@ -1544,6 +1569,7 @@ func run(logger *zap.Logger) error {
 		UpdatePublicURL:          cfg.UpdatePublicURL,
 		PublicAppScheme:          cfg.PublicAppScheme,
 		PublicAppLinkBase:        cfg.PublicAppLinkBase,
+		AllowDevPayments:         cfg.AllowDevPayments,
 		// PFS temp→perm 解析缓存：显式撤销会清缓存并断开连接，re-bind 即时失效；
 		// 配置 TTL 只承担跨进程/异常失效兜底，避免大连接数周期性打满 PG。
 		TempKeyResolveCacheTTL:         cfg.TempKeyResolveCacheTTL,
@@ -1653,6 +1679,7 @@ func run(logger *zap.Logger) error {
 		Auth:                   authService,
 		Revoker:                router,
 		Users:                  usersService,
+		UserLookup:             userStore,
 		Account:                accountService,
 		Photos:                 filesService,
 		Stars:                  starsService,
@@ -1852,6 +1879,7 @@ func run(logger *zap.Logger) error {
 		AppLinkBase:        cfg.PublicAppLinkBase,
 		WebBaseURL:         cfg.PublicWebBaseURL,
 		AppName:            cfg.PublicAppName,
+		AllowDevPayments:   cfg.AllowDevPayments,
 		StickerSets:        filesService,
 		Users:              userStore,
 		Channels:           channelStore,

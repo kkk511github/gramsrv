@@ -8,7 +8,9 @@ import (
 
 	"github.com/iamxvbaba/td/tg"
 
+	"telesrv/internal/clientaddr"
 	"telesrv/internal/domain"
+	"telesrv/internal/transport"
 )
 
 type ctxKey int
@@ -97,6 +99,23 @@ func WithClientInfo(ctx context.Context, info ClientInfo) context.Context {
 func ClientInfoFrom(ctx context.Context) (ClientInfo, bool) {
 	v, ok := ctx.Value(clientInfoKey).(ClientInfo)
 	return v, ok
+}
+
+// WithClientIP 在 ctx 注入客户端连接的对端 IP（来自 MTProto 连接的 RemoteAddr）。
+// 仅在需要时（绑定设备授权）由 edge 写入，其余 RPC 不依赖它。edge 通过中立
+// internal/transport 载体写入，这里仅做别名以便 rpc 业务层读取，避免反向依赖。
+func WithClientIP(ctx context.Context, ip string) context.Context {
+	ctx = transport.WithClientIP(ctx, ip)
+	return clientaddr.WithIP(ctx, ip)
+}
+
+// ClientIPFrom 返回 ctx 中的客户端对端 IP，未设置时 ok=false。新链路使用
+// transport 元数据，旧的连接与测试上下文仍通过 clientaddr 传递，迁移期间兼容两者。
+func ClientIPFrom(ctx context.Context) (string, bool) {
+	if ip, ok := transport.ClientIPFrom(ctx); ok {
+		return ip, true
+	}
+	return clientaddr.IPFrom(ctx)
 }
 
 func clientSessionMetadataFromContext(ctx context.Context) domain.ClientSessionMetadata {

@@ -46,6 +46,9 @@ type Config struct {
 	GiftWithdrawals    StarGiftWithdrawalResolver
 	RevenueWithdrawals ChannelRevenueWithdrawalResolver
 	ModerationAppeals  ModerationAppealResolver
+	// AllowDevPayments registers the local test checkout only when explicitly
+	// enabled. Production must keep this false.
+	AllowDevPayments bool
 	// TelegramLogin is the optional OIDC/Login HTTP adapter. Public Web owns
 	// the listener so discovery/auth/token and public links share the exact
 	// externally registered origin behind one reverse proxy.
@@ -190,13 +193,16 @@ func newHandler(cfg Config, logger *zap.Logger) (http.Handler, error) {
 		appLinks:           appLinks,
 		webBaseURL:         cfg.WebBaseURL,
 		appName:            cfg.AppName,
+		allowDevPayments:   cfg.AllowDevPayments,
 		logger:             logger,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", h.healthz)
 	mux.HandleFunc("GET /assets/safelink-home-devices.png", h.homeDevicesAsset)
 	mux.HandleFunc("GET /assets/safelink-mark.png", h.homeMarkAsset)
-	mux.HandleFunc("GET /payments/dev-stars", h.devStarsCheckout)
+	if cfg.AllowDevPayments {
+		mux.HandleFunc("GET /payments/dev-stars", h.devStarsCheckout)
+	}
 	mux.HandleFunc("GET /_public/avatar/{username}/{photoID}", h.publicAvatar)
 	mux.HandleFunc("GET /", h.root)
 	mux.HandleFunc("GET /faq", h.faq)
@@ -296,6 +302,7 @@ type handler struct {
 	appLinks           links.AppLinkBuilder
 	webBaseURL         string
 	appName            string
+	allowDevPayments   bool
 	logger             *zap.Logger
 }
 
@@ -335,6 +342,10 @@ proxy.postEvent('payment_form_submit', JSON.stringify({title:'SafeLink test paym
 </script></body></html>`))
 
 func (h *handler) devStarsCheckout(w http.ResponseWriter, r *http.Request) {
+	if !h.allowDevPayments {
+		http.NotFound(w, r)
+		return
+	}
 	raw := strings.TrimSpace(r.URL.Query().Get("form_id"))
 	formID, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || formID == 0 || raw != strconv.FormatInt(formID, 10) {
