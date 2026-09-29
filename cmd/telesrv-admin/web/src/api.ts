@@ -19,6 +19,9 @@ import type {
   CustomVerificationRequestListResponse,
   VerificationIconListResponse,
   EmojiListResponse,
+  EnvGroup,
+  ServerIdentity,
+  ServerStatus,
   ChannelListResponse,
   CollectibleUsernameDetail,
   CollectibleUsernameListResponse,
@@ -44,6 +47,8 @@ import type {
   StorageStatsResponse,
   StarsLedgerResponse,
   StarsTopListResponse,
+  SharedDeviceGroupListResponse,
+  UniqueStarGiftListResponse,
   VerificationApplicationDetail,
   VerificationApplicationListResponse,
   VerificationCountsResponse
@@ -51,10 +56,12 @@ import type {
 
 export class APIError extends Error {
   status: number;
+  result?: unknown;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, result?: unknown) {
     super(message);
     this.status = status;
+    this.result = result;
   }
 }
 
@@ -138,7 +145,7 @@ async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
   const data = text ? JSON.parse(text) : null;
   if (!response.ok) {
     const message = data?.error || data?.Error || data?.message || response.statusText;
-    throw new APIError(response.status, message);
+    throw new APIError(response.status, message, data);
   }
   return data as T;
 }
@@ -166,6 +173,7 @@ export const api = {
   logout: () => request<{ ok: boolean }>("/api/logout", { method: "POST", body: "{}" }),
   accounts: (params: URLSearchParams) => request<AccountListResponse>(`/api/accounts?${params.toString()}`),
   account: (id: number) => request<AccountDetail>(`/api/accounts/${id}`),
+  sharedDeviceGroups: (params: URLSearchParams) => request<SharedDeviceGroupListResponse>(`/api/accounts/shared-devices?${params.toString()}`),
   channels: (params: URLSearchParams) => request<ChannelListResponse>(`/api/channels?${params.toString()}`),
   channel: (id: number) => request<ChannelDetail>(`/api/channels/${id}`),
   bots: (params: URLSearchParams) => request<BotListResponse>(`/api/bots?${params.toString()}`),
@@ -180,6 +188,8 @@ export const api = {
     request<CollectiblePhoneListResponse>(`/api/collectible-phones?${params.toString()}`),
   collectiblePhone: (id: string) =>
     request<CollectiblePhoneDetail>(`/api/collectible-phones/${encodeURIComponent(id)}`),
+  nftGifts: (params: URLSearchParams) =>
+    request<UniqueStarGiftListResponse>(`/api/nft-gifts?${params.toString()}`),
   accountRatings: (params: URLSearchParams) =>
     request<AccountRatingListResponse>(`/api/account-ratings?${params.toString()}`),
   accountRating: (userID: string) =>
@@ -254,6 +264,7 @@ export const api = {
 	giftCollectibles: (id: string) => request<StarGiftCollectiblePreview>(`/api/gifts/${encodeURIComponent(id)}/collectibles`),
 	giftCollectibleAnimation: (giftID: string, kind: "model" | "pattern", attributeID: string) => request<Record<string, unknown>>(`/api/gifts/${encodeURIComponent(giftID)}/collectibles/${kind}/${encodeURIComponent(attributeID)}/animation`),
 	importGift: (form: FormData) => request<CommandResult>("/api/actions/import-gift", { method: "POST", body: form }),
+	importGiftPack: (form: FormData) => request<CommandResult>("/api/actions/import-gift-pack", { method: "POST", body: form }),
 	importOfficialGift: (payload: Record<string, unknown>) => request<CommandResult>("/api/actions/import-official-gift", { method: "POST", body: JSON.stringify(payload) }),
 	publishGiftCollectibles: (giftID: string, form: FormData) => request<CommandResult>(`/api/actions/publish-gift-collectibles?gift_id=${encodeURIComponent(giftID)}`, { method: "POST", body: form }),
 	gifCatalog: () => request<GifCatalogListResponse>("/api/gif-catalog"),
@@ -268,6 +279,16 @@ export const api = {
 	setChannelAvatar: (form: FormData) => request<CommandResult>("/api/actions/set-channel-avatar", { method: "POST", body: form }),
   adminUsers: () => request<AdminConsoleUserList>("/api/admin-users"),
   auditLogs: (params: URLSearchParams) => request<AuditLogListResponse>(`/api/audit-logs?${params.toString()}`),
+  // Server Settings -- identity and login-notification template overrides are
+  // saved through the generic action() below; the read side and status probes
+  // have their own GETs, and the icon upload is multipart (a base64 body would
+  // inflate a file ~33% and decodeAction's 1MiB cap would reject it before the
+  // handler ever saw it -- see serversettings.go).
+  serverIdentity: () => request<ServerIdentity>("/api/server/identity"),
+  serverEnv: () => request<EnvGroup[]>("/api/server/env"),
+  serverStatus: () => request<ServerStatus>("/api/server/status"),
+  serverIconURL: (bust = 0) => `/api/server/icon?_=${bust}`,
+  uploadServerIcon: (form: FormData) => request<CommandResult>("/api/actions/upload-server-icon", { method: "POST", body: form }),
   action: (path: string, payload: Record<string, unknown>) => request<CommandResult>(path, {
     method: "POST",
     body: JSON.stringify(payload)

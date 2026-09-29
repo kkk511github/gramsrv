@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -453,6 +454,56 @@ func TestDebitStarsDryRunExecuteAndIdempotency(t *testing.T) {
 	replay, err := svc.DebitStars(ctx, req)
 	if err != nil || !replay.AlreadyExecuted || stars.debitCalls != 1 || len(notifier.balances) != 1 {
 		t.Fatalf("replay=%+v debitCalls=%d notified=%v err=%v", replay, stars.debitCalls, notifier.balances, err)
+	}
+}
+
+func TestGrantStarsAllDryRunExecuteAndIdempotency(t *testing.T) {
+	ctx := context.Background()
+	stars := &fakeStarsService{balances: map[int64]domain.StarsBalance{
+		1001: {UserID: 1001, Balance: 1000, Granted: true},
+	}}
+	svc := NewService(Dependencies{Commands: newMemoryCommandRepo(), Stars: stars, Now: fixedNow})
+
+	dry, err := svc.GrantStarsAll(ctx, GrantStarsAllRequest{
+		CommandMeta: CommandMeta{CommandID: "dry-stars-all", Actor: "ops", Reason: "promo", DryRun: true},
+		Amount:      250,
+	})
+	if err != nil {
+		t.Fatalf("dry-run stars-all: %v", err)
+	}
+	if !dry.DryRun || dry.Details["eligible_users"] != int64(42) || stars.balances[1001].Balance != 1000 {
+		t.Fatalf("dry=%+v balances=%v, want dry-run with 42 eligible and no mutation", dry, stars.balances)
+	}
+
+	req := GrantStarsAllRequest{
+		CommandMeta: CommandMeta{CommandID: "exec-stars-all", Actor: "ops", Reason: "promo"},
+		Amount:      250,
+	}
+	exec, err := svc.GrantStarsAll(ctx, req)
+	if err != nil {
+		t.Fatalf("execute stars-all: %v", err)
+	}
+	if exec.Status != string(domain.AdminCommandCompleted) || exec.Details["users_credited"] != int64(42) {
+		t.Fatalf("exec=%+v, want completed with 42 users_credited", exec)
+	}
+	if stars.balances[1001].Balance != 1250 {
+		t.Fatalf("balance after airdrop = %d, want 1250", stars.balances[1001].Balance)
+	}
+
+	replay, err := svc.GrantStarsAll(ctx, req)
+	if err != nil || !replay.AlreadyExecuted || stars.balances[1001].Balance != 1250 {
+		t.Fatalf("replay=%+v balance=%d err=%v, want idempotent replay", replay, stars.balances[1001].Balance, err)
+	}
+}
+
+func TestGrantStarsAllRejectsInvalidAmount(t *testing.T) {
+	ctx := context.Background()
+	svc := NewService(Dependencies{Commands: newMemoryCommandRepo(), Stars: &fakeStarsService{}, Now: fixedNow})
+	if _, err := svc.GrantStarsAll(ctx, GrantStarsAllRequest{
+		CommandMeta: CommandMeta{CommandID: "bad-stars-all", Actor: "ops", Reason: "r"},
+		Amount:      0,
+	}); err == nil {
+		t.Fatalf("want error for amount <= 0")
 	}
 }
 
@@ -1262,6 +1313,25 @@ func (f *fakeStarsService) Debit(_ context.Context, userID, amount int64, reason
 	return balance, nil
 }
 
+func (f *fakeStarsService) CountStarsAllUsers(context.Context) (int64, error) {
+	return 42, nil
+}
+
+func (f *fakeStarsService) GrantStarsAll(_ context.Context, amount int64, _ string, _ string) (int64, error) {
+	if amount <= 0 {
+		return 0, domain.ErrStarsInvalidAmount
+	}
+	if f.balances == nil {
+		f.balances = map[int64]domain.StarsBalance{}
+	}
+	for id, b := range f.balances {
+		b.Balance += amount
+		b.Granted = true
+		f.balances[id] = b
+	}
+	return 42, nil
+}
+
 type fakeStarsNotifier struct {
 	balances []domain.StarsBalance
 }
@@ -1430,6 +1500,47 @@ func TestCommandIDConflictRejectsDifferentGiftBytes(t *testing.T) {
 	req.Data = []byte("two")
 	if _, err := svc.ImportStarGift(context.Background(), req); err == nil || err.Error() != "COMMAND_ID_CONFLICT" {
 		t.Fatalf("conflict err=%v", err)
+	}
+}
+
+func testGiftPackZIP(t *testing.T, asset string) []byte {
+	t.Helper()
+	var out bytes.Buffer
+	w := zip.NewWriter(&out)
+	for name, content := range map[string]string{
+		"pack.json":   `{"pack_name":"Test","gifts":[{"title":"Cake","stars":50,"convert_stars":25,"base_animation":"cake.lottie"}]}`,
+		"cake.lottie": asset,
+	} {
+		f, err := w.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return out.Bytes()
+}
+
+func TestImportGiftPackDryRunPublishAndContentBinding(t *testing.T) {
+	gifts := &fakeGiftsService{}
+	svc := NewService(Dependencies{Commands: newMemoryCommandRepo(), Gifts: gifts, Now: fixedNow})
+	req := ImportGiftPackRequest{CommandMeta: CommandMeta{CommandID: "dry-pack", Actor: "ops", Reason: "catalog", DryRun: true}, FileName: "custom.zip", Data: testGiftPackZIP(t, `{"v":"5.7"}`)}
+	preview, err := svc.ImportGiftPack(context.Background(), req)
+	if err != nil || gifts.createCalls != 0 || preview.Details["content_sha256"] == "" {
+		t.Fatalf("preview=%+v err=%v writes=%d", preview, err, gifts.createCalls)
+	}
+	req.Data = testGiftPackZIP(t, `{"v":"5.8"}`)
+	if _, err := svc.ImportGiftPack(context.Background(), req); err == nil || err.Error() != "COMMAND_ID_CONFLICT" {
+		t.Fatalf("hash binding: %v", err)
+	}
+	req.CommandMeta = CommandMeta{CommandID: "exec-pack", Actor: "ops", Reason: "catalog"}
+	result, err := svc.ImportGiftPack(context.Background(), req)
+	if err != nil || gifts.createCalls != 1 || result.Status != "completed" || gifts.lastBundle.Catalog.CommandID != "exec-pack" {
+		t.Fatalf("publish=%+v err=%v writes=%d", result, err, gifts.createCalls)
 	}
 }
 
@@ -1820,6 +1931,10 @@ type fakeGiftsService struct {
 	trustedCalls int
 	lastBundle   domain.StarGiftCatalogBundleWrite
 	lastWrite    domain.StarGiftCatalogWrite
+}
+
+func (*fakeGiftsService) CatalogAll(context.Context) ([]domain.StarGift, error) {
+	return nil, nil
 }
 
 func (f *fakeGiftsService) GiftByID(_ context.Context, id int64) (domain.StarGift, bool, error) {

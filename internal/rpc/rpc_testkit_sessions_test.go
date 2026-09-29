@@ -24,6 +24,7 @@ type captureSessions struct {
 	message            bin.Encoder
 	userMessage        bin.Encoder // 最近一次 PushToUser* 的消息（与 message 区分：message 也被 PushToSession 覆盖）
 	pushUserIDs        []int64
+	userMessages       []bin.Encoder
 	onlineUserIDs      []int64
 	channelViewers     map[int64][]int64
 	channelMembers     map[int64][]int64
@@ -81,12 +82,19 @@ func (s *captureSessions) lastUserPush() bin.Encoder {
 	return s.userMessage
 }
 
+func (s *captureSessions) userPushes() []bin.Encoder {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]bin.Encoder(nil), s.userMessages...)
+}
+
 func (s *captureSessions) clearMessages() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.message = nil
 	s.userMessage = nil
 	s.pushUserIDs = nil
+	s.userMessages = nil
 }
 
 func (s *captureSessions) BindAuthKeyForSession(rawAuthKeyID [8]byte, sessionID int64, authKeyID [8]byte) {
@@ -168,6 +176,7 @@ func (s *captureSessions) PushToUserExceptAuthKeySession(_ context.Context, user
 	s.messageType = t
 	s.message = msg
 	s.userMessage = msg
+	s.userMessages = append(s.userMessages, msg)
 	s.pushUserIDs = append(s.pushUserIDs, userID)
 	return 1, nil
 }

@@ -35,6 +35,7 @@ type fakeFiles struct {
 	lastProfileLimit   int
 	lastProfileMaxID   int64
 	getFileFn          func(domain.FileDownloadRequest) (domain.FileChunk, bool, error)
+	lastProfileCalls   int
 	resolveWebPageFn   func(string) (domain.MessageWebPage, error)
 	lookupWebPageFn    func(string) (domain.MessageWebPage, bool)
 	webPagePreviewOn   bool
@@ -713,12 +714,14 @@ func (f *fakeFiles) GetProfilePhotos(_ context.Context, _ domain.PeerType, _ int
 	f.lastProfileOffset = offset
 	f.lastProfileLimit = limit
 	f.lastProfileMaxID = maxID
+	f.lastProfileCalls++
 	return append([]domain.Photo(nil), f.profilePhotos...), f.profilePhotosTotal, nil
 }
 func (f *fakeFiles) GetProfilePhotosKind(_ context.Context, _ domain.PeerType, _ int64, _ domain.ProfilePhotoKind, offset, limit int, maxID int64) ([]domain.Photo, int, error) {
 	f.lastProfileOffset = offset
 	f.lastProfileLimit = limit
 	f.lastProfileMaxID = maxID
+	f.lastProfileCalls++
 	return append([]domain.Photo(nil), f.profilePhotos...), f.profilePhotosTotal, nil
 }
 func (f *fakeFiles) DeleteProfilePhotos(ctx context.Context, ownerType domain.PeerType, ownerID int64, photoIDs []int64) (int, error) {

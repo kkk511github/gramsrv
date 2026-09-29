@@ -285,6 +285,17 @@ const (
 // that range on its own.
 const MaxStarGiftAuctionBidStars int64 = 10_000_000
 
+// StarGiftResaleFloorMultiple is the maximum magnitude a listing may exceed the
+// gift's base release price and still count toward the dynamic resale floor
+// (resell_min_stars / floor_price). The floor is computed as the cheapest active
+// listing for the gift type, but a single overpriced "troll" listing (set far
+// above the ~base price on purpose) would otherwise hijack that MIN and become
+// the enforced floor for every future listing of the same gift. Listings above
+// multiple×base are ignored by the floor projection while still remaining
+// visible and purchasable — the floor stays market-driven and per-gift, never an
+// absolute hardcoded minimum.
+const StarGiftResaleFloorMultiple int64 = 10
+
 type StarGiftAmount struct {
 	Currency StarGiftCurrency
 	Amount   int64
@@ -1162,6 +1173,9 @@ var (
 	ErrStarGiftResaleUnavailable           = errors.New("stargift: resale unavailable")
 	ErrStarGiftOfferInvalid                = errors.New("stargift: offer invalid")
 	ErrStarGiftOfferExpired                = errors.New("stargift: offer expired")
+	// ErrStarGiftRecipientUnavailable 表示收礼人对其它用户呈 deleted 墓碑
+	// （冻结账号），礼物不能再被送出。
+	ErrStarGiftRecipientUnavailable = errors.New("stargift: recipient account unavailable")
 	ErrStarGiftCraftUnavailable            = errors.New("stargift: craft unavailable")
 	ErrStarGiftAuctionUnavailable          = errors.New("stargift: auction unavailable")
 	ErrStarGiftWithdrawalUnavailable       = errors.New("stargift: withdrawal provider unavailable")

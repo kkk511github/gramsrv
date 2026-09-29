@@ -49,6 +49,28 @@ func TestAdminAPIGifCatalogKeepsInt64IDsAsStrings(t *testing.T) {
 	}
 }
 
+type gifCategoryCaptureService struct {
+	fakeService
+	req admin.SetGifCatalogCategoryRequest
+}
+
+func (s *gifCategoryCaptureService) SetGifCatalogCategory(_ context.Context, req admin.SetGifCatalogCategoryRequest) (admin.CommandResult, error) {
+	s.req = req
+	return admin.CommandResult{CommandID: req.CommandID, Status: "completed"}, nil
+}
+
+func TestAdminAPISetGifCatalogCategoryRoute(t *testing.T) {
+	svc := &gifCategoryCaptureService{}
+	srv := &Server{token: "secret", svc: svc}
+	req := httptest.NewRequest(http.MethodPost, "/v1/gif-catalog/set-category", strings.NewReader(`{"command_id":"gif-category-1","actor":"ops","reason":"catalog","id":"9007199254740993","category":"animals"}`))
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	srv.routes().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || svc.req.ID != 9_007_199_254_740_993 || svc.req.Category != domain.GifCategoryAnimals {
+		t.Fatalf("status=%d req=%+v body=%s", rec.Code, svc.req, rec.Body.String())
+	}
+}
+
 func TestAdminAPISetAccountFrozen(t *testing.T) {
 	svc := &captureFreezeService{}
 	srv := &Server{token: "secret", svc: svc}
@@ -531,6 +553,13 @@ func TestAdminAPIStoreBotScopedPermissions(t *testing.T) {
 	if forbiddenRec.Code != http.StatusForbidden || !strings.Contains(forbiddenRec.Body.String(), PermissionStarsManage) {
 		t.Fatalf("forbidden status=%d body=%s", forbiddenRec.Code, forbiddenRec.Body.String())
 	}
+	all := httptest.NewRequest(http.MethodPost, "/v1/accounts/grant-stars-all", strings.NewReader(`{"command_id":"store-all","reason":"reward","dry_run":true,"amount":5}`))
+	all.Header.Set("Authorization", "Bearer store-token")
+	allRec := httptest.NewRecorder()
+	srv.routes().ServeHTTP(allRec, all)
+	if allRec.Code != http.StatusForbidden {
+		t.Fatalf("store token must not grant to all users: status=%d body=%s", allRec.Code, allRec.Body.String())
+	}
 }
 
 func TestAdminAPISetChannelVerified(t *testing.T) {
@@ -577,6 +606,35 @@ func TestAdminAPIImportStarGiftMultipart(t *testing.T) {
 	}
 	if svc.req.CommandID != "gift-1" || svc.req.FileName != "gift.lottie" || !bytes.Equal(svc.req.Data, animation) || svc.req.Stars != 50 || svc.req.ConvertStars != 25 || !svc.req.TrustedSource {
 		t.Fatalf("decoded gift request = %+v", svc.req)
+	}
+}
+
+func TestAdminAPIImportGiftPackMultipart(t *testing.T) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("metadata", `{"command_id":"pack-1","actor":"ops","reason":"catalog","dry_run":true}`); err != nil {
+		t.Fatal(err)
+	}
+	part, err := writer.CreateFormFile("file", "custom.zip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := []byte("zip payload")
+	if _, err := part.Write(archive); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	svc := &captureGiftService{}
+	srv := &Server{token: "secret", svc: svc}
+	req := httptest.NewRequest(http.MethodPost, "/v1/gifts/import-pack", &body)
+	req.Header.Set("Authorization", "Bearer secret")
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	srv.routes().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || svc.packReq.CommandID != "pack-1" || svc.packReq.FileName != "custom.zip" || !bytes.Equal(svc.packReq.Data, archive) {
+		t.Fatalf("status=%d request=%+v body=%s", rec.Code, svc.packReq, rec.Body.String())
 	}
 }
 
@@ -715,7 +773,8 @@ type captureFreezeService struct {
 
 type captureGiftService struct {
 	fakeService
-	req admin.ImportStarGiftRequest
+	req     admin.ImportStarGiftRequest
+	packReq admin.ImportGiftPackRequest
 }
 
 type captureCollectibleService struct {
@@ -733,6 +792,11 @@ func (s *captureGiftService) ImportStarGift(_ context.Context, req admin.ImportS
 	return admin.CommandResult{CommandID: req.CommandID, Status: "completed", DryRun: req.DryRun}, nil
 }
 
+func (s *captureGiftService) ImportGiftPack(_ context.Context, req admin.ImportGiftPackRequest) (admin.CommandResult, error) {
+	s.packReq = req
+	return admin.CommandResult{CommandID: req.CommandID, Status: "completed", DryRun: req.DryRun}, nil
+}
+
 func (s *captureCollectibleService) PublishStarGiftCollectibles(_ context.Context, req admin.PublishStarGiftCollectiblesRequest) (admin.CommandResult, error) {
 	s.req = req
 	return admin.CommandResult{CommandID: req.CommandID, Status: "completed", DryRun: req.DryRun}, nil
@@ -747,6 +811,10 @@ func (fakeService) GrantPremium(_ context.Context, req admin.GrantPremiumRequest
 }
 
 func (fakeService) GrantStars(_ context.Context, req admin.GrantStarsRequest) (admin.CommandResult, error) {
+	return admin.CommandResult{CommandID: req.CommandID, Status: "completed", DryRun: req.DryRun}, nil
+}
+
+func (fakeService) GrantStarsAll(_ context.Context, req admin.GrantStarsAllRequest) (admin.CommandResult, error) {
 	return admin.CommandResult{CommandID: req.CommandID, Status: "completed", DryRun: req.DryRun}, nil
 }
 
@@ -886,6 +954,10 @@ func (fakeService) ImportStarGift(_ context.Context, req admin.ImportStarGiftReq
 	return admin.CommandResult{CommandID: req.CommandID, Status: "completed", DryRun: req.DryRun}, nil
 }
 
+func (fakeService) ImportGiftPack(_ context.Context, req admin.ImportGiftPackRequest) (admin.CommandResult, error) {
+	return admin.CommandResult{CommandID: req.CommandID, Status: "completed", DryRun: req.DryRun}, nil
+}
+
 func (fakeService) ImportOfficialStarGift(_ context.Context, req admin.ImportOfficialStarGiftRequest) (admin.CommandResult, error) {
 	return admin.CommandResult{CommandID: req.CommandID, Status: "completed", DryRun: req.DryRun}, nil
 }
@@ -926,6 +998,9 @@ func (fakeService) SetGifCatalogEnabled(_ context.Context, req admin.SetGifCatal
 	return admin.CommandResult{CommandID: req.CommandID, Status: "completed", DryRun: req.DryRun}, nil
 }
 func (fakeService) SetGifCatalogSortOrder(_ context.Context, req admin.SetGifCatalogSortOrderRequest) (admin.CommandResult, error) {
+	return admin.CommandResult{CommandID: req.CommandID, Status: "completed", DryRun: req.DryRun}, nil
+}
+func (fakeService) SetGifCatalogCategory(_ context.Context, req admin.SetGifCatalogCategoryRequest) (admin.CommandResult, error) {
 	return admin.CommandResult{CommandID: req.CommandID, Status: "completed", DryRun: req.DryRun}, nil
 }
 func (fakeService) DeleteGifCatalogEntry(_ context.Context, req admin.DeleteGifCatalogEntryRequest) (admin.CommandResult, error) {

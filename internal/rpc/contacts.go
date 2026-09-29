@@ -294,20 +294,24 @@ func (r *Router) onContactsGetBlocked(ctx context.Context, req *tg.ContactsGetBl
 	if err != nil {
 		return nil, internalErr()
 	}
-	if req.Offset < 0 {
-		return nil, limitInvalidErr()
+	offset, limit := req.Offset, req.Limit
+	if limit > 100 || offset < 0 {
+		r.log.Debug("contacts.getBlocked clamped out-of-range pagination",
+			append(r.contextLogFields(ctx), zap.Int("offset", offset), zap.Int("limit", limit))...)
+		if offset < 0 {
+			offset = 0
+		}
+		if limit > 100 {
+			limit = 100
+		}
 	}
-	limit := req.Limit
 	if limit <= 0 {
-		limit = 100
-	}
-	if limit > 100 {
 		limit = 100
 	}
 	if r.deps.Contacts == nil {
 		return tdesktop.BlockedContacts(), nil
 	}
-	list, err := r.deps.Contacts.GetBlocked(ctx, userID, req.Offset, limit)
+	list, err := r.deps.Contacts.GetBlocked(ctx, userID, offset, limit)
 	if err != nil {
 		return nil, internalErr()
 	}
@@ -324,7 +328,7 @@ func (r *Router) onContactsGetBlocked(ctx context.Context, req *tg.ContactsGetBl
 		users = append(users, r.tgUser(item.User))
 	}
 	r.applyUsernamesToPeerObjects(ctx, users, nil)
-	if list.Count > len(blocked)+req.Offset {
+	if list.Count > len(blocked)+offset {
 		return &tg.ContactsBlockedSlice{Count: list.Count, Blocked: blocked, Chats: []tg.ChatClass{}, Users: users}, nil
 	}
 	return &tg.ContactsBlocked{Blocked: blocked, Chats: []tg.ChatClass{}, Users: users}, nil

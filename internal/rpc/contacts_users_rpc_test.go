@@ -1660,6 +1660,13 @@ func TestContactsBlockGetBlockedAndUnblockRPC(t *testing.T) {
 	if full, ok := blockedClampedLimit.(*tg.ContactsBlocked); !ok || len(full.Blocked) != 1 {
 		t.Fatalf("blocked clamped limit = %T %+v, want one blocked user", blockedClampedLimit, blockedClampedLimit)
 	}
+	blockedNegativeOffset, err := r.onContactsGetBlocked(bobCtx, &tg.ContactsGetBlockedRequest{Offset: -1, Limit: 10})
+	if err != nil {
+		t.Fatalf("contacts.getBlocked negative offset: %v", err)
+	}
+	if full, ok := blockedNegativeOffset.(*tg.ContactsBlocked); !ok || len(full.Blocked) != 1 {
+		t.Fatalf("blocked negative offset = %T %+v, want first page", blockedNegativeOffset, blockedNegativeOffset)
+	}
 	userFull, err = r.onUsersGetFullUser(bobCtx, &tg.InputUser{UserID: alice.ID, AccessHash: alice.AccessHash})
 	if err != nil {
 		t.Fatalf("users.getFullUser after block: %v", err)

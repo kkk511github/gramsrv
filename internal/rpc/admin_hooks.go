@@ -55,6 +55,10 @@ func (r *Router) NotifyAccountFreezeChanged(ctx context.Context, freeze domain.A
 	if r == nil || freeze.UserID == 0 {
 		return nil
 	}
+	r.applyFrozenPresence(freeze.UserID, freeze.Frozen)
+	if freeze.Frozen {
+		r.announceFrozenOffline(freeze.UserID)
+	}
 	r.pushUserUpdates(ctx, freeze.UserID, &tg.Updates{
 		Updates: []tg.UpdateClass{&tg.UpdateConfig{}},
 		Date:    int(r.clock.Now().Unix()),

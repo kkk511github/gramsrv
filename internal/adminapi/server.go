@@ -43,6 +43,7 @@ type Service interface {
 	SetAccountFrozen(ctx context.Context, req admin.SetAccountFrozenRequest) (admin.CommandResult, error)
 	GrantPremium(ctx context.Context, req admin.GrantPremiumRequest) (admin.CommandResult, error)
 	GrantStars(ctx context.Context, req admin.GrantStarsRequest) (admin.CommandResult, error)
+	GrantStarsAll(ctx context.Context, req admin.GrantStarsAllRequest) (admin.CommandResult, error)
 	SetVerified(ctx context.Context, req admin.SetVerifiedRequest) (admin.CommandResult, error)
 	SetUserFlags(ctx context.Context, req admin.SetUserFlagsRequest) (admin.CommandResult, error)
 	SetChannelVerified(ctx context.Context, req admin.SetChannelVerifiedRequest) (admin.CommandResult, error)
@@ -77,6 +78,7 @@ type Service interface {
 	RemoveStickerFromSet(ctx context.Context, req admin.RemoveStickerFromSetRequest) (admin.CommandResult, error)
 	StickerDocumentAnimation(ctx context.Context, documentID int64) ([]byte, string, bool, error)
 	ImportStarGift(ctx context.Context, req admin.ImportStarGiftRequest) (admin.CommandResult, error)
+	ImportGiftPack(ctx context.Context, req admin.ImportGiftPackRequest) (admin.CommandResult, error)
 	ImportOfficialStarGift(ctx context.Context, req admin.ImportOfficialStarGiftRequest) (admin.CommandResult, error)
 	OfficialStarGifts(ctx context.Context) ([]officialgifts.GiftSummary, error)
 	OfficialStarGiftAnimation(ctx context.Context, sourceGiftID string) ([]byte, bool, error)
@@ -90,6 +92,7 @@ type Service interface {
 	CreateGifCatalogEntry(ctx context.Context, req admin.CreateGifCatalogEntryRequest) (admin.CommandResult, error)
 	SetGifCatalogEnabled(ctx context.Context, req admin.SetGifCatalogEnabledRequest) (admin.CommandResult, error)
 	SetGifCatalogSortOrder(ctx context.Context, req admin.SetGifCatalogSortOrderRequest) (admin.CommandResult, error)
+	SetGifCatalogCategory(ctx context.Context, req admin.SetGifCatalogCategoryRequest) (admin.CommandResult, error)
 	DeleteGifCatalogEntry(ctx context.Context, req admin.DeleteGifCatalogEntryRequest) (admin.CommandResult, error)
 	GifCatalogDocumentPreview(ctx context.Context, documentID int64) ([]byte, string, bool, error)
 	StarGiftCollectibles(ctx context.Context, giftID int64) (domain.StarGiftUpgradePreview, bool, error)
@@ -227,6 +230,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /v1/premium/payments/{id}", s.authorized(PermissionPremiumManage, s.handlePremiumPayment))
 	mux.HandleFunc("POST /v1/accounts/grant-stars", s.authorized(PermissionStarsManage, s.handleGrantStars))
 	mux.HandleFunc("POST /v1/accounts/debit-stars", s.authorized(PermissionStarsManage, s.handleDebitStars))
+	mux.HandleFunc("POST /v1/accounts/grant-stars-all", s.authenticated(s.handleGrantStarsAll))
 	mux.HandleFunc("POST /v1/accounts/resolve-by-phone", s.authenticated(s.handleResolveUserByPhone))
 	mux.HandleFunc("POST /v1/accounts/set-verified", s.authenticated(s.handleSetVerified))
 	mux.HandleFunc("POST /v1/accounts/set-flags", s.authenticated(s.handleSetUserFlags))
@@ -263,6 +267,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /v1/stickers/remove", s.authenticated(s.handleRemoveStickerFromSet))
 	mux.HandleFunc("GET /v1/stickers/documents/{id}/animation", s.authenticated(s.handleStickerDocumentAnimation))
 	mux.HandleFunc("POST /v1/gifts/import", s.authenticated(s.handleImportStarGift))
+	mux.HandleFunc("POST /v1/gifts/import-pack", s.authenticated(s.handleImportGiftPack))
 	mux.HandleFunc("GET /v1/official-gifts", s.authenticated(s.handleOfficialStarGifts))
 	mux.HandleFunc("GET /v1/official-gifts/{id}/animation", s.authenticated(s.handleOfficialStarGiftAnimation))
 	mux.HandleFunc("POST /v1/official-gifts/import", s.authenticated(s.handleImportOfficialStarGift))
@@ -277,6 +282,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /v1/gif-catalog/create", s.authenticated(s.handleCreateGifCatalogEntry))
 	mux.HandleFunc("POST /v1/gif-catalog/set-enabled", s.authenticated(s.handleSetGifCatalogEnabled))
 	mux.HandleFunc("POST /v1/gif-catalog/set-sort-order", s.authenticated(s.handleSetGifCatalogSortOrder))
+	mux.HandleFunc("POST /v1/gif-catalog/set-category", s.authenticated(s.handleSetGifCatalogCategory))
 	mux.HandleFunc("POST /v1/gif-catalog/delete", s.authenticated(s.handleDeleteGifCatalogEntry))
 	mux.HandleFunc("GET /v1/gifts/{id}/collectibles", s.authenticated(s.handleStarGiftCollectibles))
 	mux.HandleFunc("GET /v1/gifts/{id}/collectibles/{kind}/{attribute_id}/animation", s.authenticated(s.handleStarGiftCollectibleAnimation))
@@ -472,6 +478,15 @@ func (s *Server) handleGrantStars(w http.ResponseWriter, r *http.Request) {
 	}
 	s.applyVerificationPrincipal(r, &req.CommandMeta)
 	result, err := s.svc.GrantStars(r.Context(), req)
+	writeCommandResult(w, result, err)
+}
+
+func (s *Server) handleGrantStarsAll(w http.ResponseWriter, r *http.Request) {
+	var req admin.GrantStarsAllRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	result, err := s.svc.GrantStarsAll(r.Context(), req)
 	writeCommandResult(w, result, err)
 }
 
@@ -982,6 +997,39 @@ func (s *Server) handleImportStarGift(w http.ResponseWriter, r *http.Request) {
 	writeCommandResult(w, result, err)
 }
 
+func (s *Server) handleImportGiftPack(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	r.Body = http.MaxBytesReader(w, r.Body, 33<<20)
+	if err := r.ParseMultipartForm(1 << 20); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid multipart form: "+err.Error())
+		return
+	}
+	if r.MultipartForm != nil {
+		defer r.MultipartForm.RemoveAll()
+	}
+	var req admin.ImportGiftPackRequest
+	dec := json.NewDecoder(strings.NewReader(r.FormValue("metadata")))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid metadata: "+err.Error())
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "gift pack zip is required")
+		return
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, (32<<20)+1))
+	if err != nil || len(data) == 0 || len(data) > 32<<20 {
+		writeError(w, http.StatusBadRequest, "gift pack zip is empty or too large")
+		return
+	}
+	req.FileName, req.Data = header.Filename, data
+	result, err := s.svc.ImportGiftPack(r.Context(), req)
+	writeCommandResult(w, result, err)
+}
+
 func (s *Server) handleOfficialStarGifts(w http.ResponseWriter, r *http.Request) {
 	items, err := s.svc.OfficialStarGifts(r.Context())
 	if err != nil {
@@ -1250,6 +1298,15 @@ func (s *Server) handleSetGifCatalogSortOrder(w http.ResponseWriter, r *http.Req
 		return
 	}
 	result, err := s.svc.SetGifCatalogSortOrder(r.Context(), req)
+	writeCommandResult(w, result, err)
+}
+
+func (s *Server) handleSetGifCatalogCategory(w http.ResponseWriter, r *http.Request) {
+	var req admin.SetGifCatalogCategoryRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	result, err := s.svc.SetGifCatalogCategory(r.Context(), req)
 	writeCommandResult(w, result, err)
 }
 

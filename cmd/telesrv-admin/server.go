@@ -20,6 +20,8 @@ import (
 	"telesrv/internal/admin"
 	"telesrv/internal/domain"
 	"telesrv/internal/hoststats"
+	"telesrv/internal/identity"
+	"telesrv/internal/procctl"
 )
 
 //go:embed web/dist
@@ -31,6 +33,8 @@ type server struct {
 	hostStats *hoststats.Poller
 	web       fs.FS
 	webServer http.Handler
+	identity  *identity.Store
+	envCtl    *procctl.Manager
 }
 
 func newServer(cfg uiConfig, read *readStore, hostStats *hoststats.Poller) (*server, error) {
@@ -44,6 +48,8 @@ func newServer(cfg uiConfig, read *readStore, hostStats *hoststats.Poller) (*ser
 		hostStats: hostStats,
 		web:       web,
 		webServer: http.FileServer(http.FS(web)),
+		identity:  identity.NewStore(cfg.IdentityDir),
+		envCtl:    procctl.NewManager(cfg.RepoRoot),
 	}, nil
 }
 
@@ -74,6 +80,7 @@ func (s *server) routes() http.Handler {
 
 	mux.Handle("GET /api/dashboard", s.scopedRoute(permissionDashboardRead, http.HandlerFunc(s.handleDashboardAPI)))
 	mux.Handle("GET /api/accounts", s.scopedRoute(permissionAccountsRead, http.HandlerFunc(s.handleAccountsAPI)))
+	mux.Handle("GET /api/accounts/shared-devices", s.scopedRoute(permissionAccountsRead, http.HandlerFunc(s.handleSharedDeviceGroupsAPI)))
 	mux.Handle("GET /api/accounts/{id}", s.scopedRoute(permissionAccountsRead, http.HandlerFunc(s.handleAccountDetailAPI)))
 	mux.Handle("GET /api/accounts/{id}/avatar", s.scopedRoute(permissionAccountsRead, http.HandlerFunc(s.handleAccountAvatarAPI)))
 	mux.Handle("GET /api/channels", s.scopedRoute(permissionChannelsRead, http.HandlerFunc(s.handleChannelsAPI)))
@@ -105,6 +112,7 @@ func (s *server) routes() http.Handler {
 	mux.Handle("GET /api/collectible-usernames/{id}", s.scopedRoute(permissionUsernamesRead, http.HandlerFunc(s.handleCollectibleUsernameDetailAPI)))
 	mux.Handle("GET /api/collectible-phones", s.scopedRoute(permissionPhonesRead, http.HandlerFunc(s.handleCollectiblePhonesAPI)))
 	mux.Handle("GET /api/collectible-phones/{id}", s.scopedRoute(permissionPhonesRead, http.HandlerFunc(s.handleCollectiblePhoneDetailAPI)))
+	mux.Handle("GET /api/nft-gifts", s.scopedRoute(permissionGiftsRead, http.HandlerFunc(s.handleNftGiftsAPI)))
 	mux.Handle("GET /api/account-ratings", s.scopedRoute(permissionRatingsRead, http.HandlerFunc(s.handleAccountRatingsAPI)))
 	mux.Handle("GET /api/account-ratings/{user_id}", s.scopedRoute(permissionRatingsRead, http.HandlerFunc(s.handleAccountRatingDetailAPI)))
 	mux.Handle("GET /api/stars/top", s.scopedRoute(permissionStarsRead, http.HandlerFunc(s.handleStarsTopAPI)))
@@ -120,6 +128,7 @@ func (s *server) routes() http.Handler {
 	mux.Handle("POST /api/actions/grant-premium", s.premiumManage(s.handleGrantPremiumAPI))
 	mux.Handle("POST /api/actions/upsert-premium-plan", s.premiumManage(s.handleUpsertPremiumPlanAPI))
 	mux.Handle("POST /api/actions/grant-stars", s.premiumManage(http.HandlerFunc(s.handleGrantStarsAPI)))
+	mux.Handle("POST /api/actions/grant-stars-all", s.premiumManage(http.HandlerFunc(s.handleGrantStarsAllAPI)))
 	mux.Handle("POST /api/actions/debit-stars", s.premiumManage(http.HandlerFunc(s.handleDebitStarsAPI)))
 	mux.Handle("POST /api/actions/set-verified", s.scopedRoute(permissionVerificationReview, http.HandlerFunc(s.handleSetVerifiedAPI)))
 	mux.Handle("POST /api/actions/set-account-flags", s.scopedRoute(permissionAccountsManage, http.HandlerFunc(s.handleSetUserFlagsAPI)))
@@ -149,6 +158,7 @@ func (s *server) routes() http.Handler {
 	mux.Handle("POST /api/actions/create-gif-catalog-entry", s.scopedRoute(permissionContentManage, http.HandlerFunc(s.handleCreateGifCatalogEntryAPI)))
 	mux.Handle("POST /api/actions/set-gif-catalog-enabled", s.scopedRoute(permissionContentManage, http.HandlerFunc(s.handleSetGifCatalogEnabledAPI)))
 	mux.Handle("POST /api/actions/set-gif-catalog-sort-order", s.scopedRoute(permissionContentManage, http.HandlerFunc(s.handleSetGifCatalogSortOrderAPI)))
+	mux.Handle("POST /api/actions/set-gif-catalog-category", s.scopedRoute(permissionContentManage, http.HandlerFunc(s.handleSetGifCatalogCategoryAPI)))
 	mux.Handle("POST /api/actions/delete-gif-catalog-entry", s.scopedRoute(permissionContentManage, http.HandlerFunc(s.handleDeleteGifCatalogEntryAPI)))
 	mux.Handle("POST /api/actions/delete-bot", s.scopedRoute(permissionBotsManage, http.HandlerFunc(s.handleDeleteBotAPI)))
 	mux.Handle("POST /api/actions/export-bot-token", s.scopedRoute(permissionBotTokenRead, http.HandlerFunc(s.handleExportBotTokenAPI)))
@@ -157,6 +167,7 @@ func (s *server) routes() http.Handler {
 	mux.Handle("POST /api/actions/delete-messages", s.scopedRoute(permissionMessagesManage, http.HandlerFunc(s.handleDeleteMessagesAPI)))
 	mux.Handle("POST /api/actions/delete-history", s.scopedRoute(permissionMessagesManage, http.HandlerFunc(s.handleDeleteHistoryAPI)))
 	mux.Handle("POST /api/actions/import-gift", s.scopedRoute(permissionGiftsManage, http.HandlerFunc(s.handleImportStarGiftAPI)))
+	mux.Handle("POST /api/actions/import-gift-pack", s.scopedRoute(permissionGiftsManage, http.HandlerFunc(s.handleImportGiftPackAPI)))
 	mux.Handle("POST /api/actions/import-official-gift", s.scopedRoute(permissionGiftsManage, http.HandlerFunc(s.handleImportOfficialStarGiftAPI)))
 	mux.Handle("POST /api/actions/publish-gift-collectibles", s.scopedRoute(permissionGiftsManage, http.HandlerFunc(s.handlePublishStarGiftCollectiblesAPI)))
 	mux.Handle("POST /api/actions/set-gift-enabled", s.scopedRoute(permissionGiftsManage, http.HandlerFunc(s.handleSetStarGiftEnabledAPI)))
@@ -204,6 +215,24 @@ func (s *server) routes() http.Handler {
 	mux.Handle("POST /api/actions/upsert-verification-icon", s.botVerificationManage(s.handleUpsertVerificationIconAPI))
 	mux.Handle("POST /api/actions/set-verification-icon-active", s.botVerificationManage(s.handleSetVerificationIconActiveAPI))
 	mux.Handle("POST /api/actions/revoke-custom-verification", s.botVerificationManage(s.handleRevokeCustomVerificationAPI))
+
+	// Server Settings. One right for the whole surface (see
+	// permissionServerManage in security.go), and -- unlike the sections above
+	// -- none of these handlers touch internal/admin or Postgres: they operate
+	// on local files (the identity.json store and .env) or probe local
+	// services, so there is no admin_commands row to write and the action
+	// result is built by serverCommandResult without going through
+	// runOperatorCommand.
+	mux.Handle("GET /api/server/identity", s.serverManage(s.handleServerIdentityAPI))
+	mux.Handle("GET /api/server/icon", s.serverManage(s.handleServerIconAPI))
+	mux.Handle("POST /api/actions/set-server-identity", s.serverManage(s.handleSetServerIdentityAPI))
+	mux.Handle("POST /api/actions/set-welcome-message-templates", s.serverManage(s.handleSetWelcomeMessageTemplatesAPI))
+	mux.Handle("POST /api/actions/set-login-code-message-template", s.serverManage(s.handleSetLoginCodeMessageTemplateAPI))
+	mux.Handle("POST /api/actions/upload-server-icon", s.serverManage(s.handleUploadServerIconAPI))
+	mux.Handle("POST /api/actions/remove-server-icon", s.serverManage(s.handleRemoveServerIconAPI))
+	mux.Handle("GET /api/server/env", s.serverManage(s.handleServerEnvAPI))
+	mux.Handle("POST /api/actions/update-server-env", s.serverManage(s.handleUpdateServerEnvAPI))
+	mux.Handle("GET /api/server/status", s.serverManage(s.handleServerStatusAPI))
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "api route not found")
 	})
@@ -250,6 +279,20 @@ func (s *server) handleDashboardAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 type actorKey struct{}
+
+type operatorIDKey struct{}
+
+// operatorIDFromContext returns the admin_console_users id of the acting
+// session, 0 for the break-glass login. requireAuthAPI always stores it, so a
+// missing value is unreachable in practice; 0 is the safe reading for the
+// last-manager guard because the break-glass session never has a row being
+// edited.
+func operatorIDFromContext(ctx context.Context) int64 {
+	if id, ok := ctx.Value(operatorIDKey{}).(int64); ok {
+		return id
+	}
+	return 0
+}
 
 func actorFromContext(ctx context.Context) string {
 	if actor, ok := ctx.Value(actorKey{}).(string); ok && actor != "" {
@@ -836,6 +879,33 @@ func (s *server) handleAccountsAPI(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *server) handleSharedDeviceGroupsAPI(w http.ResponseWriter, r *http.Request) {
+	if s.read == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "read store is not configured")
+		return
+	}
+	offset, _ := parseInt(r.URL.Query().Get("offset"))
+	limit, _ := parseInt(r.URL.Query().Get("limit"))
+	groups, hasMore, err := s.read.ListSharedDeviceGroups(r.Context(), offset, limit)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if limit <= 0 {
+		limit = accountListDefaultLimit
+	}
+	if limit > accountListMaxLimit {
+		limit = accountListMaxLimit
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"limit":       limit,
+		"offset":      offset,
+		"rows":        groups,
+		"has_more":    hasMore,
+		"next_offset": offset + limit,
+	})
+}
+
 func (s *server) handleAccountDetailAPI(w http.ResponseWriter, r *http.Request) {
 	if s.read == nil {
 		writeAPIError(w, http.StatusServiceUnavailable, "read store is not configured")
@@ -1272,6 +1342,7 @@ type gifCatalogStateAPIRequest struct {
 	ID        int64  `json:"id,string"`
 	Enabled   bool   `json:"enabled,omitempty"`
 	SortOrder int    `json:"sort_order,omitempty"`
+	Category  string `json:"category"`
 }
 
 func (s *server) handleSetGifCatalogEnabledAPI(w http.ResponseWriter, r *http.Request) {
@@ -1291,6 +1362,16 @@ func (s *server) handleSetGifCatalogSortOrderAPI(w http.ResponseWriter, r *http.
 	}
 	req := admin.SetGifCatalogSortOrderRequest{CommandMeta: s.commandMetaFromAPI(r, body.CommandID, body.Reason, body.Confirm, "set-gif-sort-order"), ID: body.ID, SortOrder: body.SortOrder}
 	result, err := s.callAdminAPI(r.Context(), "/v1/gif-catalog/set-sort-order", req)
+	writeCommandResultAPI(w, result, err)
+}
+
+func (s *server) handleSetGifCatalogCategoryAPI(w http.ResponseWriter, r *http.Request) {
+	var body gifCatalogStateAPIRequest
+	if !decodeAction(w, r, &body) {
+		return
+	}
+	req := admin.SetGifCatalogCategoryRequest{CommandMeta: s.commandMetaFromAPI(r, body.CommandID, body.Reason, body.Confirm, "set-gif-category"), ID: body.ID, Category: body.Category}
+	result, err := s.callAdminAPI(r.Context(), "/v1/gif-catalog/set-category", req)
 	writeCommandResultAPI(w, result, err)
 }
 
@@ -1573,6 +1654,27 @@ func (s *server) handleGrantStarsAPI(w http.ResponseWriter, r *http.Request) {
 		Amount:      body.Amount,
 	}
 	result, err := s.callAdminAPI(r.Context(), "/v1/accounts/grant-stars", req)
+	writeCommandResultAPI(w, result, err)
+}
+
+type grantStarsAllAPIRequest struct {
+	CommandID string `json:"command_id"`
+	Reason    string `json:"reason"`
+	Confirm   bool   `json:"confirm"`
+	Amount    int64  `json:"amount"`
+}
+
+// handleGrantStarsAllAPI 给所有真实用户批量发星。无 user_id——目标由上游 store 解析。
+func (s *server) handleGrantStarsAllAPI(w http.ResponseWriter, r *http.Request) {
+	var body grantStarsAllAPIRequest
+	if !decodeAction(w, r, &body) {
+		return
+	}
+	req := admin.GrantStarsAllRequest{
+		CommandMeta: s.commandMetaFromAPI(r, body.CommandID, body.Reason, body.Confirm, "grant-stars-all"),
+		Amount:      body.Amount,
+	}
+	result, err := s.callAdminAPI(r.Context(), "/v1/accounts/grant-stars-all", req)
 	writeCommandResultAPI(w, result, err)
 }
 
@@ -2188,6 +2290,46 @@ func (s *server) handleImportStarGiftAPI(w http.ResponseWriter, r *http.Request)
 		LockedUntilDate:      body.LockedUntilDate,
 	}
 	result, err := s.callAdminMultipart(r.Context(), "/v1/gifts/import", req, header.Filename, data)
+	writeCommandResultAPI(w, result, err)
+}
+
+func (s *server) handleImportGiftPackAPI(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	r.Body = http.MaxBytesReader(w, r.Body, 33<<20)
+	if err := r.ParseMultipartForm(1 << 20); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid multipart form: "+err.Error())
+		return
+	}
+	if r.MultipartForm != nil {
+		defer r.MultipartForm.RemoveAll()
+	}
+	var body struct {
+		CommandID string `json:"command_id"`
+		Reason    string `json:"reason"`
+		Confirm   bool   `json:"confirm"`
+	}
+	dec := json.NewDecoder(strings.NewReader(r.FormValue("metadata")))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&body); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid metadata: "+err.Error())
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "gift pack zip is required")
+		return
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, (32<<20)+1))
+	if err != nil || len(data) == 0 || len(data) > 32<<20 {
+		writeAPIError(w, http.StatusBadRequest, "gift pack zip is empty or too large")
+		return
+	}
+	req := admin.ImportGiftPackRequest{
+		CommandMeta: s.commandMetaFromAPI(r, body.CommandID, body.Reason, body.Confirm, "import-gift-pack"),
+		FileName:    header.Filename,
+	}
+	result, err := s.callAdminMultipart(r.Context(), "/v1/gifts/import-pack", req, header.Filename, data)
 	writeCommandResultAPI(w, result, err)
 }
 
@@ -2814,6 +2956,52 @@ func (s *server) handleCollectiblePhoneDetailAPI(w http.ResponseWriter, r *http.
 		suffix += "?" + r.URL.RawQuery
 	}
 	s.proxyAdminJSONNoStore(w, r, suffix, 2<<20)
+}
+
+// handleNftGiftsAPI lists minted collectible star gifts (the numbered, NFT-style
+// gift instances) -- the third tab of the panel's NFT Items section, alongside
+// usernames and +888 numbers. Same keyset paging shape as
+// handleCollectibleUsernamesAPI.
+func (s *server) handleNftGiftsAPI(w http.ResponseWriter, r *http.Request) {
+	if s.read == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "read store is not configured")
+		return
+	}
+	query := r.URL.Query()
+	giftID, err := parseInt64(query.Get("gift_id"))
+	if err != nil || giftID < 0 {
+		writeAPIError(w, http.StatusBadRequest, "invalid gift_id")
+		return
+	}
+	ownerUserID, err := parseInt64(query.Get("owner_user_id"))
+	if err != nil || ownerUserID < 0 {
+		writeAPIError(w, http.StatusBadRequest, "invalid owner_user_id")
+		return
+	}
+	beforeID, err := parseInt64(query.Get("before_id"))
+	if err != nil || beforeID < 0 {
+		writeAPIError(w, http.StatusBadRequest, "invalid before_id")
+		return
+	}
+	limit, err := parseInt(query.Get("limit"))
+	if err != nil || limit < 0 {
+		writeAPIError(w, http.StatusBadRequest, "invalid limit")
+		return
+	}
+	rows, hasMore, err := s.read.ListUniqueStarGifts(r.Context(), giftID, ownerUserID, beforeID, query.Get("q"), limit)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	nextBeforeID := ""
+	if hasMore && len(rows) > 0 {
+		nextBeforeID = strconv.FormatInt(rows[len(rows)-1].ID, 10)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"rows":           rows,
+		"has_more":       hasMore,
+		"next_before_id": nextBeforeID,
+	})
 }
 
 // handleAccountRatingsAPI pages the leaderboard. next_before_id is the last

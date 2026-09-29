@@ -23,8 +23,8 @@ func TestNotifyAccountFreezeChangedPushesUpdateConfig(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if got := sessions.pushedUserIDs(); len(got) != 1 || got[0] != userID {
-		t.Fatalf("pushed users = %v, want [%d]", got, userID)
+	if got := sessions.pushedUserIDs(); len(got) != 2 || got[0] != userID || got[1] != userID {
+		t.Fatalf("pushed users = %v, want offline and config notifications for %d", got, userID)
 	}
 	updates, ok := sessions.lastUserPush().(*tg.Updates)
 	if !ok || len(updates.Updates) != 1 {
