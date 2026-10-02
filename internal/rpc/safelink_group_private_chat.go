@@ -6,6 +6,7 @@ import (
 
 	"github.com/iamxvbaba/td/bin"
 	"github.com/iamxvbaba/td/tg"
+	"github.com/iamxvbaba/td/tlprofile"
 	"go.uber.org/zap"
 )
 
@@ -13,6 +14,20 @@ const (
 	safeLinkGetGroupPrivateChatForbiddenTypeID    = 0x06ebdea1
 	safeLinkToggleGroupPrivateChatForbiddenTypeID = 0x94ba7b67
 )
+
+func (r *Router) registerSafeLinkGroupPrivateChat(d *tlprofile.Dispatcher) {
+	registerRPC[*tg.SafelinkGetGroupPrivateChatForbiddenRequest](d, tlprofile.SemanticMethodSafelinkGetGroupPrivateChatForbidden, func(ctx context.Context, req *tg.SafelinkGetGroupPrivateChatForbiddenRequest) (any, error) {
+		result, err := r.getSafeLinkGroupPrivateChatForbidden(ctx, req.Channel)
+		if err != nil {
+			return nil, err
+		}
+		_, enabled := result.(*tg.BoolTrue)
+		return enabled, nil
+	})
+	registerRPC[*tg.SafelinkToggleGroupPrivateChatForbiddenRequest](d, tlprofile.SemanticMethodSafelinkToggleGroupPrivateChatForbidden, func(ctx context.Context, req *tg.SafelinkToggleGroupPrivateChatForbiddenRequest) (any, error) {
+		return r.setSafeLinkGroupPrivateChatForbidden(ctx, req.Channel, req.Enabled)
+	})
+}
 
 func (r *Router) trySafeLinkGroupPrivateChatRPC(ctx context.Context, b *bin.Buffer, id uint32) (bin.Encoder, bool, error) {
 	switch id {
@@ -37,6 +52,13 @@ func (r *Router) onSafeLinkGetGroupPrivateChatForbidden(ctx context.Context, b *
 	channel, err := tg.DecodeInputChannel(b)
 	if err != nil {
 		return nil, fmt.Errorf("decode safelink.getGroupPrivateChatForbidden channel: %w", err)
+	}
+	return r.getSafeLinkGroupPrivateChatForbidden(ctx, channel)
+}
+
+func (r *Router) getSafeLinkGroupPrivateChatForbidden(ctx context.Context, channel tg.InputChannelClass) (bin.Encoder, error) {
+	if r.deps.Channels == nil {
+		return nil, notImplementedErr()
 	}
 	userID, _, err := r.currentUserID(ctx)
 	if err != nil {
@@ -76,6 +98,13 @@ func (r *Router) onSafeLinkToggleGroupPrivateChatForbidden(ctx context.Context, 
 		return nil, fmt.Errorf("decode safelink.toggleGroupPrivateChatForbidden enabled: %w", err)
 	}
 	_, enabled := enabledTL.(*tg.BoolTrue)
+	return r.setSafeLinkGroupPrivateChatForbidden(ctx, channel, enabled)
+}
+
+func (r *Router) setSafeLinkGroupPrivateChatForbidden(ctx context.Context, channel tg.InputChannelClass, enabled bool) (bin.Encoder, error) {
+	if r.deps.Channels == nil {
+		return nil, notImplementedErr()
+	}
 	userID, _, err := r.currentUserID(ctx)
 	if err != nil {
 		return nil, internalErr()

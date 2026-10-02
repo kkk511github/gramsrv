@@ -1,4 +1,4 @@
-import { ChevronDown, CircleCheck, CircleOff, CircleX, Container, Database, ImagePlus, Layers, Loader2, RefreshCw, Server, Trash2, Upload, X } from "lucide-react";
+import { ChevronDown, CircleCheck, CircleOff, CircleX, Container, Database, ImagePlus, Layers, Loader2, RefreshCw, Save, Server, Trash2, Upload, X } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { api, errorMessage } from "../api";
@@ -61,7 +61,10 @@ export function ServerSettingsPage({ search }: { search?: URLSearchParams }) {
       {tab === "settings" ? (
         <div className="stacked-sections">
           <IdentitySection />
+          <DomainsSection />
           <LoginNotificationsSection />
+          <LoginPolicySection />
+          <RegistrationInvitesSection />
           <EnvSection />
         </div>
       ) : (
@@ -74,6 +77,103 @@ export function ServerSettingsPage({ search }: { search?: URLSearchParams }) {
 }
 
 // --- Identity ---------------------------------------------------------
+
+function LoginPolicySection() {
+  const [requirePassword, setRequirePassword] = useState(false);
+  const [data, setData] = useState<Awaited<ReturnType<typeof api.loginPolicy>> | null>(null);
+  const [enabled, setEnabled] = useState(true);
+  const [days, setDays] = useState(30);
+  const [error, setError] = useState("");
+  async function load() {
+    try { const next = await api.loginPolicy(); setData(next); setEnabled(next.future_auth_enabled); setDays(next.future_auth_days); setRequirePassword(next.registration_password_required); setError(""); }
+    catch (err) { setError(errorMessage(err)); }
+  }
+  useEffect(() => { void load(); }, []);
+  return <section id="serversettings-login-policy" className="section-block scroll-anchor">
+    <SectionHead title="注册与旧设备登录" />
+    {error && <Alert>{error}</Alert>}
+    {!data ? <LoadingSurface label="加载中" /> : <div className="card-body">
+      <label className="invite-policy"><input type="checkbox" checked={requirePassword} onChange={e => setRequirePassword(e.target.checked)} /><span>新用户必须设置两步验证密码</span></label>
+      <label className="invite-policy"><input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} /><span>允许有效凭证的旧设备免验证码登录</span></label>
+      <div className="invite-form-grid"><label className="form-field"><span>登录凭证有效期（天）</span><input type="number" min={1} max={365} value={days} onChange={e => setDays(Number(e.target.value))} /></label></div>
+      <ActionButton label="保存登录设置" icon={<Save size={15} />} tone="warn" path="/api/actions/login-policy" payload={() => ({ future_auth_enabled: enabled, future_auth_days: days, registration_password_required: requirePassword })} disabled={!Number.isInteger(days) || days < 1 || days > 365 || (enabled === data.future_auth_enabled && days === data.future_auth_days && requirePassword === data.registration_password_required)} onDone={() => void load()} />
+    </div>}
+  </section>;
+}
+
+function RegistrationInvitesSection() {
+  const [data, setData] = useState<Awaited<ReturnType<typeof api.registrationInvites>> | null>(null);
+  const [enabled, setEnabled] = useState(false);
+  const [count, setCount] = useState(1);
+  const [uses, setUses] = useState(1);
+  const [days, setDays] = useState(30);
+  const [fixedCode, setFixedCode] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
+  const [error, setError] = useState("");
+  async function load() {
+    try { const value = await api.registrationInvites(); setData(value); setEnabled(value.enabled); setError(""); }
+    catch (err) { setError(errorMessage(err)); }
+  }
+  useEffect(() => { void load(); }, []);
+  const valid = Number.isInteger(count) && count >= 1 && count <= 100 && Number.isInteger(uses) && uses >= 1 && uses <= 10000 && Number.isInteger(days) && days >= 1 && days <= 365 && (!fixedCode.trim() || /^[A-Za-z0-9-]{6,64}$/.test(fixedCode.trim())) && (!expiresAt || (Date.parse(expiresAt) > Date.now() && Date.parse(expiresAt) < Date.now() + 366 * 86400000));
+  return <section id="serversettings-invites" className="section-block scroll-anchor">
+    <SectionHead title="注册邀请码" />
+    {error && <Alert>{error}</Alert>}
+    {!data ? <LoadingSurface label="加载中" /> : <div className="card-body">
+      <label className="invite-policy"><input type="checkbox" checked={enabled} onChange={event => setEnabled(event.target.checked)} /><span>新用户注册必须填写邀请码</span></label>
+      <ActionButton label="保存注册设置" icon={<Save size={15} />} tone="warn" path="/api/actions/registration-invites" payload={() => ({ operation: "policy", enabled })} disabled={enabled === data.enabled} onDone={() => void load()} />
+      <div className="invite-form-grid">
+        <label className="form-field"><span>固定邀请码</span><input value={fixedCode} placeholder="自动生成" autoComplete="off" maxLength={64} onChange={e => setFixedCode(e.target.value)} /></label>
+        <label className="form-field"><span>生成数量</span><input type="number" min={1} max={100} value={fixedCode.trim() ? 1 : count} disabled={!!fixedCode.trim()} onChange={e => setCount(Number(e.target.value))} /></label>
+        <label className="form-field"><span>每码可注册人数</span><input type="number" min={1} max={10000} value={uses} onChange={e => setUses(Number(e.target.value))} /></label>
+        <label className="form-field"><span>有效天数</span><input type="number" min={1} max={365} value={days} disabled={!!expiresAt} onChange={e => setDays(Number(e.target.value))} /></label>
+        <label className="form-field"><span>指定到期时间</span><input type="datetime-local" value={expiresAt} onChange={e => setExpiresAt(e.target.value)} /></label>
+      </div>
+      <ActionButton label="生成邀请码" icon={<Layers size={15} />} tone="primary" path="/api/actions/registration-invites" payload={() => ({ operation: "generate", count: fixedCode.trim() ? 1 : count, max_uses: uses, days, code: fixedCode.trim(), ...(expiresAt && Number.isFinite(Date.parse(expiresAt)) ? { expires_at: new Date(expiresAt).toISOString() } : {}) })} disabled={!valid} secretField="codes" onDone={() => void load()} />
+      <div className="table-wrap"><table className="data-table"><thead><tr><th>编号 / 前缀</th><th>已使用 / 名额</th><th>到期时间</th><th>状态</th><th>操作</th></tr></thead><tbody>
+        {data.items.map(item => <tr key={item.id}><td>#{item.id} / {item.prefix}…</td><td>{item.used_count} / {item.max_uses}</td><td>{new Date(item.expires_at).toLocaleString()}</td><td>{item.disabled ? "已停用" : Date.parse(item.expires_at) <= Date.now() ? "已过期" : item.used_count >= item.max_uses ? "已用完" : "有效"}</td><td><ActionButton label="停用" icon={<CircleOff size={15} />} compact path="/api/actions/registration-invites" payload={() => ({ operation: "disable", id: item.id })} disabled={item.disabled} onDone={() => void load()} /></td></tr>)}
+        {!data.items.length && <tr><td colSpan={5}>暂无邀请码</td></tr>}
+      </tbody></table></div>
+    </div>}
+  </section>;
+}
+
+function DomainsSection() {
+  const { t } = useI18n();
+  const [settings, setSettings] = useState<Awaited<ReturnType<typeof api.serverDomains>> | null>(null);
+  const [publicURL, setPublicURL] = useState("");
+  const [webURL, setWebURL] = useState("");
+  const [error, setError] = useState("");
+  async function load() {
+    setError("");
+    try {
+      const next = await api.serverDomains();
+      setSettings(next);
+      setPublicURL(next.public_url);
+      setWebURL(next.web_url);
+    } catch (err) { setError(errorMessage(err)); }
+  }
+  useEffect(() => { void load(); }, []);
+  const validOrigin = (value: string) => {
+    try {
+      const url = new URL(value);
+      return url.protocol === "https:" && !url.username && !url.password && url.pathname === "/" && !url.search && !url.hash;
+    } catch { return false; }
+  };
+  return <section id="serversettings-domains" className="section-block scroll-anchor">
+    <SectionHead title={t("serverSettings.domainsTitle")} />
+    {error && <Alert>{error}</Alert>}
+    {!settings ? <LoadingSurface label={t("common.loading")} /> : <div className="card-body">
+      <label className="form-field"><span>{t("serverSettings.publicURL")}</span><input type="url" value={publicURL} onChange={(event) => setPublicURL(event.target.value)} disabled={!settings.editable} autoCapitalize="none" spellCheck={false} /></label>
+      <label className="form-field"><span>{t("serverSettings.webURL")}</span><input type="url" value={webURL} onChange={(event) => setWebURL(event.target.value)} disabled={!settings.editable} autoCapitalize="none" spellCheck={false} /></label>
+      <label className="form-field"><span>{t("serverSettings.appScheme")}</span><input value="safelink://" readOnly /></label>
+      <p className="muted-lead">{t(settings.editable ? "serverSettings.domainsRestart" : "serverSettings.domainsUnavailable")}</p>
+      <div className="gift-table-actions">
+        <ActionButton tone="warn" label={t("serverSettings.saveDomains")} icon={<Save size={15} />} path="/api/actions/set-server-domains" payload={() => ({ public_url: publicURL.trim(), web_url: webURL.trim() })} disabled={!settings.editable || !validOrigin(publicURL) || !validOrigin(webURL)} onDone={() => void load()} />
+      </div>
+    </div>}
+  </section>;
+}
 
 function IdentitySection() {
   const { t } = useI18n();

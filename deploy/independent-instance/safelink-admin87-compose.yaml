@@ -1,0 +1,29 @@
+services:
+  admin:
+    image: safelink-admin:local
+    build:
+      context: ./admin
+    env_file:
+      - ./server.env
+      - ./admin.env
+    environment:
+      TELESRV_IDENTITY_DIR: /data/identity
+    network_mode: host
+    volumes:
+      - ./data/server:/data
+      - ./server.env:/app/.env:ro
+    read_only: true
+    tmpfs: ["/tmp:rw,nosuid,nodev,size=64m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:2600/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}

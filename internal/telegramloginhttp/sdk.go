@@ -83,7 +83,7 @@ if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded'
 const telegramWidgetJavaScript = `(function(global){
 'use strict';
 var current=document.currentScript;
-if(!current){throw new Error('telesrv Telegram widget shim must be loaded by a script element');}
+if(!current){throw new Error('SafeLink Telegram widget shim must be loaded by a script element');}
 var provider=new URL(current.src,document.baseURI).origin;
 var clientAttr=String(current.getAttribute('data-client-id')||'').trim();
 var username=String(current.getAttribute('data-telegram-login')||'').trim().replace(/^@/,'');
@@ -119,8 +119,8 @@ function loadLoginSDK(){
   if(state&&state.provider===provider){return state.promise;}
   var promise=new Promise(function(resolve,reject){
     var script=document.createElement('script');script.async=true;script.src=provider+'/js/telegram-login.js';
-    script.onload=function(){var api=global.Telegram&&global.Telegram.Login;if(!api||typeof api.auth!=='function'){reject(new Error('telesrv Telegram Login SDK is unavailable'));return;}resolve(api);};
-    script.onerror=function(){reject(new Error('failed to load telesrv Telegram Login SDK'));};
+    script.onload=function(){var api=global.Telegram&&global.Telegram.Login;if(!api||typeof api.auth!=='function'){reject(new Error('SafeLink Telegram Login SDK is unavailable'));return;}resolve(api);};
+    script.onerror=function(){reject(new Error('failed to load SafeLink Telegram Login SDK'));};
     (document.head||document.documentElement).appendChild(script);
   });
   global.__telesrvTelegramLoginSDKState={provider:provider,promise:promise};

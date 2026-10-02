@@ -86,6 +86,7 @@ type Service struct {
 	authKeys               store.AuthKeyStore
 	tempKeys               store.TempAuthKeyBindingStore
 	passwords              store.PasswordStore
+	futureTokens           store.FutureAuthTokenStore
 	messages               store.MessageStore
 	dialogs                store.DialogStore
 	loginCodeDelivery      store.LoginCodeDeliveryStore
@@ -1198,6 +1199,7 @@ func (s *Service) finishSignIn(ctx context.Context, auth domain.Authorization, e
 // signUp 的 TL 请求不带验证码，因此只消费由正确 SignIn/email setup 原子
 // 标记过的 hash。直接 SendCode→SignUp 永远不能创建账号。
 func (s *Service) SignUp(ctx context.Context, auth domain.Authorization, phone, phoneCodeHash, firstName, lastName string) (domain.User, domain.Message, error) {
+	phoneCodeHash, inviteCode := store.SplitRegistrationInvite(phoneCodeHash)
 	phone = normalizePhone(phone)
 	if !validPhone(phone) {
 		return domain.User{}, domain.Message{}, ErrPhoneNumberInvalid
@@ -1243,6 +1245,11 @@ func (s *Service) SignUp(ctx context.Context, auth domain.Authorization, phone, 
 		s.invalidateLoginCodeDetached(ctx, phoneCodeHash, phone)
 		return domain.User{}, domain.Message{}, ErrCodeInvalid
 	}
+	if registrations, ok := s.users.(store.RegistrationStore); ok {
+		if err := registrations.ValidateRegistrationInvite(ctx, inviteCode); err != nil {
+			return domain.User{}, domain.Message{}, err
+		}
+	}
 	consumed, consumedOK, err := s.codes.ConsumeSignUpVerified(ctx, phoneCodeHash, phone)
 	if err != nil {
 		return domain.User{}, domain.Message{}, err
@@ -1275,7 +1282,12 @@ func (s *Service) SignUp(ctx context.Context, auth domain.Authorization, phone, 
 	if s.premiumGrantMonths > 0 {
 		newUser.PremiumUntil = int(time.Now().AddDate(0, s.premiumGrantMonths, 0).Unix())
 	}
-	u, err := s.users.Create(ctx, newUser)
+	var u domain.User
+	if registrations, ok := s.users.(store.RegistrationStore); ok {
+		u, err = registrations.CreateRegistration(ctx, newUser, inviteCode)
+	} else {
+		u, err = s.users.Create(ctx, newUser)
+	}
 	if err != nil {
 		return domain.User{}, domain.Message{}, err
 	}

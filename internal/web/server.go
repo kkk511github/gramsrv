@@ -20,6 +20,7 @@ import (
 
 	"telesrv/internal/brand"
 	"telesrv/internal/branding"
+	"telesrv/internal/clientconfig"
 	"telesrv/internal/domain"
 	"telesrv/internal/links"
 )
@@ -53,6 +54,7 @@ type Config struct {
 	// the listener so discovery/auth/token and public links share the exact
 	// externally registered origin behind one reverse proxy.
 	TelegramLogin http.Handler
+	ClientConfig  http.Handler
 }
 
 type StickerSetResolver interface {
@@ -197,6 +199,9 @@ func newHandler(cfg Config, logger *zap.Logger) (http.Handler, error) {
 		logger:             logger,
 	}
 	mux := http.NewServeMux()
+	if cfg.ClientConfig != nil {
+		mux.Handle("GET "+clientconfig.Path, cfg.ClientConfig)
+	}
 	mux.HandleFunc("GET /healthz", h.healthz)
 	mux.HandleFunc("GET /assets/safelink-home-devices.png", h.homeDevicesAsset)
 	mux.HandleFunc("GET /assets/safelink-mark.png", h.homeMarkAsset)
@@ -616,7 +621,7 @@ func (h *handler) root(w http.ResponseWriter, r *http.Request) {
 		AppName:      brand.DefaultAppName,
 		CanonicalURL: h.canonicalURL(r, "/"),
 		AppURL:       h.appURL(""),
-		WebURL:       "https://web.safelink.chat/",
+		WebURL:       strings.TrimRight(h.webBaseURL, "/") + "/",
 		DevicesImage: "/assets/safelink-home-devices.png",
 		MarkImage:    "/assets/safelink-mark.png",
 	})
@@ -629,7 +634,7 @@ func (h *handler) faq(w http.ResponseWriter, r *http.Request) {
 		Heading:     "常见问题",
 		Intro:       "这里整理 SafeLink 测试阶段最常被问到的问题：账号、客户端、链接、服务端和数据边界。",
 		PrimaryText: "打开网页版",
-		PrimaryURL:  template.URL("https://web.safelink.chat/"),
+		PrimaryURL:  template.URL(h.webBaseURL),
 		Sections: []siteSection{
 			{Title: "基础", Items: []siteItem{
 				{Title: "SafeLink 是什么？", Body: "SafeLink 是一套自有服务端和多端客户端体验，目标是在自己的域名与实例下提供熟悉、快速、同步的即时通讯。"},
@@ -655,9 +660,9 @@ func (h *handler) apps(w http.ResponseWriter, r *http.Request) {
 		Active:        "apps",
 		Kicker:        "Apps",
 		Heading:       "SafeLink 客户端",
-		Intro:         "移动端、桌面端和网页版都要指向同一个 SafeLink 实例。当前先使用网页版地址：https://web.safelink.chat/，正式下载地址接入后，这里会成为统一入口。",
+		Intro:         "移动端、桌面端和网页版都指向同一个 SafeLink 实例。当前网页版地址：" + h.webBaseURL,
 		PrimaryText:   "打开网页版",
-		PrimaryURL:    template.URL("https://web.safelink.chat/"),
+		PrimaryURL:    template.URL(h.webBaseURL),
 		SecondaryText: "查看链接规则",
 		SecondaryURL:  template.URL("/links"),
 		Sections: []siteSection{
@@ -671,7 +676,7 @@ func (h *handler) apps(w http.ResponseWriter, r *http.Request) {
 				{Title: "Linux", Body: "Linux 桌面包跟随桌面端同一配置方向，正式产物接入后统一展示。", LinkText: "准备接入安装包", LinkURL: template.URL("/apps#linux")},
 			}},
 			{Title: "网页版", Items: []siteItem{
-				{Title: "Web", Body: "浏览器入口用于测试和临时访问，当前网页版地址是 https://web.safelink.chat/。生产环境需要允许 safelink.chat 相关 WebSocket Origin。", LinkText: "打开 Web", LinkURL: template.URL("https://web.safelink.chat/")},
+				{Title: "Web", Body: "当前网页版地址：" + h.webBaseURL, LinkText: "打开 Web", LinkURL: template.URL(h.webBaseURL)},
 			}},
 		},
 	})
@@ -766,7 +771,7 @@ func (h *handler) linksPage(w http.ResponseWriter, r *http.Request) {
 		PrimaryText:   "打开 SafeLink",
 		PrimaryURL:    template.URL(h.appURL("")),
 		SecondaryText: "打开网页版",
-		SecondaryURL:  template.URL("https://web.safelink.chat/"),
+		SecondaryURL:  template.URL(h.webBaseURL),
 		Sections: []siteSection{
 			{Title: "公开网页链接", Items: []siteItem{
 				{Title: "邀请链接", Body: "https://safelink.chat/+invite_hash 用于加入群组或频道。"},
@@ -930,7 +935,7 @@ func (h *handler) instantView(w http.ResponseWriter, r *http.Request) {
 		PrimaryText:   "查看链接规则",
 		PrimaryURL:    template.URL("/links"),
 		SecondaryText: "打开网页版",
-		SecondaryURL:  template.URL("https://web.safelink.chat/"),
+		SecondaryURL:  template.URL(h.webBaseURL),
 		Sections: []siteSection{
 			{Title: "公开预览", Items: []siteItem{
 				{Title: "邀请预览", Body: "邀请链接打开后应展示 SafeLink 群组或频道的基础信息，并提供 safelink:// 加入深链和网页版兜底。"},
@@ -1452,8 +1457,7 @@ func (h *handler) serveLanding(w http.ResponseWriter, data landingPage) {
 	}
 	data.AppURLJS = template.JS(strconv.Quote(data.AppURL))
 	data.AppURLAttr = template.URL(data.AppURL)
-	data.CompatAppURL = compatAppURL(data.AppURL)
-	data.CompatAppURLJS = template.JS(strconv.Quote(data.CompatAppURL))
+	data.WebURLAttr = template.URL(publicWebAppURL(h.webBaseURL, data.AppURL))
 	data.PathFullJS = template.JS(strconv.Quote(data.PathFull))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=60")
@@ -1473,7 +1477,7 @@ func (h *handler) serveHome(w http.ResponseWriter, _ *http.Request, data homePag
 		data.AppURL = h.appURL("")
 	}
 	if data.WebURL == "" {
-		data.WebURL = h.publicBaseURL + "/"
+		data.WebURL = h.webBaseURL
 	}
 	if data.DevicesImage == "" {
 		data.DevicesImage = "/assets/safelink-home-devices.png"
@@ -1508,7 +1512,7 @@ func (h *handler) serveSitePage(w http.ResponseWriter, r *http.Request, data sit
 		data.CanonicalURL = h.canonicalURL(r, r.URL.Path)
 	}
 	if data.WebURL == "" {
-		data.WebURL = "https://web.safelink.chat/"
+		data.WebURL = h.webBaseURL
 	}
 	if data.AppURL == "" {
 		data.AppURL = h.appURL("")
@@ -2064,23 +2068,22 @@ type pageData struct {
 }
 
 type landingPage struct {
-	SiteName       string
-	SiteInitial    string
-	Title          string
-	CanonicalURL   string
-	AppURL         string
-	KindLabel      string
-	PageTitle      string
-	Extra          string
-	Description    string
-	ActionText     string
-	Icon           string
-	PathFull       string
-	CompatAppURL   string
-	AppURLJS       template.JS
-	CompatAppURLJS template.JS
-	AppURLAttr     template.URL
-	PathFullJS     template.JS
+	SiteName     string
+	SiteInitial  string
+	Title        string
+	CanonicalURL string
+	AppURL       string
+	KindLabel    string
+	PageTitle    string
+	Extra        string
+	Description  string
+	ActionText   string
+	Icon         string
+	PathFull     string
+	AppURLJS     template.JS
+	AppURLAttr   template.URL
+	WebURLAttr   template.URL
+	PathFullJS   template.JS
 }
 
 type homePage struct {
@@ -2761,7 +2764,6 @@ var usernameLandingTemplate = template.Must(template.New("username-landing").Par
     </main>
     <footer>If you have {{.AppName}}, this page can open the chat directly.</footer>
   </div>
-  <script>window.setTimeout(function () { window.location.href = {{.AppURLJS}}; }, 250);</script>
 </body>
 </html>
 `))
@@ -2981,6 +2983,7 @@ var landingTemplate = template.Must(template.New("landing").Parse(`<!doctype htm
         {{if .Extra}}<p class="extra">{{.Extra}}</p>{{end}}
         <p class="desc">{{.Description}}</p>
         <a class="button" href="{{.AppURLAttr}}" data-open-app>{{.ActionText}}</a>
+        <a class="raw" href="{{.WebURLAttr}}" data-open-web>在网页版中打开</a>
         <a class="raw" href="{{.CanonicalURL}}">{{.CanonicalURL}}</a>
       </section>
     </main>
@@ -2991,43 +2994,6 @@ var landingTemplate = template.Must(template.New("landing").Parse(`<!doctype htm
         window.parent.postMessage(JSON.stringify({eventType: "web_app_open_safelink", eventData: {path_full: {{.PathFullJS}}}}), "*");
       }
     } catch (e) {}
-    (function () {
-      var primaryUrl = {{.AppURLJS}};
-      var compatUrl = {{.CompatAppURLJS}};
-      var didLeave = false;
-      var desktopBrowser = /Windows|Macintosh|Mac OS X|Linux|X11/i.test(navigator.userAgent || "") && !/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
-      var launchUrl = desktopBrowser && compatUrl ? compatUrl : primaryUrl;
-      var fallbackUrl = desktopBrowser && compatUrl ? primaryUrl : compatUrl;
-      function markLeave() { didLeave = true; }
-      document.addEventListener("visibilitychange", function () {
-        if (document.hidden) {
-          markLeave();
-        }
-      });
-      window.addEventListener("pagehide", markLeave);
-      var attemptId = 0;
-      function openLaunchWithFallback(fallbackDelay) {
-        didLeave = false;
-        var currentAttempt = ++attemptId;
-        window.location.href = launchUrl;
-        setTimeout(function () {
-          if (fallbackUrl && currentAttempt === attemptId && !didLeave && !document.hidden) {
-            window.location.href = fallbackUrl;
-          }
-        }, fallbackDelay);
-      }
-      var launchers = document.querySelectorAll("[data-open-app]");
-      for (var i = 0; i < launchers.length; i++) {
-        launchers[i].setAttribute("href", launchUrl);
-        launchers[i].addEventListener("click", function (event) {
-          event.preventDefault();
-          openLaunchWithFallback(700);
-        });
-      }
-      setTimeout(function () {
-        openLaunchWithFallback(1200);
-      }, 100);
-    })();
   </script>
 </body>
 </html>

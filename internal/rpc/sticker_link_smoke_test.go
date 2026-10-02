@@ -92,13 +92,12 @@ func TestCustomStickerPackLinkInstallAndSendSmoke(t *testing.T) {
 	for _, want := range []string{
 		"https://safelink.chat/addstickers/alice_fresh_pack",
 		"safelink://addstickers?set=alice_fresh_pack",
-		"tg://addstickers?set=alice_fresh_pack",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("sticker link body missing %q:\n%s", want, body)
 		}
 	}
-	for _, forbidden := range []string{"telesrv://"} {
+	for _, forbidden := range []string{"telesrv://", "tg://addstickers?set=alice_fresh_pack"} {
 		if strings.Contains(body, forbidden) {
 			t.Fatalf("sticker link must not contain %q:\n%s", forbidden, body)
 		}

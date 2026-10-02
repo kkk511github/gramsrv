@@ -17,7 +17,7 @@ function buildGramsrvError(route, status, text) {
   } catch {
     // non-JSON body; keep the raw text
   }
-  const error = new Error(`gramsrv ${route} ${status}: ${errorText}`);
+  const error = new Error(`SafeLink ${route} ${status}: ${errorText}`);
   error.code = code;
   return error;
 }

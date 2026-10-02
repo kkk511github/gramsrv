@@ -1,0 +1,5 @@
+*
+!Dockerfile
+!safelink-server
+!langpack/
+!langpack/**

@@ -229,9 +229,8 @@ func (r *Router) onUsersGetFullUser(ctx context.Context, id tg.InputUserClass) (
 // authoritative replacement for their local block state, so omitting these
 // fields can undo a block learned from contacts.getBlocked or updatePeerBlocked.
 //
-// The contact service guarantees BlockContact == !blocked for a non-self user.
-// Reusing the peer-settings projection avoids a second block-store lookup while
-// retaining the shared viewer/peer cache and its mutation invalidation rules.
+// PeerSettings.BlockContact is an unknown-sender prompt, not a blocklist fact.
+// Read the actual owner-scoped relation even when the prompt projection is cached.
 func (r *Router) applyContactPeerStateToUserFull(ctx context.Context, viewerUserID, targetUserID int64, full *tg.UserFull) error {
 	if full == nil {
 		return internalErr()
@@ -256,7 +255,10 @@ func (r *Router) applyContactPeerStateToUserFull(ctx context.Context, viewerUser
 	}
 	full.Settings = tgPeerSettings(settings)
 	if r.deps.Contacts != nil {
-		blocked := !settings.BlockContact
+		blocked, err := r.deps.Contacts.IsBlocked(ctx, viewerUserID, targetUserID)
+		if err != nil {
+			return internalErr()
+		}
 		full.SetBlocked(blocked)
 		// telesrv currently models the main and stories block switches as one
 		// durable relation. Keep both wire flags consistent until independent

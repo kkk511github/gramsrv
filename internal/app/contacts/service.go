@@ -541,8 +541,10 @@ func (s *Service) GetPeerSettings(ctx context.Context, userID int64, peer domain
 		shareContact = found && !peerCanSeePhone
 	}
 	return domain.PeerSettings{
-		AddContact:            !found,
-		BlockContact:          !blocked,
+		AddContact: !found,
+		// This is the unknown-sender safety prompt, not permission to block a user.
+		// Clients disable incoming link actions while this flag is present.
+		BlockContact:          !found && !blocked,
 		ShareContact:          shareContact,
 		NeedContactsException: needContactsException,
 	}, nil

@@ -12,6 +12,7 @@ import (
 	androidcompat "telesrv/internal/compat/android"
 	"telesrv/internal/compat/tdesktop"
 	"telesrv/internal/domain"
+	"telesrv/internal/store"
 )
 
 // registerHelp 注册 help.* RPC handler（DC 配置、最近 DC）。
@@ -44,11 +45,26 @@ func (r *Router) registerHelp(d *tlprofile.Dispatcher) {
 			return tdesktop.AppConfig(hash), nil
 		}
 		userID, _ := UserIDFrom(ctx)
-		cfg, notModified, err := r.deps.Help.GetAppConfig(ctx, userID, hash)
+		cfg, _, err := r.deps.Help.GetAppConfig(ctx, userID, 0)
 		if err != nil {
 			return nil, internalErr()
 		}
-		if notModified {
+		pending, err := r.registrationPasswordPending(ctx, userID)
+		if err != nil {
+			return nil, internalErr()
+		}
+		inviteRequired := false
+		if reader, ok := r.deps.Auth.(store.RegistrationInvitePolicyReader); ok {
+			inviteRequired, err = reader.RegistrationInviteRequired(ctx)
+			if err != nil {
+				return nil, internalErr()
+			}
+		}
+		cfg, err = registrationPasswordAppConfig(cfg, pending, inviteRequired)
+		if err != nil {
+			return nil, internalErr()
+		}
+		if hash != 0 && hash == cfg.Hash {
 			return &tg.HelpAppConfigNotModified{}, nil
 		}
 		return &tg.HelpAppConfig{Hash: cfg.Hash, Config: tgJSONValue(cfg.JSON)}, nil

@@ -557,7 +557,7 @@ func TestHandlerServesStickerSetLandingPage(t *testing.T) {
 		"Fresh Pack",
 		"https://safelink.chat/addstickers/fresh_pack",
 		"safelink://addstickers?set=fresh_pack",
-		"tg://addstickers?set=fresh_pack",
+		"data-open-web",
 		"Add Stickers",
 	} {
 		if !strings.Contains(body, want) {
@@ -598,7 +598,7 @@ func TestHandlerServesEmojiLandingPage(t *testing.T) {
 		"custom emoji set",
 		"https://example.test/base/addemoji/emoji_pack",
 		"safelink://addemoji?set=emoji_pack",
-		"tg://addemoji?set=emoji_pack",
+		"data-open-web",
 		"Add Emoji",
 	} {
 		if !strings.Contains(body, want) {
@@ -626,7 +626,7 @@ func TestHandlerServesChatlistLandingPage(t *testing.T) {
 		"Shared Folder",
 		"http://127.0.0.1:2401/addlist/zNhytIbwRwjaC2GH",
 		"safelink://addlist?slug=zNhytIbwRwjaC2GH",
-		"tg://addlist?slug=zNhytIbwRwjaC2GH",
+		"data-open-web",
 		"preview and add it",
 	} {
 		if !strings.Contains(body, want) {
@@ -1112,8 +1112,7 @@ func TestHandlerServesPublicLinkLandingPages(t *testing.T) {
 				"safelink://join?invite=qgkY-PBX5nn3M_EzEn0F1tVj",
 				"Join chat",
 				"data-open-app",
-				"openLaunchWithFallback(700)",
-				"desktopBrowser",
+				"data-open-web",
 			},
 			compatWant: "tg://join?invite=qgkY-PBX5nn3M_EzEn0F1tVj",
 		},
@@ -1159,8 +1158,8 @@ func TestHandlerServesPublicLinkLandingPages(t *testing.T) {
 					t.Fatalf("body missing %q:\n%s", want, body)
 				}
 			}
-			if tt.compatWant != "" && !strings.Contains(body, tt.compatWant) {
-				t.Fatalf("body missing compatibility app URL %q:\n%s", tt.compatWant, body)
+			if tt.compatWant != "" && strings.Contains(body, tt.compatWant) {
+				t.Fatalf("landing page must not launch Telegram compatibility URL %q", tt.compatWant)
 			}
 			for _, forbidden := range []string{"telesrv://", "telesrv.net"} {
 				if strings.Contains(body, forbidden) {
@@ -1185,7 +1184,7 @@ func TestHandlerServesSafeLinkSitePages(t *testing.T) {
 		want []string
 	}{
 		{path: "/faq", want: []string{"常见问题", "SafeLink 是什么？", "safelink://"}},
-		{path: "/apps", want: []string{"SafeLink 客户端", "当前先使用网页版地址：https://web.safelink.chat/", "iOS", "Android", "打开 Web"}},
+		{path: "/apps", want: []string{"SafeLink 客户端", "当前网页版地址：https://web.safelink.chat", "iOS", "Android", "打开 Web"}},
 		{path: "/api", want: []string{"开发者与服务端接口", "MTProto 连接", "Admin API"}},
 		{path: "/safety", want: []string{"安全与隐私", "邮箱验证码", "设备管理"}},
 		{path: "/updates", want: []string{"更新日志", "官网首页与中文内容", "媒体收发"}},

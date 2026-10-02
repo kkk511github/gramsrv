@@ -166,6 +166,8 @@ test("post() surfaces the error text without truncating details", async () => {
     globalThis.fetch = async () => ({ ok: false, status: 400, text: async () => JSON.stringify(body) });
     const err = await client.post("/v1/collectible-usernames/mint", {}).then(() => null, (e) => e);
     assert.ok(err instanceof Error, "post rejects on 400");
+    assert.match(err.message, /^SafeLink /);
+    assert.doesNotMatch(err.message, /gramsrv|telesrv/i);
     assert.match(err.message, /username occupied/, "the error text is preserved in the message");
     assert.equal(err.code, "USERNAME_OCCUPIED", "the stable code is parsed");
   } finally {

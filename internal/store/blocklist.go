@@ -167,7 +167,7 @@ func BuildBlocklistSnapshot(m BlocklistMutation, changes []BlocklistChange, phon
 		}
 		visible := f.KnowsPhone || domain.EvaluatePrivacy(phone, domain.PrivacyContext{OwnerUserID: m.OwnerUserID, ViewerUserID: f.PeerUserID, ViewerIsContact: f.Contact, ViewerCloseFriend: f.CloseFriend, ViewerIsBot: f.Bot, ViewerIsPremium: f.Premium, SharedChatIDs: f.SharedChatIDs})
 		peer := domain.Peer{Type: domain.PeerTypeUser, ID: c.PeerUserID}
-		s.RequiredEvents = append(s.RequiredEvents, BlocklistRequiredEvent{TargetUserID: m.OwnerUserID, Event: domain.UpdateEvent{Type: domain.UpdateEventPeerStoryBlocked, Peer: peer, Bool: c.Blocked, Date: m.Date, PtsCount: 1}}, BlocklistRequiredEvent{TargetUserID: m.OwnerUserID, Event: domain.UpdateEvent{Type: domain.UpdateEventPeerSettings, Peer: peer, Settings: domain.PeerSettings{AddContact: !f.Contact, BlockContact: !c.Blocked, ShareContact: f.Contact && !visible, NeedContactsException: !visible}, Date: m.Date, PtsCount: 1}})
+		s.RequiredEvents = append(s.RequiredEvents, BlocklistRequiredEvent{TargetUserID: m.OwnerUserID, Event: domain.UpdateEvent{Type: domain.UpdateEventPeerStoryBlocked, Peer: peer, Bool: c.Blocked, Date: m.Date, PtsCount: 1}}, BlocklistRequiredEvent{TargetUserID: m.OwnerUserID, Event: domain.UpdateEvent{Type: domain.UpdateEventPeerSettings, Peer: peer, Settings: domain.PeerSettings{AddContact: !f.Contact, BlockContact: !f.Contact && !c.Blocked, ShareContact: f.Contact && !visible, NeedContactsException: !visible}, Date: m.Date, PtsCount: 1}})
 		for _, story := range s.Stories {
 			before := story.VisibleToWithStoryFacts(c.PeerUserID, f.Contact, f.CloseFriend, !c.Blocked)
 			after := story.VisibleToWithStoryFacts(c.PeerUserID, f.Contact, f.CloseFriend, c.Blocked)

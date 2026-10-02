@@ -17,6 +17,7 @@ import (
 	"telesrv/internal/branding"
 	"telesrv/internal/domain"
 	"telesrv/internal/links"
+	"telesrv/internal/linksettings"
 )
 
 const (
@@ -26,6 +27,7 @@ const (
 
 // Config 是 slerv 的运行配置。
 type Config struct {
+	PublicLinkSettingsFile string
 	// ListenAddr 是 MTProto TCP 监听地址。
 	// 需与 TDesktop patch 指向的自建 DC 地址/端口一致（记录于 docs/tdesktop-patch-notes.md）。
 	ListenAddr string
@@ -775,7 +777,17 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
-	publicBaseURL, err := links.ValidateBaseURL(envOr("TELESRV_PUBLIC_BASE_URL", envOr("TELESRV_STICKER_WEB_PUBLIC_URL", links.DefaultPublicBaseURL)))
+	linkSettingsFile := envAllowEmptyOr("TELESRV_PUBLIC_LINK_SETTINGS_FILE", "")
+	linkSettings, err := linksettings.Read(linkSettingsFile)
+	if err != nil {
+		return Config{}, fmt.Errorf("public link settings: %w", err)
+	}
+	publicBase := envOr("TELESRV_PUBLIC_BASE_URL", envOr("TELESRV_STICKER_WEB_PUBLIC_URL", links.DefaultPublicBaseURL))
+	webBase := envOr("TELESRV_PUBLIC_WEB_BASE_URL", links.DefaultWebBaseURL)
+	if linkSettings != nil {
+		publicBase, webBase = linkSettings.PublicURL, linkSettings.WebURL
+	}
+	publicBaseURL, err := links.ValidateBaseURL(publicBase)
 	if err != nil {
 		return Config{}, fmt.Errorf("TELESRV_PUBLIC_BASE_URL: %w", err)
 	}
@@ -825,7 +837,10 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("TELESRV_PUBLIC_APP_LINK_BASE: %w", err)
 	}
-	publicWebBaseURL, err := links.ValidateBaseURL(envOr("TELESRV_PUBLIC_WEB_BASE_URL", links.DefaultWebBaseURL))
+	if linkSettings != nil {
+		publicAppScheme, publicAppLinkBase = "safelink", ""
+	}
+	publicWebBaseURL, err := links.ValidateBaseURL(webBase)
 	if err != nil {
 		return Config{}, fmt.Errorf("TELESRV_PUBLIC_WEB_BASE_URL: %w", err)
 	}
@@ -861,13 +876,15 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("TELESRV_PREMIUM_PLANS: %w", err)
 	}
 
+	allowedOrigins := envListOr("TELESRV_WEBSOCKET_ALLOWED_ORIGINS", []string{"http://localhost:1234", "http://127.0.0.1:1234"})
+	if linkSettings != nil {
+		allowedOrigins = []string{linkSettings.WebURL}
+	}
 	cfg := Config{
-		ListenAddr:      envOr("TELESRV_LISTEN", "0.0.0.0:2398"),
-		WebSocketEnable: envBoolOr("TELESRV_WEBSOCKET_ENABLE", true),
-		WebSocketAllowedOrigins: envListOr("TELESRV_WEBSOCKET_ALLOWED_ORIGINS", []string{
-			"http://localhost:1234",
-			"http://127.0.0.1:1234",
-		}),
+		PublicLinkSettingsFile:  linkSettingsFile,
+		ListenAddr:              envOr("TELESRV_LISTEN", "0.0.0.0:2398"),
+		WebSocketEnable:         envBoolOr("TELESRV_WEBSOCKET_ENABLE", true),
+		WebSocketAllowedOrigins: allowedOrigins,
 		// help.getConfig 必须下发至少一个可重连的主 DC 地址；远端部署不能
 		// 沿用 loopback 默认值，需显式设置客户端实际可达的 IP。
 		AdvertiseIP:                       advertiseIP,

@@ -1,0 +1,60 @@
+name: safelink-chat
+services:
+  postgres:
+    image: postgres:17-alpine@sha256:979c4379dd698aba0b890599a6104e082035f98ef31d9b9291ec22f2b13059ca
+    env_file: ./postgres.env
+    command: ["postgres", "-c", "max_locks_per_transaction=512", "-c", "shared_preload_libraries=pg_stat_statements"]
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    ports: ["127.0.0.1:15432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U safelink -d safelink"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    logging: &logging
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  redis:
+    image: redis:7-alpine@sha256:8b81dd37ff027bec4e516d41acfbe9fe2460070dc6d4a4570a2ac5b9d59df065
+    env_file: ./redis.env
+    command: ["sh", "-ec", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    volumes: ["./data/redis:/data"]
+    ports: ["127.0.0.1:16379:6379"]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -qx PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    logging: *logging
+  server:
+    image: safelink-chat:local
+    build: .
+    env_file: ./server.env
+    environment:
+      TELESRV_IDENTITY_DIR: /data/identity
+    network_mode: host
+    volumes:
+      - ./data/server:/data
+      - ./data/sticker-seed:/seed/stickers:ro
+    read_only: true
+    tmpfs: ["/tmp:rw,nosuid,nodev,size=256m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 1024
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 1m
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:2401/healthz && nc -z 127.0.0.1 2398"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    logging: *logging

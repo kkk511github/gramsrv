@@ -329,6 +329,7 @@ func New(cfg Config, deps Deps, log *zap.Logger, clk clock.Clock) *Router {
 	r.registerMessages(d)
 	r.registerStickers(d)
 	r.registerChannels(d)
+	r.registerSafeLinkGroupPrivateChat(d)
 	r.registerCommunities(d)
 	r.registerUpload(d)
 	r.registerPhotos(d)
@@ -820,6 +821,9 @@ func (r *Router) dispatch(ctx context.Context, b *bin.Buffer, depth int, meta *r
 			}
 		}
 		if err := preflightRPCRequest(id, b); err != nil {
+			return nil, err
+		}
+		if err := r.checkRegistrationPasswordRPC(ctx, tlTypeName(id)); err != nil {
 			return nil, err
 		}
 		if err := r.checkFrozenRPC(ctx, tlTypeName(id)); err != nil {

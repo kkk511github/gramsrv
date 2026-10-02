@@ -415,6 +415,13 @@ func (s *AuthorizationStore) RevokeByUserExcept(ctx context.Context, userID int6
 }
 
 func revokeByUserExceptTx(ctx context.Context, tx pgx.Tx, userID, keepAuthKeyID int64) ([]domain.Authorization, error) {
+	if err := lockUsersForUpdate(ctx, tx, userID); err != nil {
+		return nil, err
+	}
+	// Include remembered, already logged-out devices in "terminate all others".
+	if _, err := tx.Exec(ctx, `DELETE FROM future_auth_tokens WHERE user_id=$1 AND source_auth_key_id<>$2`, userID, keepAuthKeyID); err != nil {
+		return nil, err
+	}
 	candidateRows, err := tx.Query(ctx, `
 SELECT auth_key_id
 FROM authorizations

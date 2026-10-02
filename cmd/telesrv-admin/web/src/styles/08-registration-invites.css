@@ -1,0 +1,52 @@
+#serversettings-invites .card-body,
+#serversettings-login-policy .card-body {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+#serversettings-invites .card-body > button,
+#serversettings-login-policy .card-body > button {
+  justify-self: start;
+}
+
+.invite-policy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.invite-policy input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  flex: 0 0 18px;
+  padding: 0;
+  margin: 0;
+  accent-color: #248bce;
+}
+
+.invite-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.invite-form-grid .form-field,
+.invite-form-grid input {
+  min-width: 0;
+  width: 100%;
+}
+
+#serversettings-invites .table-wrap {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+@media (max-width: 1100px) {
+  .invite-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 600px) {
+  .invite-form-grid { grid-template-columns: minmax(0, 1fr); }
+}

@@ -321,6 +321,9 @@ func (r *Router) DispatchAdmitted(
 			return nil, method, authKeyUnregisteredErr()
 		}
 	}
+	if err := r.checkRegistrationPasswordRPC(ctx, method); err != nil {
+		return nil, method, err
+	}
 	if err := r.checkFrozenRPC(ctx, method); err != nil {
 		return nil, method, err
 	}

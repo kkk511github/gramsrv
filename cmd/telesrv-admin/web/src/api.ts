@@ -158,6 +158,8 @@ export function errorMessage(error: unknown): string {
 }
 
 export const api = {
+  loginPolicy: () => request<{ future_auth_enabled: boolean; future_auth_days: number; registration_password_required: boolean }>("/api/server/login-policy"),
+  registrationInvites: () => request<{ enabled: boolean; items: { id: number; prefix: string; max_uses: number; used_count: number; disabled: boolean; expires_at: string; created_at: string }[] }>("/api/server/registration-invites"),
   session: () => request<AdminSession>("/api/session"),
   runtimeStatus: () => request<RuntimeStatusResponse>("/api/runtime-status"),
   overview: () => request<OverviewResponse>("/api/overview"),
@@ -286,6 +288,7 @@ export const api = {
   // handler ever saw it -- see serversettings.go).
   serverIdentity: () => request<ServerIdentity>("/api/server/identity"),
   serverEnv: () => request<EnvGroup[]>("/api/server/env"),
+  serverDomains: () => request<{ public_url: string; web_url: string; editable: boolean; override_saved: boolean }>("/api/server/domains"),
   serverStatus: () => request<ServerStatus>("/api/server/status"),
   serverIconURL: (bust = 0) => `/api/server/icon?_=${bust}`,
   uploadServerIcon: (form: FormData) => request<CommandResult>("/api/actions/upload-server-icon", { method: "POST", body: form }),

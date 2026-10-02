@@ -8,6 +8,7 @@ import (
 
 	"telesrv/internal/app/auth"
 	"telesrv/internal/domain"
+	"telesrv/internal/store"
 )
 
 // 本文件集中构造所有 rpc_error：error_code 遵循 Telegram 约定（4xx 客户端 / 5xx 服务端），
@@ -437,6 +438,10 @@ func fileEmptyErr() error                 { return tgerr.New(400, "FILE_EMPTY") 
 // signInErr 把登录业务错误映射为客户端可识别的 rpc_error。
 func signInErr(err error) error {
 	switch {
+	case errors.Is(err, store.ErrRegistrationInviteRequired):
+		return tgerr.New(400, "INVITE_CODE_REQUIRED")
+	case errors.Is(err, store.ErrRegistrationInviteInvalid):
+		return tgerr.New(400, "INVITE_CODE_INVALID")
 	case errors.Is(err, auth.ErrPhoneNumberInvalid),
 		errors.Is(err, auth.ErrSystemUserLoginForbidden):
 		return phoneNumberInvalidErr()

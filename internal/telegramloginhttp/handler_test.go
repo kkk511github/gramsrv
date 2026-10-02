@@ -759,6 +759,18 @@ func TestTelegramWidgetJavaScriptIsSelfHostedCacheableAndAliased(t *testing.T) {
 			strings.Contains(body, "telegram.org") {
 			t.Fatalf("widget SDK path=%q status=%d headers=%v body=%s", path, recorder.Code, recorder.Header(), body)
 		}
+		for _, message := range []string{
+			"SafeLink Telegram widget shim must be loaded by a script element",
+			"SafeLink Telegram Login SDK is unavailable",
+			"failed to load SafeLink Telegram Login SDK",
+		} {
+			if !strings.Contains(body, message) {
+				t.Errorf("widget missing branded error: %q", message)
+			}
+		}
+		if strings.Contains(body, "telesrv Telegram") {
+			t.Error("widget exposes the upstream brand in error messages")
+		}
 	}
 	first := httptest.NewRecorder()
 	f.handler.ServeHTTP(first, httptest.NewRequest(http.MethodGet, "/js/telegram-widget.js", nil))

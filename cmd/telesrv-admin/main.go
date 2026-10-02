@@ -104,7 +104,10 @@ type uiConfig struct {
 	// to the running server immediately (see internal/identity). The name the
 	// server boots with is read once at startup, so a rename here shows up on
 	// the next telesrv restart.
-	IdentityDir string
+	IdentityDir            string
+	PublicLinkSettingsFile string
+	PublicBaseURL          string
+	PublicWebBaseURL       string
 	// WelcomeMessagePhoneDefault/WelcomeMessageEmailDefault mirror
 	// config.WelcomeMessage{Phone,Email}Template -- the env-var-resolved text
 	// telesrv falls back to whenever the identity panel override is unset.
@@ -190,6 +193,9 @@ func loadConfig() (uiConfig, error) {
 		DiskStatsPath:              dashboardDiskPath(appCfg),
 		Permissions:                appCfg.AdminUIPermissions,
 		IdentityDir:                appCfg.IdentityDir,
+		PublicLinkSettingsFile:     appCfg.PublicLinkSettingsFile,
+		PublicBaseURL:              appCfg.PublicBaseURL,
+		PublicWebBaseURL:           appCfg.PublicWebBaseURL,
 		WelcomeMessagePhoneDefault: appCfg.WelcomeMessagePhoneTemplate,
 		WelcomeMessageEmailDefault: appCfg.WelcomeMessageEmailTemplate,
 		LoginCodeMessageDefault:    appCfg.LoginCodeMessageTemplate,

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createBot } from "../src/bot.js";
 import { BotDatabase } from "../src/db.js";
 import { buildPayload } from "../src/catalog.js";
+import { translate } from "../src/i18n.js";
 
 const botInfo = { id: 999, is_bot: true, first_name: "Test", username: "test_bot", can_join_groups: true, can_read_all_group_messages: false, supports_inline_queries: false };
 
@@ -356,6 +357,17 @@ test("Account fetch reports when the phone has no account", async () => {
   await bot.handleUpdate(accountCallbackUpdate({ data: "settings:account:fetch" }));
   assert.equal((await db.user(10)).server_user_id, 0);
   assert.match(calls.find((call) => call.method === "answerCallbackQuery").payload.text, /не найден аккаунт/);
+});
+
+test("Account fetch recognizes SafeLink API errors after rebranding", async () => {
+  const { bot, calls, db, config, gramsrv } = fixture();
+  config.productName = "SafeLink";
+  await seedAccountUser(db, { hasNumber: true });
+  gramsrv.resolveUserByPhone = async () => { throw new Error("SafeLink /v1/accounts/resolve-by-phone 503: unavailable"); };
+  await bot.handleUpdate(accountCallbackUpdate({ data: "settings:account:fetch" }));
+  const answer = calls.find((call) => call.method === "answerCallbackQuery");
+  assert.equal(answer.payload.text, translate("ru", "accountFetchFailed", { product: "SafeLink" }));
+  assert.equal(answer.payload.show_alert, true);
 });
 
 test("requesting a new free number replaces the previous number so exactly one remains", async () => {
@@ -832,7 +844,7 @@ test("admin grant refuses an occupied NFT username without minting", async () =>
   gramsrv.mintUsername = async (_userID, _username, _bid, _key, dryRun) => {
     called++;
     if (dryRun) {
-      const error = new Error("gramsrv /v1/collectible-usernames/mint 400: {\"status\":\"failed\"}");
+      const error = new Error("SafeLink /v1/collectible-usernames/mint 400: {\"status\":\"failed\"}");
       error.code = "USERNAME_OCCUPIED";
       throw error;
     }
@@ -929,7 +941,7 @@ test("moderation buttons freeze, flag scam and flag fake via the gramsrv API", a
   assert.match(fakeReply.payload.text, /фейк|fake/i);
 });
 
-test("admin lookup resolves an @username and shows the gramsrv account id", async () => {
+test("admin lookup resolves an @username and shows the SafeLink account id", async () => {
   const { bot, calls, db, config } = fixture();
   config.ownerIDs.add(777);
   await db.upsertUser({ id: 777, first_name: "Admin", language_code: "ru" }, 777, "ru");
@@ -941,7 +953,8 @@ test("admin lookup resolves an @username and shows the gramsrv account id", asyn
   await bot.handleUpdate(textUpdate({ fromID: 777, chatID: 777, text: "@durov" }));
   const sent = calls.filter((call) => call.method === "sendMessage" && call.payload.chat_id === 777).at(-1);
   assert.match(sent.payload.text, /@durov/, "the username is shown in the result");
-  assert.match(sent.payload.text, /gramsrv_id=<code>424242<\/code>/, "the gramsrv account id is displayed");
+  assert.match(sent.payload.text, /SafeLink ID=<code>424242<\/code>/, "the SafeLink account id is displayed");
+  assert.doesNotMatch(sent.payload.text, /gramsrv_id/);
 });
 
 test("admin grant and moderation refuse a target without a linked gramsrv account", async () => {
@@ -996,7 +1009,7 @@ test("an occupied error on the real admin grant mint is surfaced to the moderato
   gramsrv.mintUsername = async (_userID, _username, _bid, _key, dryRun) => {
     if (!dryRun) {
       realAttempts++;
-      const error = new Error("gramsrv /v1/collectible-usernames/mint 400: USERNAME_OCCUPIED: username occupied");
+      const error = new Error("SafeLink /v1/collectible-usernames/mint 400: USERNAME_OCCUPIED: username occupied");
       error.code = "USERNAME_OCCUPIED";
       throw error;
     }
@@ -1017,7 +1030,7 @@ test("an unmapped gramsrv failure keeps the visible reason in the reply", async 
   const target = await db.user(10);
   target.server_user_id = 424242;
   gramsrv.mintUsername = async () => {
-    const error = new Error("gramsrv /v1/collectible-usernames/mint 400: COLLECTIBLE_PEER_LIMIT: peer limit reached");
+    const error = new Error("SafeLink /v1/collectible-usernames/mint 400: COLLECTIBLE_PEER_LIMIT: peer limit reached");
     error.code = "COLLECTIBLE_PEER_LIMIT";
     throw error;
   };
@@ -1025,6 +1038,8 @@ test("an unmapped gramsrv failure keeps the visible reason in the reply", async 
   await bot.handleUpdate(textUpdate({ fromID: 777, chatID: 777, text: "10 Ramble" }));
   const reply = calls.filter((call) => call.method === "sendMessage").at(-1);
   assert.match(reply.payload.text, /peer limit/i, "the raw gramsrv reason stays visible instead of a generic crash");
+  assert.match(reply.payload.text, /SafeLink/);
+  assert.doesNotMatch(reply.payload.text, /gramsrv|telesrv/i);
 });
 
 test("admin audit button lists recent gramsrv actions", async () => {

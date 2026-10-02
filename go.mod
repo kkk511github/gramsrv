@@ -2,6 +2,8 @@ module telesrv
 
 go 1.25.0
 
+replace github.com/iamxvbaba/td => github.com/kkk511github/td v0.0.0-20261002095949-f195e248dfb2
+
 require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1
 	github.com/fxamacker/cbor/v2 v2.8.0

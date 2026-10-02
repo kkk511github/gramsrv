@@ -331,11 +331,11 @@ func (s *server) handleUpdateServerEnvAPI(w http.ResponseWriter, r *http.Request
 	meta := s.commandMetaFromAPI(r, body.CommandID, body.Reason, body.Confirm, "update-server-env")
 	details := map[string]any{"keys_changed": len(body.Values)}
 	if meta.DryRun {
-		writeJSON(w, http.StatusOK, serverCommandResult(meta, "server.update_env", nil, "would update .env -- takes effect on telesrv restart", details))
+		writeJSON(w, http.StatusOK, serverCommandResult(meta, "server.update_env", nil, "would update .env -- takes effect on SafeLink restart", details))
 		return
 	}
 	err := s.envCtl.WriteEnvValues(body.Values)
-	writeJSON(w, http.StatusOK, serverCommandResult(meta, "server.update_env", err, ".env updated -- restart telesrv for changes to take effect", details))
+	writeJSON(w, http.StatusOK, serverCommandResult(meta, "server.update_env", err, ".env updated -- restart SafeLink for changes to take effect", details))
 }
 
 // --- status --------------------------------------------------------------

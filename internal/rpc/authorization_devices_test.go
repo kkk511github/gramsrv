@@ -80,6 +80,30 @@ func TestRouterUpdatesAuthorizationIPFromContext(t *testing.T) {
 	}
 }
 
+func TestTGAuthorizationCurrentDeviceHasZeroHash(t *testing.T) {
+	devices := []domain.Authorization{
+		{AuthKeyID: [8]byte{1}, Hash: 101},
+		{AuthKeyID: [8]byte{2}, Hash: 202},
+	}
+	for _, current := range devices {
+		for _, device := range devices {
+			got := tgAuthorization(device, current.AuthKeyID, 1700000000, domain.IPLocation{})
+			isCurrent := device.AuthKeyID == current.AuthKeyID
+			wantHash := device.Hash
+			if isCurrent {
+				wantHash = 0
+			}
+			if got.Current != isCurrent || got.Hash != wantHash {
+				t.Fatalf("device %x viewed by %x: current=%v hash=%d, want %v/%d",
+					device.AuthKeyID, current.AuthKeyID, got.Current, got.Hash, isCurrent, wantHash)
+			}
+		}
+	}
+	if devices[0].Hash != 101 || devices[1].Hash != 202 {
+		t.Fatal("response conversion changed stored authorization hashes")
+	}
+}
+
 type fakeIPGeo struct {
 	loc domain.IPLocation
 	ok  bool

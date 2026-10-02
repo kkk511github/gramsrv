@@ -231,6 +231,12 @@ func (s *server) routes() http.Handler {
 	mux.Handle("POST /api/actions/upload-server-icon", s.serverManage(s.handleUploadServerIconAPI))
 	mux.Handle("POST /api/actions/remove-server-icon", s.serverManage(s.handleRemoveServerIconAPI))
 	mux.Handle("GET /api/server/env", s.serverManage(s.handleServerEnvAPI))
+	mux.Handle("GET /api/server/domains", s.serverManage(s.handleServerDomainsAPI))
+	mux.Handle("GET /api/server/registration-invites", s.serverManage(s.handleRegistrationInvitesAPI))
+	mux.Handle("GET /api/server/login-policy", s.serverManage(s.handleLoginPolicyAPI))
+	mux.Handle("POST /api/actions/login-policy", s.serverManage(s.handleLoginPolicyActionAPI))
+	mux.Handle("POST /api/actions/registration-invites", s.serverManage(s.handleRegistrationInviteActionAPI))
+	mux.Handle("POST /api/actions/set-server-domains", s.serverManage(s.handleSetServerDomainsAPI))
 	mux.Handle("POST /api/actions/update-server-env", s.serverManage(s.handleUpdateServerEnvAPI))
 	mux.Handle("GET /api/server/status", s.serverManage(s.handleServerStatusAPI))
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {

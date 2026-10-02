@@ -1,13 +1,16 @@
 package rpc
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/iamxvbaba/td/bin"
 	"github.com/iamxvbaba/td/clock"
 	"github.com/iamxvbaba/td/tg"
+	"github.com/iamxvbaba/td/tlprofile"
 	"go.uber.org/zap/zaptest"
 
 	appchannels "telesrv/internal/app/channels"
@@ -82,6 +85,151 @@ func TestSafeLinkGroupPrivateChatForbiddenRPC(t *testing.T) {
 	}
 	if got := safeLinkGetPrivateChatForbidden(t, r, WithUserID(ctx, member.ID), input); got {
 		t.Fatalf("private chat forbidden after owner toggle off = true, want false")
+	}
+	for _, profile := range []tlprofile.Profile{tlprofile.Profile225, tlprofile.Profile226, tlprofile.Profile227, tlprofile.Profile228, tlprofile.Profile229} {
+		for _, wrapped := range []bool{false, true} {
+			t.Run(fmt.Sprintf("exact_%d_wrapped_%v", profile, wrapped), func(t *testing.T) {
+				run := func(ctx context.Context, body *bin.Buffer) (tlprofile.Result, error) {
+					wire := body.Raw()
+					if wrapped {
+						var envelope bin.Buffer
+						if err := (&tg.InvokeWithLayerRequest{Layer: int(profile), Query: &rawObject{data: wire}}).Encode(&envelope); err != nil {
+							t.Fatal(err)
+						}
+						wire = envelope.Raw()
+					}
+					buffer := &bin.Buffer{Buf: wire}
+					var admitted tlprofile.Admission
+					var err error
+					if wrapped {
+						admitted, err = r.AdmitUnprofiled(buffer, tlprofile.Limits{})
+					} else {
+						admitted, err = r.AdmitDefaultLayer(profile, buffer, tlprofile.Limits{})
+					}
+					if err != nil {
+						t.Fatalf("production admission: %v", err)
+					}
+					if buffer.Len() != 0 {
+						t.Fatal("unconsumed request bytes")
+					}
+					result, method, err := r.DispatchAdmitted(ctx, [8]byte{}, 0, 0, 0, admitted)
+					if !strings.HasPrefix(method, "safelink.") {
+						t.Fatalf("unexpected method %s", method)
+					}
+					return result, err
+				}
+				for _, enabled := range []bool{true, false} {
+					if _, err := run(WithUserID(ctx, member.ID), safeLinkTogglePrivateChatBuffer(t, input, enabled)); err == nil || !strings.Contains(err.Error(), "CHAT_ADMIN_REQUIRED") {
+						t.Fatalf("member toggle: %v", err)
+					}
+					result, err := run(WithUserID(ctx, owner.ID), safeLinkTogglePrivateChatBuffer(t, input, enabled))
+					if err != nil {
+						t.Fatal(err)
+					}
+					var encoded bin.Buffer
+					if err := result.Encode(&encoded); err != nil {
+						t.Fatalf("encode exact updates: %v", err)
+					}
+					if id, _ := encoded.PeekID(); id != tg.UpdatesTypeID {
+						t.Fatalf("result id %x", id)
+					}
+					get := &bin.Buffer{}
+					get.PutID(safeLinkGetGroupPrivateChatForbiddenTypeID)
+					if err := input.Encode(get); err != nil {
+						t.Fatal(err)
+					}
+					result, err = run(WithUserID(ctx, member.ID), get)
+					if err != nil {
+						t.Fatal(err)
+					}
+					encoded = bin.Buffer{}
+					if err := result.Encode(&encoded); err != nil {
+						t.Fatal(err)
+					}
+					value, err := tg.DecodeBool(&encoded)
+					if err != nil {
+						t.Fatal(err)
+					}
+					_, actual := value.(*tg.BoolTrue)
+					if actual != enabled || encoded.Len() != 0 {
+						t.Fatalf("readback=%v want=%v", actual, enabled)
+					}
+				}
+			})
+		}
+	}
+	t.Run("admin_hidden_members", func(t *testing.T) {
+		// Warm the same views clients already opened before the operator edits the group.
+		for _, enabled := range []bool{true, false} {
+			if _, err := r.onChannelsGetFullChannel(WithUserID(ctx, member.ID), input); err != nil {
+				t.Fatal(err)
+			}
+			updated, err := channelService.AdminSetSettings(ctx, channel.ID, domain.ChannelAdminSettings{ParticipantsHidden: &enabled})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := r.NotifyChannelChanged(ctx, updated); err != nil {
+				t.Fatal(err)
+			}
+			for _, viewer := range []int64{owner.ID, member.ID} {
+				full, err := r.onChannelsGetFullChannel(WithUserID(ctx, viewer), input)
+				if err != nil {
+					t.Fatal(err)
+				}
+				info := full.FullChat.(*tg.ChannelFull)
+				wantVisible := viewer == owner.ID || !enabled
+				if info.ParticipantsHidden != enabled || info.CanViewParticipants != wantVisible {
+					t.Fatalf("viewer %d hidden=%v visible=%v, want hidden=%v visible=%v", viewer, info.ParticipantsHidden, info.CanViewParticipants, enabled, wantVisible)
+				}
+				participants, err := r.onChannelsGetParticipants(WithUserID(ctx, viewer), &tg.ChannelsGetParticipantsRequest{Channel: input, Filter: &tg.ChannelParticipantsRecent{}, Limit: 100})
+				if err != nil {
+					t.Fatal(err)
+				}
+				count := len(participants.(*tg.ChannelsChannelParticipants).Participants)
+				if (count > 0) != wantVisible {
+					t.Fatalf("viewer %d returned %d members, visible=%v", viewer, count, wantVisible)
+				}
+			}
+		}
+	})
+}
+
+func TestSafeLinkPrivateChatExactAdmissionRejectsMalformed(t *testing.T) {
+	r := New(Config{}, Deps{}, zaptest.NewLogger(t), clock.System)
+	valid := safeLinkTogglePrivateChatBuffer(t, &tg.InputChannel{ChannelID: 1, AccessHash: 2}, true).Raw()
+	for _, data := range [][]byte{valid[:len(valid)-1], append(append([]byte(nil), valid...), 0, 0, 0, 0), append(append([]byte(nil), valid[:len(valid)-4]...), 0, 0, 0, 0)} {
+		original := append([]byte(nil), data...)
+		body := &bin.Buffer{Buf: data}
+		if _, err := r.AdmitLayer(tlprofile.Profile227, body, tlprofile.Limits{}); err == nil {
+			t.Fatal("malformed private RPC accepted")
+		}
+		if !bytes.Equal(body.Raw(), original) {
+			t.Fatal("failed admission consumed input")
+		}
+	}
+	body := &bin.Buffer{Buf: valid}
+	if _, err := r.AdmitLayer(tlprofile.Profile227, body, tlprofile.Limits{MaxWireBytes: len(valid) - 1}); err == nil {
+		t.Fatal("request size limit bypassed")
+	}
+}
+
+func TestSafeLinkPrivateChatExactAdmissionRequiresLogin(t *testing.T) {
+	r := New(Config{}, Deps{Auth: &captureAuthService{}}, zaptest.NewLogger(t), clock.System)
+	channel := &tg.InputChannel{ChannelID: 1, AccessHash: 2}
+	get := &bin.Buffer{}
+	get.PutID(safeLinkGetGroupPrivateChatForbiddenTypeID)
+	if err := channel.Encode(get); err != nil {
+		t.Fatal(err)
+	}
+	for _, body := range []*bin.Buffer{get, safeLinkTogglePrivateChatBuffer(t, channel, true)} {
+		admitted, err := r.AdmitDefaultLayer(tlprofile.Profile227, body, tlprofile.Limits{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _, err = r.DispatchAdmitted(context.Background(), [8]byte{}, 0, 0, 0, admitted)
+		if err == nil || !strings.Contains(err.Error(), "AUTH_KEY_UNREGISTERED") {
+			t.Fatalf("guest private RPC: %v", err)
+		}
 	}
 }
 

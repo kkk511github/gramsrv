@@ -2024,10 +2024,17 @@ func tgAuthorization(a domain.Authorization, currentAuthKeyID [8]byte, now int, 
 		active = created
 	}
 	ip := strings.TrimSpace(a.IP)
+	current := a.AuthKeyID == currentAuthKeyID
+	hash := a.Hash
+	// iOS uses hash == 0, rather than the current flag, to place this device.
+	// Keep the stored hash unchanged so other devices can still revoke it.
+	if current {
+		hash = 0
+	}
 	return tg.Authorization{
-		Current:       a.AuthKeyID == currentAuthKeyID,
+		Current:       current,
 		OfficialApp:   true,
-		Hash:          a.Hash,
+		Hash:          hash,
 		DeviceModel:   branding.UserVisibleText(a.DeviceModel, ""),
 		Platform:      branding.UserVisibleClientPlatform(a.Platform),
 		SystemVersion: branding.UserVisibleText(a.SystemVersion, ""),

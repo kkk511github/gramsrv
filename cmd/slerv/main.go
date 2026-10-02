@@ -70,6 +70,7 @@ import (
 	welcomemessagesapp "telesrv/internal/app/welcomemessages"
 	"telesrv/internal/botapi"
 	"telesrv/internal/branding"
+	"telesrv/internal/clientconfig"
 	"telesrv/internal/config"
 	"telesrv/internal/domain"
 	"telesrv/internal/identity"
@@ -1471,6 +1472,7 @@ func run(logger *zap.Logger) error {
 			return domain.ResolveLoginCodeMessageTemplate(info.LoginCodeMessageTemplate, cfg.LoginCodeMessageTemplate), nil
 		}),
 		auth.WithPasswords(passwordStore),
+		auth.WithFutureAuthTokens(authzStore),
 		auth.WithBotLogin(botStore),
 		auth.WithPremiumGrant(cfg.PremiumGrantMonths),
 		auth.WithCodeTTL(cfg.AuthCodeTTL),
@@ -1915,6 +1917,15 @@ func run(logger *zap.Logger) error {
 	}, adminService, logger.Named("adminapi")); err != nil {
 		return fmt.Errorf("start admin api: %w", err)
 	}
+	clientConfigHandler, err := clientconfig.New(&rsaKey.PublicKey, cfg.AdvertiseIP, port, cfg.DC, func() string {
+		if info, err := identityStore.Get(); err == nil && strings.TrimSpace(info.Name) != "" {
+			return info.Name
+		}
+		return cfg.PublicAppName
+	})
+	if err != nil {
+		return fmt.Errorf("configure native client discovery: %w", err)
+	}
 	if _, err := web.Start(ctx, web.Config{
 		Addr:               cfg.PublicLinkWebAddr,
 		PublicBaseURL:      cfg.PublicBaseURL,
@@ -1933,6 +1944,7 @@ func run(logger *zap.Logger) error {
 		RevenueWithdrawals: giftsService,
 		ModerationAppeals:  moderationService,
 		TelegramLogin:      telegramLoginHTTPHandler,
+		ClientConfig:       clientConfigHandler,
 	}, logger.Named("public-web")); err != nil {
 		return fmt.Errorf("start public Web: %w", err)
 	}

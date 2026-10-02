@@ -814,7 +814,7 @@ export function createBot({ config, db, gramsrv }) {
       return editOrReply(ctx, tr(ctx.from.id, "menuTitle"), mainKeyboard(language, isOwner(config, ctx.from.id)));
     } catch (error) {
       console.error("Account fetch failed", error);
-      const text = String(error?.message ?? "").startsWith("gramsrv ")
+      const text = String(error?.message ?? "").startsWith("SafeLink ")
         ? tr(ctx.from.id, "accountFetchFailed")
         : translateError(language, error);
       return ctx.answerCallbackQuery({ text, show_alert: true });
@@ -1115,7 +1115,7 @@ export function createBot({ config, db, gramsrv }) {
         const lines = [];
         if (result.user) {
           const u = result.user;
-          lines.push(`👤 <b>User</b>: <code>${u.telegram_id}</code> · @${escapeHTML(u.username || "—")} · lang=${u.language} · bonus=${u.bonus} · gramsrv_id=<code>${u.server_user_id}</code>`);
+          lines.push(`👤 <b>User</b>: <code>${u.telegram_id}</code> · @${escapeHTML(u.username || "—")} · lang=${u.language} · bonus=${u.bonus} · SafeLink ID=<code>${u.server_user_id}</code>`);
         }
         if (result.number) {
           const n = result.number;

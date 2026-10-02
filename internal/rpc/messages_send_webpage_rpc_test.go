@@ -5,7 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/iamxvbaba/td/bin"
 	"github.com/iamxvbaba/td/tg"
+	"github.com/iamxvbaba/td/tlprofile"
 
 	"telesrv/internal/domain"
 )
@@ -17,6 +19,51 @@ const (
 	wpURLEntityOff = 4
 	wpURLEntityLen = 21
 )
+
+func TestRecipientHistoryPreservesSafeLinkURLEntitiesOnWire(t *testing.T) {
+	for _, text := range []string{
+		"https://safelink.chat/kkkkk",
+		"https://safelink.chat/+example",
+		"https://safelink.chat/call/example?slug=example",
+		"https://212.189.31.87:8443/call/example?slug=example",
+		"safelink.chat/kkkkk",
+	} {
+		t.Run(text, func(t *testing.T) {
+			r, sender, recipient := newMediaTestRouter(t)
+			_, err := r.onMessagesSendMessage(WithUserID(context.Background(), sender.ID), &tg.MessagesSendMessageRequest{
+				Peer:    &tg.InputPeerUser{UserID: recipient.ID, AccessHash: recipient.AccessHash},
+				Message: text, RandomID: 94001, NoWebpage: true,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			list, err := r.deps.Messages.GetHistory(context.Background(), recipient.ID, domain.MessageFilter{
+				Peer: domain.Peer{Type: domain.PeerTypeUser, ID: sender.ID}, Limit: 10,
+			})
+			if err != nil || len(list.Messages) != 1 {
+				t.Fatalf("recipient history: count=%d err=%v", len(list.Messages), err)
+			}
+			for _, profile := range []tlprofile.Profile{tlprofile.Profile225, tlprofile.Profile226, tlprofile.Profile227} {
+				var wire bin.Buffer
+				if err := tlprofile.EncodeObject(profile, tgMessagesMessages(recipient.ID, list), &wire); err != nil {
+					t.Fatal(err)
+				}
+				decoded, err := tlprofile.DecodeObject(profile, &wire, tlprofile.Limits{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				message := decoded.(*tg.MessagesMessages).Messages[0].(*tg.Message)
+				if message.Out || message.Message != text || len(message.Entities) != 1 {
+					t.Fatalf("profile %v: unexpected recipient message: %+v", profile, message)
+				}
+				entity, ok := message.Entities[0].(*tg.MessageEntityURL)
+				if !ok || entity.Offset != 0 || entity.Length != utf16CodeUnitLen(text) {
+					t.Fatalf("profile %v: missing complete URL entity: %+v", profile, message.Entities)
+				}
+			}
+		})
+	}
+}
 
 func wpURLEntities() []tg.MessageEntityClass {
 	return []tg.MessageEntityClass{&tg.MessageEntityURL{Offset: wpURLEntityOff, Length: wpURLEntityLen}}

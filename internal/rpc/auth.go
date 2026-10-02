@@ -399,6 +399,16 @@ func (r *Router) onAuthSendCode(ctx context.Context, req *tg.AuthSendCodeRequest
 		return nil, err
 	}
 	r.rememberClientAPIID(ctx, req.APIID)
+	if svc, ok := r.deps.Auth.(futureAuthService); ok && len(req.Settings.LogoutTokens) > 0 {
+		u, matched, err := svc.TryFutureAuthToken(ctx, r.authzFromCtx(ctx), req.PhoneNumber, req.Settings.LogoutTokens)
+		if err != nil || matched {
+			authorization, err := r.finishAuthSignIn(ctx, u, false, err)
+			if err != nil {
+				return nil, err
+			}
+			return &tg.AuthSentCodeSuccess{Authorization: authorization}, nil
+		}
+	}
 	hash, err := r.deps.Auth.SendCode(ctx, req.PhoneNumber)
 	if err != nil {
 		if errors.Is(err, auth.ErrPhoneNumberInvalid) ||
@@ -575,7 +585,7 @@ func (r *Router) finishAuthSignIn(ctx context.Context, u domain.User, needSignUp
 	}
 	r.bindSessionUser(ctx, u.ID)
 	r.pushSignInServiceNotificationToOthers(ctx, u)
-	return &tg.AuthAuthorization{User: r.tgSelfUserWithUsernames(ctx, u)}, nil
+	return r.authorizationWithFutureToken(ctx, u), nil
 }
 
 func (r *Router) onAuthResendCode(ctx context.Context, req *tg.AuthResendCodeRequest) (tg.AuthSentCodeClass, error) {
@@ -687,7 +697,7 @@ func (r *Router) onAuthCheckPassword(ctx context.Context, password tg.InputCheck
 	if pending {
 		r.pushSignInServiceNotificationToOthers(ctx, u)
 	}
-	return &tg.AuthAuthorization{User: r.tgSelfUserWithUsernames(ctx, u)}, nil
+	return r.authorizationWithFutureToken(ctx, u), nil
 }
 
 func (r *Router) onAuthRequestPasswordRecovery(ctx context.Context) (*tg.AuthPasswordRecovery, error) {
@@ -728,7 +738,7 @@ func (r *Router) onAuthRecoverPassword(ctx context.Context, req *tg.AuthRecoverP
 	if err != nil {
 		return nil, internalErr()
 	}
-	return &tg.AuthAuthorization{User: r.tgSelfUserWithUsernames(ctx, u)}, nil
+	return r.authorizationWithFutureToken(ctx, u), nil
 }
 
 func (r *Router) onAuthCheckRecoveryPassword(ctx context.Context, code string) (bool, error) {
@@ -859,7 +869,7 @@ func (r *Router) onAuthFinishPasskeyLogin(ctx context.Context, req *tg.AuthFinis
 		r.setAuthUserCache(id, u.ID, true)
 	}
 	r.bindSessionUser(ctx, u.ID)
-	return &tg.AuthAuthorization{User: r.tgSelfUserWithUsernames(ctx, u)}, nil
+	return r.authorizationWithFutureToken(ctx, u), nil
 }
 
 func emailVerificationCode(v tg.EmailVerificationClass) string {
@@ -890,7 +900,7 @@ func (r *Router) onAuthImportBotAuthorization(ctx context.Context, req *tg.AuthI
 		r.setAuthUserCache(id, u.ID, true)
 	}
 	r.bindSessionUser(ctx, u.ID)
-	return &tg.AuthAuthorization{User: r.tgSelfUserWithUsernames(ctx, u)}, nil
+	return r.authorizationWithFutureToken(ctx, u), nil
 }
 
 // onAuthSignUp 处理 auth.signUp：创建用户并绑定授权。
@@ -904,14 +914,21 @@ func (r *Router) onAuthSignUp(ctx context.Context, req *tg.AuthSignUpRequest) (t
 	}
 	r.bindSessionUser(ctx, u.ID)
 	r.enqueueLoginMessageBootstrap(ctx, loginMessage)
-	return &tg.AuthAuthorization{User: r.tgSelfUserWithUsernames(ctx, u)}, nil
+	return r.authorizationWithFutureToken(ctx, u), nil
 }
 
 // onAuthLogOut 处理 auth.logOut：解绑当前 auth_key 的授权。
 func (r *Router) onAuthLogOut(ctx context.Context) (*tg.AuthLoggedOut, error) {
 	id, _ := AuthKeyIDFrom(ctx)
 	userID, authorized, userErr := r.currentUserID(ctx)
-	if err := r.deps.Auth.LogOut(ctx, id); err != nil {
+	var token []byte
+	var err error
+	if svc, ok := r.deps.Auth.(futureAuthService); ok {
+		token, err = svc.LogOutWithFutureToken(ctx, id)
+	} else {
+		err = r.deps.Auth.LogOut(ctx, id)
+	}
+	if err != nil {
 		return nil, internalErr()
 	}
 	r.invalidateAuthUserCache(id)
@@ -935,7 +952,11 @@ func (r *Router) onAuthLogOut(ctx context.Context) (*tg.AuthLoggedOut, error) {
 	if err := r.clearAuthKeyState(ctx, id); err != nil {
 		return nil, internalErr()
 	}
-	return &tg.AuthLoggedOut{}, nil
+	result := &tg.AuthLoggedOut{}
+	if len(token) != 0 {
+		result.SetFutureAuthToken(token)
+	}
+	return result, nil
 }
 
 func (r *Router) clearAuthKeyState(ctx context.Context, authKeyID [8]byte) error {
