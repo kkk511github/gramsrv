@@ -64,6 +64,10 @@ func (r *Router) registerHelp(d *tlprofile.Dispatcher) {
 		if err != nil {
 			return nil, internalErr()
 		}
+		cfg, err = publicLinksAppConfig(cfg, r.publicLink(""))
+		if err != nil {
+			return nil, internalErr()
+		}
 		if hash != 0 && hash == cfg.Hash {
 			return &tg.HelpAppConfigNotModified{}, nil
 		}
