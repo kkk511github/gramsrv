@@ -28,6 +28,9 @@ func TestPublicLinksAppConfig(t *testing.T) {
 	if value, exists := values["safelink_web_auth_tokens_enabled"]; !exists || value != false {
 		t.Fatal("unsupported bearer Web-token login must be explicitly disabled")
 	}
+	if value, exists := values["safelink_top_peers_enabled"]; !exists || value != false {
+		t.Fatal("disabled top-peer ranking must not advertise a reset capability")
+	}
 	second, err := publicLinksAppConfig(first, "https://chat.example.com/")
 	if err != nil || first.Hash == 0 || second.Hash == 0 || first.Hash == second.Hash {
 		t.Fatalf("domain did not invalidate cache: %d, %d, %v", first.Hash, second.Hash, err)

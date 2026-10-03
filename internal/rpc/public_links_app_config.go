@@ -19,6 +19,7 @@ func publicLinksAppConfig(cfg domain.AppConfig, prefix string) (domain.AppConfig
 	values["safelink_public_link_prefix"], _ = json.Marshal(prefix)
 	// This server has no bearer Web-token issuer/importer; advertise that before clients try it.
 	values["safelink_web_auth_tokens_enabled"] = json.RawMessage("false")
+	values["safelink_top_peers_enabled"] = json.RawMessage("false")
 	body, err := json.Marshal(values)
 	if err != nil {
 		return cfg, err
