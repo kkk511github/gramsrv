@@ -25,6 +25,9 @@ func TestPublicLinksAppConfig(t *testing.T) {
 	if values["safelink_public_link_prefix"] != "https://safelink.chat/" || values["other_setting"] != float64(7) || values["safelink_registration_invite_required"] != true {
 		t.Fatalf("config changed unexpectedly: %s", first.JSON)
 	}
+	if value, exists := values["safelink_web_auth_tokens_enabled"]; !exists || value != false {
+		t.Fatal("unsupported bearer Web-token login must be explicitly disabled")
+	}
 	second, err := publicLinksAppConfig(first, "https://chat.example.com/")
 	if err != nil || first.Hash == 0 || second.Hash == 0 || first.Hash == second.Hash {
 		t.Fatalf("domain did not invalidate cache: %d, %d, %v", first.Hash, second.Hash, err)
