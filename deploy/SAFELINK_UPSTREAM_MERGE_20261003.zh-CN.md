@@ -49,3 +49,18 @@ GeoIP 多后端是可选项，本次合并不自动改生产环境配置。启�
 - 新 GeoIP 多后端及独立 HTTP Bot API 均未自动开启。外部机器人使用发票支付，需要另行开启安全的 Bot API 入口，并部署支付前确认和交付逻辑。
 
 公网检查还发现 `www.safelink.chat` 解析到本服务器，但当前 Nginx 没有对应的 `www` 虚拟主机入口，TLS 返回的证书不匹配该域名。此项需要单独补齐官网入口和证书；此次未修改 Nginx，也未用关闭 TLS 校验绕过问题。
+
+## 官网 www 入口修复
+
+随后已补齐 `www.safelink.chat` 的独立 Nginx 入口，复用现有 `127.0.0.1:2401` 官网服务，无需重编译或重启聊天服务。
+
+- 配置来源：`deploy/independent-instance/nginx-www-87.conf`；首次签发证书时先使用同目录的 `nginx-www-87-http.conf`。
+- 生产配置：`/etc/nginx/sites-available/safelink-www`，通过同名链接加载到 `sites-enabled`。
+- 独立证书：`/etc/letsencrypt/live/safelink-www/`，仅覆盖 `www.safelink.chat`，未替换主域名、Web 或后台证书。
+- ACME 验证目录：`/var/www/html`；`/.well-known/acme-challenge/` 不跳转，其他 HTTP 请求跳转 HTTPS 并保留路径和参数。
+- Certbot 使用 webroot 验证，沿用现有 `certbot.timer`；续期 hook 为 `/usr/sbin/nginx -t && /bin/systemctl reload nginx`。
+- 同域名、同 webroot 的 `certbot certonly --dry-run` 模拟续期通过；此检查不替换生产证书，也避开旧版 `renew` 的随机等待。
+- 变更前配置备份：`/home/safelink-chat/backups/www-20261003/nginx-before.txt`。
+- 外网严格 TLS 校验通过：首页、FAQ、Apps、隐私页返回 `200`；主域名和 www 邀请链接、Web、后台也返回 `200`，WebSocket 握手返回 `101`。
+
+后续重装应保留上述 www 虚拟主机、证书续期配置及 ACME 验证目录。仅复制主域名 `safelink.chat` 的配置或证书不会覆盖 `www`。
