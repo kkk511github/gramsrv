@@ -599,6 +599,9 @@ func (r *Router) registerMessages(d *tlprofile.Dispatcher) {
 	registerRPC[*tg.MessagesDeleteHistoryRequest](d, tlprofile.SemanticMethodMessagesDeleteHistory, func(ctx context.Context, layerRequest *tg.MessagesDeleteHistoryRequest) (any, error) {
 		return r.onMessagesDeleteHistory(ctx, layerRequest)
 	})
+	registerRPC[*tg.MessagesDeletePhoneCallHistoryRequest](d, tlprofile.SemanticMethodMessagesDeletePhoneCallHistory, func(ctx context.Context, req *tg.MessagesDeletePhoneCallHistoryRequest) (any, error) {
+		return r.onMessagesDeletePhoneCallHistory(ctx, req)
+	})
 	registerRPC[*tg.MessagesGetMessagesRequest](d, tlprofile.SemanticMethodMessagesGetMessages, func(ctx context.Context, layerRequest *tg.MessagesGetMessagesRequest) (any, error) {
 		return r.onMessagesGetMessages(ctx, layerRequest.
 			ID)

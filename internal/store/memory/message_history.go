@@ -340,6 +340,16 @@ func filterMessageList(messages []domain.Message, filter domain.MessageFilter) d
 		if filter.MusicOnly && !msg.Media.IsMusic() {
 			continue
 		}
+		if filter.PhoneCallsOnly || filter.MissedPhoneCallsOnly {
+			if msg.Media == nil || msg.Media.ServiceAction == nil ||
+				msg.Media.ServiceAction.Kind != domain.MessageServiceActionPhoneCall {
+				continue
+			}
+			if filter.MissedPhoneCallsOnly && (msg.Out || msg.Media.ServiceAction.Call == nil ||
+				msg.Media.ServiceAction.Call.Reason != "missed") {
+				continue
+			}
+		}
 		if filter.SavedPeer.ID != 0 && msg.SavedPeer != filter.SavedPeer {
 			continue
 		}
