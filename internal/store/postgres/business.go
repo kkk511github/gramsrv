@@ -521,7 +521,8 @@ func (s *PasswordStore) GetConnectedBusinessBot(ctx context.Context, ownerUserID
 	row := s.db.QueryRow(ctx, `
 SELECT owner_user_id, bot_user_id, COALESCE(recipients::text, '{}')::text, COALESCE(rights::text, '{}')::text,
        COALESCE(EXTRACT(EPOCH FROM created_at), 0)::bigint,
-       COALESCE(EXTRACT(EPOCH FROM updated_at), 0)::bigint
+       COALESCE(EXTRACT(EPOCH FROM updated_at), 0)::bigint,
+       COALESCE(EXTRACT(EPOCH FROM confirmed_at), 0)::bigint
 FROM business_connected_bots
 WHERE owner_user_id = $1`, ownerUserID)
 	bot, err := scanConnectedBusinessBot(row)
@@ -550,10 +551,12 @@ ON CONFLICT (owner_user_id) DO UPDATE SET
   bot_user_id = EXCLUDED.bot_user_id,
   recipients = EXCLUDED.recipients,
   rights = EXCLUDED.rights,
+  confirmed_at = NULL,
   updated_at = now()
 RETURNING owner_user_id, bot_user_id, COALESCE(recipients::text, '{}')::text, COALESCE(rights::text, '{}')::text,
           COALESCE(EXTRACT(EPOCH FROM created_at), 0)::bigint,
-          COALESCE(EXTRACT(EPOCH FROM updated_at), 0)::bigint`, bot.OwnerUserID, bot.BotUserID, string(recipients), string(rights))
+          COALESCE(EXTRACT(EPOCH FROM updated_at), 0)::bigint,
+          COALESCE(EXTRACT(EPOCH FROM confirmed_at), 0)::bigint`, bot.OwnerUserID, bot.BotUserID, string(recipients), string(rights))
 	saved, err := scanConnectedBusinessBot(row)
 	if err != nil {
 		return domain.ConnectedBusinessBot{}, fmt.Errorf("save connected business bot: %w", err)
@@ -770,7 +773,7 @@ func scanConnectedBusinessBot(row interface {
 }) (domain.ConnectedBusinessBot, error) {
 	var bot domain.ConnectedBusinessBot
 	var recipientsJSON, rightsJSON string
-	if err := row.Scan(&bot.OwnerUserID, &bot.BotUserID, &recipientsJSON, &rightsJSON, &bot.CreatedAtUnix, &bot.UpdatedAtUnix); err != nil {
+	if err := row.Scan(&bot.OwnerUserID, &bot.BotUserID, &recipientsJSON, &rightsJSON, &bot.CreatedAtUnix, &bot.UpdatedAtUnix, &bot.ConfirmedAtUnix); err != nil {
 		return domain.ConnectedBusinessBot{}, err
 	}
 	if recipientsJSON != "" && recipientsJSON != "{}" {

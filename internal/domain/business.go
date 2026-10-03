@@ -106,12 +106,13 @@ type BusinessBotRecipients struct {
 }
 
 type ConnectedBusinessBot struct {
-	OwnerUserID   int64
-	BotUserID     int64
-	Recipients    BusinessBotRecipients
-	Rights        BusinessBotRights
-	CreatedAtUnix int64
-	UpdatedAtUnix int64
+	OwnerUserID     int64
+	BotUserID       int64
+	Recipients      BusinessBotRecipients
+	Rights          BusinessBotRights
+	CreatedAtUnix   int64
+	UpdatedAtUnix   int64
+	ConfirmedAtUnix int64
 }
 
 type ConnectedBusinessBotPeerState struct {

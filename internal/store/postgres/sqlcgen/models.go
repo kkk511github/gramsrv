@@ -79,6 +79,12 @@ type AccountPrivacyRule struct {
 	UpdatedAt   pgtype.Timestamptz
 }
 
+type AccountProfileTab struct {
+	UserID    int64
+	Tab       string
+	UpdatedAt pgtype.Timestamptz
+}
+
 type AccountRating struct {
 	UserID            int64
 	Level             int32
@@ -631,6 +637,7 @@ type BusinessConnectedBot struct {
 	Rights      []byte
 	CreatedAt   pgtype.Timestamptz
 	UpdatedAt   pgtype.Timestamptz
+	ConfirmedAt pgtype.Timestamptz
 }
 
 type BusinessConnectedBotPeerState struct {

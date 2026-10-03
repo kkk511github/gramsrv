@@ -14,6 +14,7 @@ type PasswordStore struct {
 	m                              map[int64]domain.PasswordSettings
 	reactions                      map[int64]domain.AccountReactionSettings
 	accountSettings                map[int64]domain.AccountSettings
+	mainProfileTabs                map[int64]domain.ProfileTab
 	notifySettings                 map[notifySettingsKey]domain.PeerNotifySettings
 	stickerCollections             map[stickerCollectionKey][]domain.StickerCollectionItem
 	userStickerSets                map[int64]map[int64]domain.UserStickerSet

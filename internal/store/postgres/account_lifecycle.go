@@ -454,6 +454,7 @@ func purgeDeletedBotPrivateState(ctx context.Context, tx pgx.Tx, userID int64, n
 		`DELETE FROM account_reaction_settings WHERE user_id = $1`,
 		`DELETE FROM account_restrictions WHERE user_id = $1`,
 		`DELETE FROM account_settings WHERE user_id = $1`,
+		`DELETE FROM account_profile_tabs WHERE user_id = $1`,
 		`DELETE FROM account_passwords WHERE user_id = $1`,
 		`DELETE FROM notify_settings WHERE owner_user_id = $1`,
 		`DELETE FROM passkey_credentials WHERE user_id = $1`,

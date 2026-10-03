@@ -18,6 +18,7 @@ import (
 
 // registerAccount 注册 account.* RPC handler。
 func (r *Router) registerAccount(d *tlprofile.Dispatcher) {
+	r.registerAccountFeatureCompat(d)
 	registerRPC[*tg.AccountReportPeerRequest](d, tlprofile.SemanticMethodAccountReportPeer, func(ctx context.Context, req *tg.AccountReportPeerRequest) (any, error) {
 		return r.onAccountReportPeer(ctx, req)
 	})

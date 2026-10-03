@@ -362,6 +362,7 @@ func (s *PasswordStore) SaveConnectedBusinessBot(_ context.Context, bot domain.C
 	if prev, ok := s.connectedBusinessBots[bot.OwnerUserID]; ok && bot.CreatedAtUnix == 0 {
 		bot.CreatedAtUnix = prev.CreatedAtUnix
 	}
+	bot.ConfirmedAtUnix = 0
 	s.connectedBusinessBots[bot.OwnerUserID] = cloneConnectedBusinessBot(bot)
 	s.mu.Unlock()
 	return cloneConnectedBusinessBot(bot), nil

@@ -186,6 +186,9 @@ func (r *Router) onUsersGetFullUser(ctx context.Context, id tg.InputUserClass) (
 		r.applyStoriesPinnedAvailableToUserFull(ctx, currentUserID, u.ID, &full)
 		r.applyNotifySettingsToUserFull(ctx, currentUserID, u.ID, &full)
 		r.applyBotVerificationToUserFull(ctx, u.ID, &full)
+		if err := r.applyMainProfileTabToUserFull(ctx, u.ID, &full); err != nil {
+			return nil, err
+		}
 		applyPrivateContactRestrictionToUserFull(&full, contactRestriction)
 		chats := r.applyPersonalChannelToUserFull(ctx, currentUserID, u.PersonalChannelID, &full)
 		return &tg.UsersUserFull{
@@ -214,6 +217,9 @@ func (r *Router) onUsersGetFullUser(ctx context.Context, id tg.InputUserClass) (
 	// is not baked into the per-(viewer,target) cache, so a revoked badge is gone on
 	// the next response instead of lingering for the cache TTL.
 	r.applyBotVerificationToUserFull(ctx, u.ID, &full)
+	if err := r.applyMainProfileTabToUserFull(ctx, u.ID, &full); err != nil {
+		return nil, err
+	}
 	applyPrivateContactRestrictionToUserFull(&full, contactRestriction)
 	chats := r.applyPersonalChannelToUserFull(ctx, currentUserID, u.PersonalChannelID, &full)
 	return &tg.UsersUserFull{
