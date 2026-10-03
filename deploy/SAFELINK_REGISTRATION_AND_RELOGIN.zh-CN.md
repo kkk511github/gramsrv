@@ -116,3 +116,5 @@ TELESRV_TEST_POSTGRES_DSN='<仅测试数据库>' go test ./internal/store/postgr
 - Web 已发布至 `https://web.safelink.chat/`，发布目录 `/home/safelink-web/releases/20261003-registration-invites`，保留前版 `/home/safelink-web/releases/20260930-links-ui`。发布后校验线上 HTML 和入口脚本、样式与本地构建一致。
 - Go 全包测试通过；独立 PostgreSQL 测试通过（邀请码名额、碰撞重试与整批回滚、旧码兼容、密码注册及未来登录令牌），测试库已删除。后台桌面/手机刷新与复制入口测试通过；Web 构建和模拟注册/设置密码 UI 测试通过。
 - 生产验证覆盖未认证拒绝访问、认证读取、5 位固定码预演不修改数据、登录策略不变、迁移与容器健康状态。尚未完成 Web/mac 真实账号端到端登录测试，不把模拟 UI 测试视为真机验收。
+- 已推送业务源码：服务端 `03239d8f`（`kkk/dev`）、Web `bce8debbe`（`origin/master`）、原生 mac `d6b3c6269` 与协议子模块 `f0a81f0e`（新私有仓库 `SafeLink-Mac` / `SafeLink-Mac-Core`，均为 `dev`）。主工程 `.gitmodules` 引用私有 Core 仓库，gitlink 与已推送版本一致；没有向 Telegram 官方仓库推送修改。
+- 线上 Web 的 390/1280 像素登录界面检查通过，无脚本/样式加载错误和横向溢出；通过实际 MTProto `help.getConfig` 与注册策略读取核对 SafeLink 域名及 API 连通，不触发真实验证码或账号注册。
