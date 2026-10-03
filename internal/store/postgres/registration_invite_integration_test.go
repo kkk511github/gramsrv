@@ -24,9 +24,16 @@ func TestRegistrationInviteSharedAndGeneratedPostgres(t *testing.T) {
 	if err := users.SetRegistrationInviteRequired(ctx, true); err != nil {
 		t.Fatal(err)
 	}
-	code := fmt.Sprintf("SHARED-%d", time.Now().UnixNano())
 	expires := time.Now().Add(48 * time.Hour).UTC().Truncate(time.Microsecond)
-	codes, err := users.CreateRegistrationInvites(ctx, 1, 2, expires, strings.ToLower(code))
+	seed, err := users.CreateRegistrationInvites(ctx, 1, 1, expires, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	code := seed[0]
+	if _, err := pool.Exec(ctx, `DELETE FROM registration_invites WHERE code=$1`, code); err != nil {
+		t.Fatal(err)
+	}
+	codes, err := users.CreateRegistrationInvites(ctx, 1, 2, expires, code)
 	if err != nil || len(codes) != 1 || codes[0] != code {
 		t.Fatalf("fixed code: %v %v", codes, err)
 	}
@@ -46,7 +53,7 @@ func TestRegistrationInviteSharedAndGeneratedPostgres(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) == 0 || items[0].UsedCount != 2 || !items[0].ExpiresAt.Equal(expires) {
+	if len(items) == 0 || items[0].Code != code || items[0].UsedCount != 2 || !items[0].ExpiresAt.Equal(expires) {
 		t.Fatalf("stored limits: %+v", items)
 	}
 	codes, err = users.CreateRegistrationInvites(ctx, 10, 1, expires, "")
@@ -55,6 +62,9 @@ func TestRegistrationInviteSharedAndGeneratedPostgres(t *testing.T) {
 	}
 	unique := make(map[string]bool)
 	for _, code := range codes {
+		if len(code) != 5 || strings.Trim(code, "0123456789") != "" {
+			t.Fatalf("not a five-digit code: %q", code)
+		}
 		unique[code] = true
 	}
 	if len(unique) != 10 {
@@ -69,10 +79,11 @@ func TestRegistrationInviteOptions(t *testing.T) {
 		code        string
 		valid       bool
 	}{
-		{1, 100, "SafeLink-2026", true}, {100, 1, "", true},
+		{1, 100, "01234", true}, {1, 100, "00000", true}, {1, 100, " 12345 ", true}, {100, 1, "", true},
 		{2, 100, "FIXED-CODE", false}, {1, 0, "", false},
 		{101, 1, "", false}, {1, 10001, "", false}, {1, 1, "short", false},
 		{1, 1, "bad code", false},
+		{1, 1, "1234", false}, {1, 1, "123456", false}, {1, 1, "12A45", false},
 	} {
 		err := ValidateRegistrationInviteOptions(tc.count, tc.uses, expires, tc.code)
 		if (err == nil) != tc.valid {
@@ -81,6 +92,86 @@ func TestRegistrationInviteOptions(t *testing.T) {
 	}
 	if ValidateRegistrationInviteOptions(1, 1, time.Now().Add(-time.Second), "") == nil {
 		t.Fatal("expired date accepted")
+	}
+}
+
+func TestRegistrationInviteRandomDigits(t *testing.T) {
+	for i := 0; i < 1000; i++ {
+		code, err := randomRegistrationInvite()
+		if err != nil || len(code) != 5 || strings.Trim(code, "0123456789") != "" {
+			t.Fatalf("generated %q: %v", code, err)
+		}
+	}
+}
+
+func TestRegistrationInviteCollisionAndLegacyPostgres(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	users := NewUserStore(pool)
+	expires := time.Now().Add(time.Hour)
+	seed, err := users.CreateRegistrationInvites(ctx, 2, 1, expires, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM registration_invites WHERE code=$1`, seed[1]); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	codes, err := users.createRegistrationInvites(ctx, 1, 1, expires, "", func() (string, error) {
+		calls++
+		if calls == 1 {
+			return seed[0], nil
+		}
+		return seed[1], nil
+	})
+	if err != nil || calls != 2 || len(codes) != 1 || codes[0] != seed[1] {
+		t.Fatalf("collision retry: %v %d %v", codes, calls, err)
+	}
+	// A failed batch must not return or persist an earlier candidate.
+	if _, err := pool.Exec(ctx, `DELETE FROM registration_invites WHERE code=$1`, seed[1]); err != nil {
+		t.Fatal(err)
+	}
+	codes, err = users.createRegistrationInvites(ctx, 2, 1, expires, "", func() (string, error) { return seed[1], nil })
+	if err == nil || codes != nil {
+		t.Fatalf("partial batch leaked: %v %v", codes, err)
+	}
+	var count int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM registration_invites WHERE code=$1`, seed[1]).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("batch did not roll back: %d %v", count, err)
+	}
+	legacy := fmt.Sprintf("LEGACY-%d", time.Now().UnixNano())
+	hash := registrationInviteHash(legacy)
+	var legacyID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO registration_invites(code_hash,prefix,max_uses,expires_at) VALUES($1,$2,1,$3) RETURNING id`, hash[:], legacy[:3], expires).Scan(&legacyID); err != nil {
+		t.Fatal(err)
+	}
+	if err := users.SetRegistrationInviteRequired(ctx, true); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = users.SetRegistrationInviteRequired(ctx, false) })
+	if err := users.ValidateRegistrationInvite(ctx, legacy); err != nil {
+		t.Fatalf("legacy invite invalidated: %v", err)
+	}
+	_, items, err := NewUserStore(pool).RegistrationInvites(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, item := range items {
+		if item.ID == legacyID {
+			found = true
+			if item.Code != "" {
+				t.Fatal("legacy hash fabricated a code")
+			}
+		}
+		if item.Code == seed[0] {
+			if item.Prefix != seed[0][:3] {
+				t.Fatal("visible code changed")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("legacy entry missing")
 	}
 }
 

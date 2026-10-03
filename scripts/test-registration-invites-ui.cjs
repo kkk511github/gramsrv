@@ -20,10 +20,10 @@ const { chromium } = require('playwright');
         body = { status: 'completed', dry_run: !lastAction.confirm, command_id: 'ui-test-policy', message: '登录设置测试成功', details: {} };
       }
       else if (url.pathname === '/api/server/domains') body = { public_url: 'https://safelink.chat', web_url: 'https://web.safelink.chat', editable: true };
-      else if (url.pathname === '/api/server/registration-invites') body = { enabled: false, items: [{ id: 1, prefix: 'SAF', used_count: 12, max_uses: 100, expires_at: '2027-01-01T00:00:00Z', disabled: false }] };
+      else if (url.pathname === '/api/server/registration-invites') body = { enabled: false, items: [{ id: 1, prefix: '012', code: '01234', used_count: 12, max_uses: 100, expires_at: '2027-01-01T00:00:00Z', disabled: false }, {id: 2, prefix: 'SAF', used_count: 0, max_uses: 1, expires_at: '2027-01-01T00:00:00Z', disabled: false}] };
       else if (url.pathname === '/api/actions/registration-invites') {
         lastAction = route.request().postDataJSON();
-        body = { status: 'completed', dry_run: !lastAction.confirm, command_id: 'ui-test', message: '测试成功', details: lastAction.confirm ? { codes: 'SAFELINK-TEST' } : {} };
+        body = { status: 'completed', dry_run: !lastAction.confirm, command_id: 'ui-test', message: '测试成功', details: lastAction.confirm ? { codes: '01234' } : {} };
       } else { await route.fulfill({ status: 503, json: { error: 'Unavailable in isolated UI test' } }); return; }
       await route.fulfill({ json: body });
     });
@@ -31,7 +31,9 @@ const { chromium } = require('playwright');
     const section = page.locator('#serversettings-invites');
     await section.getByRole('button', { name: '生成邀请码', exact: true }).waitFor();
     await section.scrollIntoViewIfNeeded();
-    await section.getByLabel('固定邀请码', { exact: true }).fill('SAFELINK-TEST');
+    await section.getByLabel('固定邀请码', { exact: true }).fill('12A45');
+    assert.equal(await section.getByRole('button', { name: '生成邀请码', exact: true }).isDisabled(), true);
+    await section.getByLabel('固定邀请码', { exact: true }).fill('01234');
     assert.equal(await section.getByLabel('生成数量', { exact: true }).isDisabled(), true);
     assert.equal(await section.getByLabel('生成数量', { exact: true }).inputValue(), '1');
     await section.getByLabel('每码可注册人数').fill('100');
@@ -41,10 +43,13 @@ const { chromium } = require('playwright');
     await dialog.getByRole('button', { name: /先预演|Run dry-run first/ }).click();
     await dialog.getByRole('button', { name: /确认执行|Confirm execution/ }).click();
     await dialog.getByText('测试成功').first().waitFor();
-    assert.equal(lastAction.code, 'SAFELINK-TEST');
+    assert.equal(lastAction.code, '01234');
     assert.equal(lastAction.count, 1);
     assert.equal(lastAction.max_uses, 100);
     await dialog.getByRole('button', { name: /^(关闭|Close)$/ }).last().click();
+    await page.reload();
+    await section.getByRole('button', {name: '复制邀请码 01234', exact: true}).waitFor();
+    await section.getByText('SAF…（旧码未保存）', {exact: true}).waitFor();
     await section.screenshot({ path: '/tmp/safelink-registration-invites-desktop.png' });
     await page.setViewportSize({ width: 390, height: 844 });
     await section.scrollIntoViewIfNeeded();

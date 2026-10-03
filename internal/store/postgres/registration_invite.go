@@ -4,9 +4,9 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
 	"strings"
 	"time"
 
@@ -19,6 +19,7 @@ import (
 type RegistrationInvite struct {
 	ID        int64     `json:"id"`
 	Prefix    string    `json:"prefix"`
+	Code      string    `json:"code,omitempty"`
 	MaxUses   int       `json:"max_uses"`
 	UsedCount int       `json:"used_count"`
 	Disabled  bool      `json:"disabled"`
@@ -104,7 +105,7 @@ func (s *UserStore) RegistrationInvites(ctx context.Context) (bool, []Registrati
 	if err != nil {
 		return false, nil, err
 	}
-	rows, err := s.db.Query(ctx, `SELECT id,prefix,max_uses,used_count,disabled,expires_at,created_at FROM registration_invites ORDER BY id DESC LIMIT 200`)
+	rows, err := s.db.Query(ctx, `SELECT id,prefix,COALESCE(code,''),max_uses,used_count,disabled,expires_at,created_at FROM registration_invites ORDER BY id DESC LIMIT 200`)
 	if err != nil {
 		return false, nil, err
 	}
@@ -112,7 +113,7 @@ func (s *UserStore) RegistrationInvites(ctx context.Context) (bool, []Registrati
 	list := make([]RegistrationInvite, 0)
 	for rows.Next() {
 		var item RegistrationInvite
-		if err := rows.Scan(&item.ID, &item.Prefix, &item.MaxUses, &item.UsedCount, &item.Disabled, &item.ExpiresAt, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Prefix, &item.Code, &item.MaxUses, &item.UsedCount, &item.Disabled, &item.ExpiresAt, &item.CreatedAt); err != nil {
 			return false, nil, err
 		}
 		list = append(list, item)
@@ -146,12 +147,12 @@ func ValidateRegistrationInviteOptions(count, uses int, expires time.Time, code 
 	}
 	code = strings.ToUpper(strings.TrimSpace(code))
 	if code != "" {
-		if count != 1 || len(code) < 6 || len(code) > 64 {
-			return fmt.Errorf("固定邀请码需为 6 至 64 位，生成数量须为 1")
+		if count != 1 || len(code) != 5 {
+			return fmt.Errorf("固定邀请码需为 5 位数字，生成数量须为 1")
 		}
 		for _, c := range code {
-			if !(c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-') {
-				return fmt.Errorf("邀请码仅支持英文字母、数字和连字符")
+			if c < '0' || c > '9' {
+				return fmt.Errorf("邀请码仅支持 5 位数字")
 			}
 		}
 	}
@@ -159,31 +160,62 @@ func ValidateRegistrationInviteOptions(count, uses int, expires time.Time, code 
 }
 
 func (s *UserStore) CreateRegistrationInvites(ctx context.Context, count, uses int, expires time.Time, fixedCode string) ([]string, error) {
+	return s.createRegistrationInvites(ctx, count, uses, expires, fixedCode, randomRegistrationInvite)
+}
+
+func randomRegistrationInvite() (string, error) {
+	n, err := rand.Int(rand.Reader, big.NewInt(100000))
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%05d", n.Int64()), nil
+}
+
+func (s *UserStore) createRegistrationInvites(ctx context.Context, count, uses int, expires time.Time, fixedCode string, generate func() (string, error)) ([]string, error) {
 	if err := ValidateRegistrationInviteOptions(count, uses, expires, fixedCode); err != nil {
 		return nil, err
 	}
 	fixedCode = strings.ToUpper(strings.TrimSpace(fixedCode))
 	codes := make([]string, 0, count)
 	err := withAuthIdentityTx(ctx, s.db, "generate registration invites", func(tx pgx.Tx) error {
+		codes = codes[:0]
+		// Serialize batches so colliding codes cannot deadlock two transactions.
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('safelink.registration.invite.allocation',0))`); err != nil {
+			return err
+		}
 		for i := 0; i < count; i++ {
-			var random [12]byte
-			if _, err := rand.Read(random[:]); err != nil {
-				return err
-			}
-			code := strings.ToUpper(hex.EncodeToString(random[:]))
-			if fixedCode != "" {
-				code = fixedCode
-			}
-			hash := registrationInviteHash(code)
-			if _, err := tx.Exec(ctx, `INSERT INTO registration_invites(code_hash,prefix,max_uses,expires_at) VALUES($1,$2,$3,$4)`, hash[:], code[:3], uses, expires); err != nil {
-				if isUniqueConstraint(err, "registration_invites_code_hash_key") {
+			inserted := false
+			for attempt := 0; attempt < 1000; attempt++ {
+				code := fixedCode
+				if code == "" {
+					var err error
+					code, err = generate()
+					if err != nil {
+						return err
+					}
+				}
+				hash := registrationInviteHash(code)
+				tag, err := tx.Exec(ctx, `INSERT INTO registration_invites(code_hash,prefix,code,max_uses,expires_at) VALUES($1,$2,$3,$4,$5) ON CONFLICT(code_hash) DO NOTHING`, hash[:], code[:3], code, uses, expires)
+				if err != nil {
+					return err
+				}
+				if tag.RowsAffected() == 1 {
+					codes = append(codes, code)
+					inserted = true
+					break
+				}
+				if fixedCode != "" {
 					return fmt.Errorf("此邀请码已存在，请使用其他邀请码")
 				}
-				return err
 			}
-			codes = append(codes, code)
+			if !inserted {
+				return fmt.Errorf("可用的 5 位邀请码不足，请减少生成数量或使用其他固定码")
+			}
 		}
 		return nil
 	})
-	return codes, err
+	if err != nil {
+		return nil, err
+	}
+	return codes, nil
 }

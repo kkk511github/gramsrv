@@ -2155,6 +2155,7 @@ type RegistrationInvite struct {
 	Disabled  bool
 	ExpiresAt pgtype.Timestamptz
 	CreatedAt pgtype.Timestamptz
+	Code      *string
 }
 
 type RegistrationInviteUse struct {

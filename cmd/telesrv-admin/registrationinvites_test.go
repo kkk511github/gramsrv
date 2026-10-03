@@ -14,10 +14,12 @@ func TestRegistrationInviteActionValidation(t *testing.T) {
 		name, body string
 		status     int
 	}{
-		{"shared dry run", `{"reason":"test","operation":"generate","count":1,"max_uses":100,"days":30,"code":"SAFELINK-TEST"}`, 200},
+		{"shared dry run", `{"reason":"test","operation":"generate","count":1,"max_uses":100,"days":30,"code":"01234"}`, 200},
 		{"batch dry run", `{"reason":"test","operation":"generate","count":10,"max_uses":1,"days":7}`, 200},
 		{"policy dry run", `{"reason":"test","operation":"policy","enabled":true}`, 200},
 		{"fixed batch", `{"reason":"test","operation":"generate","count":2,"max_uses":100,"days":30,"code":"SAFELINK-TEST"}`, 400},
+		{"short code", `{"reason":"test","operation":"generate","count":1,"max_uses":100,"days":30,"code":"1234"}`, 400},
+		{"non numeric", `{"reason":"test","operation":"generate","count":1,"max_uses":100,"days":30,"code":"12A45"}`, 400},
 		{"missing reason", `{"operation":"policy"}`, 400},
 		{"unlimited uses", `{"reason":"test","operation":"generate","count":1,"max_uses":0,"days":30}`, 400},
 		{"invalid operation", `{"reason":"test","operation":"unknown"}`, 400},

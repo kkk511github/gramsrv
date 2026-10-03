@@ -159,7 +159,7 @@ export function errorMessage(error: unknown): string {
 
 export const api = {
   loginPolicy: () => request<{ future_auth_enabled: boolean; future_auth_days: number; registration_password_required: boolean }>("/api/server/login-policy"),
-  registrationInvites: () => request<{ enabled: boolean; items: { id: number; prefix: string; max_uses: number; used_count: number; disabled: boolean; expires_at: string; created_at: string }[] }>("/api/server/registration-invites"),
+  registrationInvites: () => request<{ enabled: boolean; items: { id: number; prefix: string; code?: string; max_uses: number; used_count: number; disabled: boolean; expires_at: string; created_at: string }[] }>("/api/server/registration-invites"),
   session: () => request<AdminSession>("/api/session"),
   runtimeStatus: () => request<RuntimeStatusResponse>("/api/runtime-status"),
   overview: () => request<OverviewResponse>("/api/overview"),

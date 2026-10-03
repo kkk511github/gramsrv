@@ -1,4 +1,4 @@
-import { ChevronDown, CircleCheck, CircleOff, CircleX, Container, Database, ImagePlus, Layers, Loader2, RefreshCw, Save, Server, Trash2, Upload, X } from "lucide-react";
+import { ChevronDown, CircleCheck, CircleOff, CircleX, Container, Copy, Database, ImagePlus, Layers, Loader2, RefreshCw, Save, Server, Trash2, Upload, X } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { api, errorMessage } from "../api";
@@ -115,7 +115,11 @@ function RegistrationInvitesSection() {
     catch (err) { setError(errorMessage(err)); }
   }
   useEffect(() => { void load(); }, []);
-  const valid = Number.isInteger(count) && count >= 1 && count <= 100 && Number.isInteger(uses) && uses >= 1 && uses <= 10000 && Number.isInteger(days) && days >= 1 && days <= 365 && (!fixedCode.trim() || /^[A-Za-z0-9-]{6,64}$/.test(fixedCode.trim())) && (!expiresAt || (Date.parse(expiresAt) > Date.now() && Date.parse(expiresAt) < Date.now() + 366 * 86400000));
+  async function copyCode(code: string) {
+    try { await navigator.clipboard.writeText(code); setError(""); }
+    catch { setError("复制失败，请手动选择邀请码复制"); }
+  }
+  const valid = Number.isInteger(count) && count >= 1 && count <= 100 && Number.isInteger(uses) && uses >= 1 && uses <= 10000 && Number.isInteger(days) && days >= 1 && days <= 365 && (!fixedCode.trim() || /^[0-9]{5}$/.test(fixedCode.trim())) && (!expiresAt || (Date.parse(expiresAt) > Date.now() && Date.parse(expiresAt) < Date.now() + 366 * 86400000));
   return <section id="serversettings-invites" className="section-block scroll-anchor">
     <SectionHead title="注册邀请码" />
     {error && <Alert>{error}</Alert>}
@@ -123,15 +127,15 @@ function RegistrationInvitesSection() {
       <label className="invite-policy"><input type="checkbox" checked={enabled} onChange={event => setEnabled(event.target.checked)} /><span>新用户注册必须填写邀请码</span></label>
       <ActionButton label="保存注册设置" icon={<Save size={15} />} tone="warn" path="/api/actions/registration-invites" payload={() => ({ operation: "policy", enabled })} disabled={enabled === data.enabled} onDone={() => void load()} />
       <div className="invite-form-grid">
-        <label className="form-field"><span>固定邀请码</span><input value={fixedCode} placeholder="自动生成" autoComplete="off" maxLength={64} onChange={e => setFixedCode(e.target.value)} /></label>
+        <label className="form-field"><span>固定邀请码</span><input value={fixedCode} placeholder="5 位数字，留空随机生成" inputMode="numeric" autoComplete="off" maxLength={5} onChange={e => setFixedCode(e.target.value)} /></label>
         <label className="form-field"><span>生成数量</span><input type="number" min={1} max={100} value={fixedCode.trim() ? 1 : count} disabled={!!fixedCode.trim()} onChange={e => setCount(Number(e.target.value))} /></label>
         <label className="form-field"><span>每码可注册人数</span><input type="number" min={1} max={10000} value={uses} onChange={e => setUses(Number(e.target.value))} /></label>
         <label className="form-field"><span>有效天数</span><input type="number" min={1} max={365} value={days} disabled={!!expiresAt} onChange={e => setDays(Number(e.target.value))} /></label>
         <label className="form-field"><span>指定到期时间</span><input type="datetime-local" value={expiresAt} onChange={e => setExpiresAt(e.target.value)} /></label>
       </div>
       <ActionButton label="生成邀请码" icon={<Layers size={15} />} tone="primary" path="/api/actions/registration-invites" payload={() => ({ operation: "generate", count: fixedCode.trim() ? 1 : count, max_uses: uses, days, code: fixedCode.trim(), ...(expiresAt && Number.isFinite(Date.parse(expiresAt)) ? { expires_at: new Date(expiresAt).toISOString() } : {}) })} disabled={!valid} secretField="codes" onDone={() => void load()} />
-      <div className="table-wrap"><table className="data-table"><thead><tr><th>编号 / 前缀</th><th>已使用 / 名额</th><th>到期时间</th><th>状态</th><th>操作</th></tr></thead><tbody>
-        {data.items.map(item => <tr key={item.id}><td>#{item.id} / {item.prefix}…</td><td>{item.used_count} / {item.max_uses}</td><td>{new Date(item.expires_at).toLocaleString()}</td><td>{item.disabled ? "已停用" : Date.parse(item.expires_at) <= Date.now() ? "已过期" : item.used_count >= item.max_uses ? "已用完" : "有效"}</td><td><ActionButton label="停用" icon={<CircleOff size={15} />} compact path="/api/actions/registration-invites" payload={() => ({ operation: "disable", id: item.id })} disabled={item.disabled} onDone={() => void load()} /></td></tr>)}
+      <div className="table-wrap"><table className="data-table"><thead><tr><th>编号 / 邀请码</th><th>已使用 / 名额</th><th>到期时间</th><th>状态</th><th>操作</th></tr></thead><tbody>
+        {data.items.map(item => <tr key={item.id}><td>#{item.id} / <code>{item.code || `${item.prefix}…（旧码未保存）`}</code>{item.code && <button type="button" className="btn compact-btn" title="复制邀请码" aria-label={`复制邀请码 ${item.code}`} onClick={() => void copyCode(item.code!)}><Copy size={15} /></button>}</td><td>{item.used_count} / {item.max_uses}</td><td>{new Date(item.expires_at).toLocaleString()}</td><td>{item.disabled ? "已停用" : Date.parse(item.expires_at) <= Date.now() ? "已过期" : item.used_count >= item.max_uses ? "已用完" : "有效"}</td><td><ActionButton label="停用" icon={<CircleOff size={15} />} compact path="/api/actions/registration-invites" payload={() => ({ operation: "disable", id: item.id })} disabled={item.disabled} onDone={() => void load()} /></td></tr>)}
         {!data.items.length && <tr><td colSpan={5}>暂无邀请码</td></tr>}
       </tbody></table></div>
     </div>}

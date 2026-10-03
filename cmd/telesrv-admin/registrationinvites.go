@@ -80,7 +80,7 @@ func (s *server) handleRegistrationInviteActionAPI(w http.ResponseWriter, r *htt
 			if err == nil {
 				details["codes"] = strings.Join(codes, "\n")
 			}
-			message = "邀请码已生成，仅本次返回完整内容"
+			message = "5 位邀请码已生成，可在列表中随时查看和复制"
 		}
 	}
 	writeJSON(w, 200, serverCommandResult(meta, "server.registration_invites", err, message, details))
