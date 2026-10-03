@@ -13,8 +13,18 @@ type LocalProvider struct{}
 func (LocalProvider) Name() string { return "local" }
 
 func (LocalProvider) Compose(_ context.Context, req ProviderRequest) (domain.AIComposeText, error) {
-	if req.Purpose == ProviderPurposeTextGeneration {
+	if req.Purpose == ProviderPurposeTextGeneration || req.Request.TranslateToLang != "" || req.Request.Emojify || req.Request.Tone.Kind == domain.AIComposeToneRefSingleUse {
 		return domain.AIComposeText{}, domain.ErrAIComposeProviderUnavailable
+	}
+	if !req.Request.Tone.Empty() {
+		switch req.Tone.Slug {
+		case "formal", "friendly", "short", "concise":
+		default:
+			return domain.AIComposeText{}, domain.ErrAIComposeProviderUnavailable
+		}
+		if !req.Tone.Default {
+			return domain.AIComposeText{}, domain.ErrAIComposeProviderUnavailable
+		}
 	}
 	text := localTransform(req.Request.Text.Text, req.Request, req.Tone)
 	return domain.AIComposeText{Text: text}, nil

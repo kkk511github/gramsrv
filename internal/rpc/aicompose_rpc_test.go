@@ -107,9 +107,9 @@ func TestMessagesComposeMessageWithAIEmptyDefaultToneIsOptional(t *testing.T) {
 	ctx := WithUserID(context.Background(), 1001)
 
 	req := &tg.MessagesComposeMessageWithAIRequest{
-		Text: tg.TextWithEntities{Text: "hello world"},
+		Proofread: true,
+		Text:      tg.TextWithEntities{Text: "hello world"},
 	}
-	req.SetTranslateToLang("en")
 	req.SetTone(&tg.InputAiComposeToneDefault{})
 	got, err := r.onMessagesComposeMessageWithAI(ctx, req)
 	if err != nil {

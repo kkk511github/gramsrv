@@ -180,6 +180,9 @@ func (r *Router) registerMessages(d *tlprofile.Dispatcher) {
 	registerRPC[*tg.MessagesRequestMainWebViewRequest](d, tlprofile.SemanticMethodMessagesRequestMainWebView, func(ctx context.Context, layerRequest *tg.MessagesRequestMainWebViewRequest) (any, error) {
 		return r.onMessagesRequestMainWebView(ctx, layerRequest)
 	})
+	registerRPC[*tg.MessagesRequestChatJoinWebViewRequest](d, tlprofile.SemanticMethodMessagesRequestChatJoinWebView, func(ctx context.Context, req *tg.MessagesRequestChatJoinWebViewRequest) (any, error) {
+		return r.onMessagesRequestChatJoinWebView(ctx, req)
+	})
 	registerRPC[*tg.MessagesSendWebViewDataRequest](d, tlprofile.SemanticMethodMessagesSendWebViewData, func(ctx context.Context, layerRequest *tg.MessagesSendWebViewDataRequest) (any, error) {
 		return r.onMessagesSendWebViewData(ctx, layerRequest)
 	})
@@ -241,6 +244,9 @@ func (r *Router) registerMessages(d *tlprofile.Dispatcher) {
 	})
 	registerRPC[*tg.MessagesTranslateTextRequest](d, tlprofile.SemanticMethodMessagesTranslateText, func(ctx context.Context, layerRequest *tg.MessagesTranslateTextRequest) (any, error) {
 		return r.onMessagesTranslateText(ctx, layerRequest)
+	})
+	registerRPC[*tg.MessagesTranslateRichMessageRequest](d, tlprofile.SemanticMethodMessagesTranslateRichMessage, func(ctx context.Context, req *tg.MessagesTranslateRichMessageRequest) (any, error) {
+		return r.onMessagesTranslateRichMessage(ctx, req)
 	})
 	registerRPC[*tg.MessagesTogglePeerTranslationsRequest](d, tlprofile.SemanticMethodMessagesTogglePeerTranslations, func(ctx context.Context, layerRequest *tg.MessagesTogglePeerTranslationsRequest) (any, error) {
 		return r.onMessagesTogglePeerTranslations(ctx, layerRequest)
@@ -906,6 +912,9 @@ func (r *Router) registerMessages(d *tlprofile.Dispatcher) {
 	})
 	registerRPC[*tg.MessagesComposeMessageWithAIRequest](d, tlprofile.SemanticMethodMessagesComposeMessageWithAI, func(ctx context.Context, layerRequest *tg.MessagesComposeMessageWithAIRequest) (any, error) {
 		return r.onMessagesComposeMessageWithAI(ctx, layerRequest)
+	})
+	registerRPC[*tg.MessagesComposeRichMessageWithAIRequest](d, tlprofile.SemanticMethodMessagesComposeRichMessageWithAI, func(ctx context.Context, req *tg.MessagesComposeRichMessageWithAIRequest) (any, error) {
+		return r.onMessagesComposeRichMessageWithAI(ctx, req)
 	})
 	registerRPC[*tg.MessagesTranscribeAudioRequest](d, tlprofile.SemanticMethodMessagesTranscribeAudio, func(ctx context.Context, req *tg.MessagesTranscribeAudioRequest) (any, error) {
 		if _, _, err := r.currentUserID(ctx); err != nil {

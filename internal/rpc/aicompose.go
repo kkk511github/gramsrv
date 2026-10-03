@@ -248,19 +248,39 @@ func (r *Router) currentAIComposeUserID(ctx context.Context) (int64, error) {
 func domainAIComposeToneRef(tone tg.InputAiComposeToneClass) (domain.AIComposeToneRef, error) {
 	switch t := tone.(type) {
 	case *tg.InputAiComposeToneDefault:
+		if t == nil {
+			return domain.AIComposeToneRef{}, inputConstructorInvalidErr()
+		}
 		return domain.AIComposeToneRef{Kind: domain.AIComposeToneRefDefault, DefaultTone: t.Tone}, nil
 	case *tg.InputAiComposeToneID:
+		if t == nil {
+			return domain.AIComposeToneRef{}, inputConstructorInvalidErr()
+		}
 		return domain.AIComposeToneRef{Kind: domain.AIComposeToneRefID, ID: t.ID, AccessHash: t.AccessHash}, nil
 	case *tg.InputAiComposeToneSlug:
+		if t == nil {
+			return domain.AIComposeToneRef{}, inputConstructorInvalidErr()
+		}
 		return domain.AIComposeToneRef{Kind: domain.AIComposeToneRefSlug, Slug: t.Slug}, nil
+	case *tg.InputAiComposeToneSingleUse:
+		if t == nil {
+			return domain.AIComposeToneRef{}, inputConstructorInvalidErr()
+		}
+		return domain.AIComposeToneRef{Kind: domain.AIComposeToneRefSingleUse, CustomPrompt: t.CustomPrompt}, nil
 	default:
 		return domain.AIComposeToneRef{}, inputConstructorInvalidErr()
 	}
 }
 
 func domainAIComposeOptionalToneRef(tone tg.InputAiComposeToneClass) (domain.AIComposeToneRef, error) {
+	if tone == nil {
+		return domain.AIComposeToneRef{}, nil
+	}
 	switch t := tone.(type) {
 	case *tg.InputAiComposeToneDefault:
+		if t == nil {
+			return domain.AIComposeToneRef{}, inputConstructorInvalidErr()
+		}
 		if strings.TrimSpace(t.Tone) == "" {
 			return domain.AIComposeToneRef{}, nil
 		}

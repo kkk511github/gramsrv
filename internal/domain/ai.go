@@ -40,21 +40,23 @@ func (t AIComposeText) Clone() AIComposeText {
 type AIComposeToneRefKind string
 
 const (
-	AIComposeToneRefDefault AIComposeToneRefKind = "default"
-	AIComposeToneRefID      AIComposeToneRefKind = "id"
-	AIComposeToneRefSlug    AIComposeToneRefKind = "slug"
+	AIComposeToneRefDefault   AIComposeToneRefKind = "default"
+	AIComposeToneRefID        AIComposeToneRefKind = "id"
+	AIComposeToneRefSlug      AIComposeToneRefKind = "slug"
+	AIComposeToneRefSingleUse AIComposeToneRefKind = "single_use"
 )
 
 type AIComposeToneRef struct {
-	Kind        AIComposeToneRefKind
-	DefaultTone string
-	ID          int64
-	AccessHash  int64
-	Slug        string
+	Kind         AIComposeToneRefKind
+	DefaultTone  string
+	ID           int64
+	AccessHash   int64
+	Slug         string
+	CustomPrompt string
 }
 
 func (r AIComposeToneRef) Empty() bool {
-	return r.Kind == "" && r.DefaultTone == "" && r.ID == 0 && r.Slug == ""
+	return r.Kind == "" && r.DefaultTone == "" && r.ID == 0 && r.Slug == "" && r.CustomPrompt == ""
 }
 
 type AIComposeRequest struct {

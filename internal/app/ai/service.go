@@ -371,7 +371,7 @@ func (s *Service) Compose(ctx context.Context, req domain.AIComposeRequest) (dom
 	if err := s.consumeRateLimit(ctx, fmt.Sprintf("ai:compose:%d", req.UserID)); err != nil {
 		return domain.AIComposeResult{}, err
 	}
-	tone, _, err := s.resolveTone(ctx, req.UserID, req.Tone)
+	tone, err := s.resolveComposeTone(ctx, req.UserID, req.Tone)
 	if err != nil {
 		return domain.AIComposeResult{}, err
 	}

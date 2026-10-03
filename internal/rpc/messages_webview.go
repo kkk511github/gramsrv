@@ -280,6 +280,9 @@ func (r *Router) onMessagesProlongWebView(ctx context.Context, req *tg.MessagesP
 	if userID == 0 || r.deps.Users == nil || r.deps.Bots == nil || req.QueryID == 0 {
 		return false, queryIDInvalidErr()
 	}
+	if _, found := r.chatJoinWebViewSession(ctx, userID, req.QueryID); found {
+		return false, queryIDInvalidErr()
+	}
 	bot, _, err := r.webViewBotFromInput(ctx, userID, req.Bot)
 	if err != nil {
 		return false, err
@@ -379,6 +382,10 @@ func (r *Router) sendWebViewDomainResultMessage(ctx context.Context, botID int64
 	now := r.clock.Now()
 	session, ok := r.webviews.sessionForBotQueryContext(ctx, now, botID, botQueryID)
 	if !ok {
+		return queryIDInvalidErr()
+	}
+	if session.Source == chatJoinWebViewSource {
+		// Join verification is not a capability to send messages or join a chat.
 		return queryIDInvalidErr()
 	}
 	if err := r.checkSendRateLimit(ctx, session.UserID, 1); err != nil {
