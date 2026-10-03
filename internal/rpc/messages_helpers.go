@@ -405,7 +405,9 @@ func messageReadDateErr(err error) error {
 func forwardMessagesUnsupportedOptionErr(req *tg.MessagesForwardMessagesRequest) error {
 	switch {
 	case req.FromEphemeral:
-		// Ephemeral IDs have a separate namespace and must never resolve ordinary history.
+		// Bot messages and welcome snapshots can share a wire ID, and this request
+		// has no source-kind discriminator. Keep rejection before replay/history
+		// until source identity, recipient/device and snapshot permissions are safe.
 		return messageIDInvalidErr()
 	case req.QuickReplyShortcut != nil:
 		return shortcutInvalidErr()
