@@ -9,6 +9,7 @@ import (
 	"github.com/iamxvbaba/td/tlprofile"
 
 	"telesrv/internal/domain"
+	"telesrv/internal/geoip"
 	"telesrv/internal/sfu"
 	"telesrv/internal/store"
 	"telesrv/internal/turnsrv"
@@ -379,6 +380,16 @@ type BotsService interface {
 	DeleteRequestedWebViewButton(ctx context.Context, botUserID, userID int64, reqID string) error
 	SetBotEmojiStatusPermission(ctx context.Context, botUserID, userID int64, allowed bool) error
 	BotEmojiStatusPermission(ctx context.Context, botUserID, userID int64) (bool, error)
+
+	// Bot XTR invoices. The stored row is the settlement authority: in this
+	// layer payments.sendPaymentForm carries no purpose, so the price is
+	// resolved from the invoice instead of the request.
+	CreateBotInvoice(ctx context.Context, invoice domain.BotInvoice) (domain.BotInvoice, error)
+	BotInvoiceByMessage(ctx context.Context, botUserID, chatID int64, messageID int) (domain.BotInvoice, bool, error)
+	SettleBotInvoice(ctx context.Context, botUserID, chatID int64, messageID int, payerUserID int64, chargeID string, date int) (domain.BotInvoice, bool, error)
+	BotInvoiceByCharge(ctx context.Context, chargeID string) (domain.BotInvoice, bool, error)
+	MarkBotInvoiceRefunded(ctx context.Context, chargeID string) (bool, error)
+	ReleaseBotInvoiceRefund(ctx context.Context, chargeID string) error
 	PutWebViewCustomMethodQuery(ctx context.Context, botUserID, userID int64, method, paramsJSON string) (domain.BotWebViewCustomMethodQuery, error)
 }
 
@@ -1189,6 +1200,9 @@ type Deps struct {
 	Gifts                      GiftsService
 	Passkey                    PasskeyService
 	Themes                     ThemeService
+	// GeoIP 把会话记录的 IP 解析为 account.getAuthorizations 展示用的国家/地区
+	// 文案。为 nil(未配置地理后端)时列表继续回传占位文案,与启用前一致。
+	GeoIP geoip.Resolver
 }
 
 // ThemeService 抽象自定义云主题(app/themes):创建/更新/查询主题 + 维护每用户已安装列表。

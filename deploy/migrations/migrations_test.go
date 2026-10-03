@@ -9,6 +9,21 @@ import (
 
 var migrationFileRE = regexp.MustCompile(`^([0-9]{4})_.+\.(up|down)\.sql$`)
 
+func TestBotPaymentMigrationsFollowSafeLinkLoginPolicy(t *testing.T) {
+	for _, name := range []string{
+		"0223_bot_stars_wallet",
+		"0224_bot_invoices",
+		"0225_bot_api_pre_checkout_payload",
+		"0226_bot_api_pre_checkout_shape",
+	} {
+		for _, direction := range []string{"up", "down"} {
+			if _, err := os.Stat(name + "." + direction + ".sql"); err != nil {
+				t.Fatalf("missing post-0222 bot payment migration %s.%s: %v", name, direction, err)
+			}
+		}
+	}
+}
+
 func TestMigrationFilesHaveUniqueVersionDirections(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	if err != nil {

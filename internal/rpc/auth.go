@@ -327,6 +327,7 @@ func (r *Router) onAuthAcceptLoginToken(ctx context.Context, token []byte) (*tg.
 	r.setAuthUserCache(bound.AuthKeyID, userID, true)
 	r.bindLoginTokenTarget(accept.target, userID)
 	r.pushLoginTokenAccepted(ctx, accept.target)
+	// Accepted sessions use the same IP-based location lookup as the device list.
 	out := r.tgAuthorization(ctx, bound, scannerAuthKeyID, int(now.Unix()))
 	return &out, nil
 }

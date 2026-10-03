@@ -73,6 +73,7 @@ import (
 	"telesrv/internal/clientconfig"
 	"telesrv/internal/config"
 	"telesrv/internal/domain"
+	"telesrv/internal/geoip"
 	"telesrv/internal/identity"
 	"telesrv/internal/ipgeo"
 	"telesrv/internal/mtprotoedge"
@@ -1592,6 +1593,31 @@ func run(logger *zap.Logger) error {
 		}
 		appUpdateResolver = client
 	}
+	// 会话地理归属使用可选多后端链；未配置时保留 SafeLink 原有 IP 解析器。
+	geoIPResolver, err := geoip.New(geoip.Config{
+		Endpoints:          cfg.GeoIPEndpoints,
+		Timeout:            cfg.GeoIPTimeout,
+		Concurrency:        cfg.GeoIPConcurrency,
+		CacheTTL:           cfg.GeoIPCacheTTL,
+		NegativeTTL:        cfg.GeoIPNegativeTTL,
+		CacheSize:          cfg.GeoIPCacheSize,
+		RateLimitThreshold: cfg.GeoIPRateLimitThreshold,
+		RateLimitCooldown:  cfg.GeoIPRateLimitCooldown,
+		DownThreshold:      cfg.GeoIPDownThreshold,
+		DownCooldown:       cfg.GeoIPDownCooldown,
+	}, logger.Named("geoip"))
+	if err != nil {
+		return fmt.Errorf("init geoip resolver: %w", err)
+	}
+	if geoIPResolver != nil {
+		defer func() { _ = geoIPResolver.Close() }()
+		// failover 链是有序的,启动时打出来,排查"为什么这条会话显示 Unknown"时能直接
+		// 看出当时主力是哪个。
+		logger.Info("会话地理归属已启用",
+			zap.Strings("backends", geoip.EndpointNames(cfg.GeoIPEndpoints)))
+	} else {
+		logger.Info("会话地理归属：使用 SafeLink 原有 IP 解析器（未配置多后端）")
+	}
 	router := rpc.New(rpc.Config{
 		DC:                       cfg.DC,
 		DefaultCountryCode:       cfg.DefaultCountryCode,
@@ -1682,6 +1708,7 @@ func run(logger *zap.Logger) error {
 		Gifts:                      giftsService,
 		Passkey:                    passkeyService,
 		Themes:                     themeService,
+		GeoIP:                      geoIPResolver,
 		GroupCalls:                 groupCallsService,
 		LiveStreams:                liveStreamDep(liveStreamService),
 		SFU:                        sfuService,
@@ -1897,7 +1924,7 @@ func run(logger *zap.Logger) error {
 	go router.RunInlineBotPushSubscriber(ctx)
 	go router.RunBotCallbackAnswerSubscriber(ctx)
 	go router.RunEphemeralPushSubscriber(ctx)
-	if _, err := botapi.Start(ctx, cfg.BotAPIAddr, botsService, usersService, router, router, logger.Named("botapi")); err != nil {
+	if _, err := botapi.Start(ctx, cfg.BotAPIAddr, botsService, usersService, router, router, router, logger.Named("botapi")); err != nil {
 		return fmt.Errorf("start bot api: %w", err)
 	}
 	// Scoped tokens carry a bounded permission set; the master token stays

@@ -386,6 +386,7 @@ type BotApiUpdate struct {
 	CallbackInlineMessageID  int32
 	CallbackInlineAccessHash int64
 	EphemeralPayload         []byte
+	PreCheckoutPayload       []byte
 }
 
 type BotApiUpdateState struct {
@@ -468,6 +469,24 @@ type BotEmojiStatusPermission struct {
 	UpdatedAt pgtype.Timestamptz
 }
 
+type BotInvoice struct {
+	ID          int64
+	BotUserID   int64
+	ChatID      int64
+	MessageID   int32
+	Title       string
+	Description string
+	Amount      int64
+	Currency    string
+	Payload     string
+	ChargeID    string
+	PayerUserID int64
+	Paid        bool
+	Refunded    bool
+	PaidAt      int32
+	Date        int32
+}
+
 type BotLoginAllowedUrl struct {
 	ID            int64
 	BotUserID     int64
@@ -498,6 +517,33 @@ type BotLoginNativeApp struct {
 	Enabled             bool
 	CreatedAt           pgtype.Timestamptz
 	UpdatedAt           pgtype.Timestamptz
+}
+
+type BotStarsBalance struct {
+	BotUserID int64
+	Balance   int64
+	UpdatedAt pgtype.Timestamptz
+}
+
+type BotStarsPayment struct {
+	InvoiceKey   string
+	BotUserID    int64
+	PayerUserID  int64
+	Amount       int64
+	BalanceAfter int64
+	SettledAt    int32
+}
+
+type BotStarsTransaction struct {
+	ID          int64
+	BotUserID   int64
+	ActorUserID int64
+	Amount      int64
+	Reason      string
+	PeerType    string
+	PeerID      int64
+	InvoiceKey  *string
+	Date        int32
 }
 
 type BotUserPermission struct {
